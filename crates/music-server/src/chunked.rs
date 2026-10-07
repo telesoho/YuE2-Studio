@@ -151,10 +151,12 @@ pub async fn probe(http: &reqwest::Client, url: &str) -> Result<Plan> {
 /// is where "too many requests" stops being an error: the caller sees either a
 /// real answer or a real failure, never a queue.
 async fn send(http: &reqwest::Client, url: &str, range: Option<String>) -> Result<reqwest::Response> {
+    // Catalogue URLs stay on huggingface.co; the mirror (if any) is applied here.
+    let url = crate::net::hub_url(url);
     let mut waited = std::time::Duration::ZERO;
     loop {
         let _slot = connections().acquire().await.context("wait for a connection")?;
-        let mut request = http.get(url);
+        let mut request = http.get(&url);
         if let Some(range) = &range {
             request = request.header(reqwest::header::RANGE, range);
         }

@@ -73,7 +73,8 @@ pub fn ask(http: &reqwest::Client, urls: Vec<String>) {
         for url in wanted {
             // One at a time, and not in a hurry. This is a caption on a panel,
             // not the download; it must never compete with one.
-            if let Ok(response) = http.head(&url).send().await {
+            let request = crate::net::hub_url(&url);
+            if let Ok(response) = http.head(&request).send().await {
                 if response.status().is_success() {
                     if let Some(length) = response.content_length() {
                         learn(&url, length);

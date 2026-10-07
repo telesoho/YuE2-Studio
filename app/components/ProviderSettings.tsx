@@ -3,6 +3,7 @@ import { openRouterSettingsChanged } from '../services/studioQueries';
 import { AlertTriangle, Check, Cloud, Cpu, Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import type { TranslationKey } from '../i18n/translations';
+import { HubMirrorSettings } from './HubMirrorSettings';
 import { ProxySettings } from './ProxySettings';
 
 /**
@@ -273,6 +274,7 @@ export const ProviderSettings: React.FC = () => {
       </section>
 
       <ProxySettings />
+      <HubMirrorSettings />
 
       <section className="space-y-3">
         <h4 className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-white">

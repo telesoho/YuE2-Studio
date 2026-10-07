@@ -632,7 +632,8 @@ pub struct HubFile {
 /// an adapter's header; a longer one takes a second.
 async fn hub_header(http: &reqwest::Client, url: &str) -> Result<serde_json::Map<String, Value>> {
     const FIRST: u64 = 256 << 10;
-    let answer = http.get(url).header(reqwest::header::RANGE, format!("bytes=0-{}", FIRST - 1)).send().await?.error_for_status()?;
+    let url = crate::net::hub_url(url);
+    let answer = http.get(&url).header(reqwest::header::RANGE, format!("bytes=0-{}", FIRST - 1)).send().await?.error_for_status()?;
     // a server that ignores the range would send the whole weight file; a whole
     // file no longer than the range is the same bytes
     let whole_small = answer.status() == reqwest::StatusCode::OK && answer.content_length().is_some_and(|bytes| bytes <= FIRST);
@@ -643,7 +644,7 @@ async fn hub_header(http: &reqwest::Client, url: &str) -> Result<serde_json::Map
     match header_in(&start)? {
         HeaderRead::Whole(header) => Ok(header),
         HeaderRead::Longer(length) => {
-            let body = http.get(url).header(reqwest::header::RANGE, format!("bytes=8-{}", 7 + length)).send().await?.error_for_status()?.bytes().await?;
+            let body = http.get(&url).header(reqwest::header::RANGE, format!("bytes=8-{}", 7 + length)).send().await?.error_for_status()?.bytes().await?;
             Ok(serde_json::from_slice(&body)?)
         }
     }
@@ -687,7 +688,10 @@ pub fn hub_reference(text: &str) -> Option<(String, Option<String>)> {
     let rest = text
         .strip_prefix("https://huggingface.co/")
         .or_else(|| text.strip_prefix("http://huggingface.co/"))
+        .or_else(|| text.strip_prefix("https://hf-mirror.com/"))
+        .or_else(|| text.strip_prefix("http://hf-mirror.com/"))
         .or_else(|| text.strip_prefix("huggingface.co/"))
+        .or_else(|| text.strip_prefix("hf-mirror.com/"))
         .unwrap_or(text);
     let rest = rest.split(['?', '#']).next()?;
     let parts: Vec<&str> = rest.split('/').collect();
@@ -750,7 +754,7 @@ impl AdapterLibrary {
             requests.push((url(&[], term)?, true));
         }
         let answers = futures_util::future::join_all(requests.iter().map(|(url, _)| async move {
-            let found: Vec<Value> = http.get(url.clone()).send().await?.error_for_status()?.json().await?;
+            let found: Vec<Value> = http.get(crate::net::hub_url(url.as_str())).send().await?.error_for_status()?.json().await?;
             anyhow::Ok(found)
         }))
         .await;
@@ -783,10 +787,16 @@ impl AdapterLibrary {
     /// The weight files of a repository at its current commit.
     pub async fn hub_files(&self, http: &reqwest::Client, repo: &str) -> Result<HubListing> {
         let (repo, _) = hub_reference(repo).with_context(|| format!("not a Hugging Face repository: {repo}"))?;
-        let info: Value = http.get(format!("{HUB}/api/models/{repo}")).send().await?.error_for_status()?.json().await?;
+        let info: Value = http
+            .get(crate::net::hub_url(&format!("{HUB}/api/models/{repo}")))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
         let revision = info.get("sha").and_then(Value::as_str).context("the repository names no commit")?.to_string();
         let tree: Vec<Value> = http
-            .get(format!("{HUB}/api/models/{repo}/tree/{revision}?recursive=true"))
+            .get(crate::net::hub_url(&format!("{HUB}/api/models/{repo}/tree/{revision}?recursive=true")))
             .send()
             .await?
             .error_for_status()?

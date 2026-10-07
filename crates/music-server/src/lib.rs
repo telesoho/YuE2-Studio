@@ -449,6 +449,9 @@ struct PersistedStudioSettings {
     cover_look: Option<cover_art::CoverLook>,
     #[serde(default)]
     proxy: Option<net::ProxySettings>,
+    /// Hugging Face mirror for model downloads and Hub API calls.
+    #[serde(default)]
+    hub: Option<net::HubSettings>,
     /// Access from other computers, off unless turned on.
     #[serde(default)]
     network: Option<remote::NetworkAccess>,
@@ -663,6 +666,11 @@ pub async fn serve() -> anyhow::Result<()> {
         eprintln!("[ERROR] the saved proxy cannot be used, requests go straight out until it is fixed in Settings: {error:#}");
     }
     net::set(proxy);
+    let hub = persisted.as_ref().and_then(|settings| settings.hub.clone()).unwrap_or_default();
+    match hub.clone().validated() {
+        Ok(hub) => net::set_hub(hub),
+        Err(error) => eprintln!("[ERROR] the saved Hugging Face mirror cannot be used, downloads use huggingface.co until it is fixed in Settings: {error:#}"),
+    }
     let bind_to = remote::start(persisted.as_ref().and_then(|settings| settings.network.clone()));
     let model_manager = ModelManager::from_environment()?;
     let persisted_components = persisted
@@ -786,6 +794,8 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/skins/file/{name}", get(skins::file))
         .route("/v1/network/proxy", get(read_proxy).put(update_proxy))
         .route("/v1/network/proxy/test", post(test_proxy))
+        .route("/v1/network/hub", get(read_hub).put(update_hub))
+        .route("/v1/network/hub/test", post(test_hub))
         .route("/v1/assistant/status", get(assistant_status).put(update_assistant_settings))
         .route("/v1/assistant/local-models", get(assistant_local_models))
         .route("/v1/assistant/local-key", post(set_local_server_key))
@@ -3691,6 +3701,30 @@ async fn test_proxy(Json(settings): Json<net::ProxySettings>) -> Result<Json<Val
     net::test(settings).await.map(Json).map_err(|error| api_error(StatusCode::BAD_REQUEST, format!("{error:#}")))
 }
 
+async fn read_hub() -> Json<Value> {
+    let settings = net::hub_settings();
+    let mut value = serde_json::to_value(&settings).unwrap_or(Value::Null);
+    value["endpoint_effective"] = serde_json::json!(settings.base());
+    value["problem"] = serde_json::json!(settings.clone().validated().err().map(|error| format!("{error:#}")));
+    Json(value)
+}
+
+async fn update_hub(
+    State(state): State<AppState>,
+    Json(settings): Json<net::HubSettings>,
+) -> Result<Json<net::HubSettings>, (StatusCode, Json<ApiError>)> {
+    let settings = settings.validated().map_err(|error| api_error(StatusCode::BAD_REQUEST, format!("{error:#}")))?;
+    net::set_hub(settings.clone());
+    persist_studio_settings(&state)
+        .await
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("the Hub mirror is in use but was not saved: {error:#}")))?;
+    Ok(Json(settings))
+}
+
+async fn test_hub(Json(settings): Json<net::HubSettings>) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {
+    net::test_hub(settings).await.map(Json).map_err(|error| api_error(StatusCode::BAD_REQUEST, format!("{error:#}")))
+}
+
 async fn shutdown() {
     let _ = tokio::signal::ctrl_c().await;
 }
@@ -4435,6 +4469,7 @@ async fn persist_studio_settings(state: &AppState) -> anyhow::Result<()> {
         cover_auto: Some(*state.cover_auto.read().await),
         cover_look: Some(state.cover_look.read().await.clone()),
         proxy: Some(net::current()),
+        hub: Some(net::hub_settings()),
         network: Some(remote::current()),
     };
     if let Some(parent) = state.settings_path.parent() { fs::create_dir_all(parent)?; }
@@ -8239,6 +8274,7 @@ mod tests {
             cover_auto: Some(true),
             cover_look: None,
             proxy: None,
+            hub: None,
             network: None,
             separation: Some(separation::SeparationConfig::default()),
             cover_template_default: Some("photographic".into()),

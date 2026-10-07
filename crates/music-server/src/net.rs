@@ -190,6 +190,86 @@ pub fn current() -> ProxySettings {
     route().read().expect("proxy route").settings.clone()
 }
 
+/// Official Hub host every catalogue URL is written against.
+pub const OFFICIAL_HUB: &str = "https://huggingface.co";
+
+/// Where model files and Hub API calls go. Catalogue URLs stay on
+/// `huggingface.co`; this rewrites them at request time so a mirror in China
+/// (or any other) can serve the same paths without touching every asset list.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HubSettings {
+    /// Base such as `https://hf-mirror.com`. Empty means the official Hub.
+    pub endpoint: Option<String>,
+}
+
+impl HubSettings {
+    pub fn validated(self) -> Result<Self> {
+        let Some(raw) = self.endpoint.as_ref().map(|text| text.trim()).filter(|text| !text.is_empty()) else {
+            return Ok(HubSettings { endpoint: None });
+        };
+        let url = reqwest::Url::parse(raw).with_context(|| format!("not a Hub URL: {raw}"))?;
+        if url.scheme() != "http" && url.scheme() != "https" {
+            bail!("the Hub address must be http or https");
+        }
+        let host = url.host_str().context("the Hub address needs a host")?;
+        let base = match url.port() {
+            Some(port) => format!("{}://{host}:{port}", url.scheme()),
+            None => format!("{}://{host}", url.scheme()),
+        };
+        Ok(HubSettings { endpoint: Some(base) })
+    }
+
+    pub fn base(&self) -> String {
+        self.endpoint
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .unwrap_or(OFFICIAL_HUB)
+            .trim_end_matches('/')
+            .to_string()
+    }
+}
+
+fn hub_state() -> &'static RwLock<HubSettings> {
+    static HUB: std::sync::OnceLock<RwLock<HubSettings>> = std::sync::OnceLock::new();
+    HUB.get_or_init(|| RwLock::new(HubSettings::default()))
+}
+
+pub fn set_hub(settings: HubSettings) {
+    *hub_state().write().expect("hub settings") = settings;
+}
+
+pub fn hub_settings() -> HubSettings {
+    hub_state().read().expect("hub settings").clone()
+}
+
+pub fn hub() -> String {
+    hub_settings().base()
+}
+
+/// Rewrites a catalogue `huggingface.co` URL onto the configured Hub base.
+/// Non-Hub URLs are left alone.
+pub fn hub_url(url: &str) -> String {
+    let base = hub();
+    if base == OFFICIAL_HUB {
+        return url.to_string();
+    }
+    url.replace("https://huggingface.co", &base).replace("http://huggingface.co", &base)
+}
+
+/// Whether the Hub base answers, before it is kept.
+pub async fn test_hub(settings: HubSettings) -> Result<serde_json::Value> {
+    let settings = settings.validated()?;
+    let url = format!("{}/api/models?limit=1", settings.base());
+    let client = client().get(&url).timeout(std::time::Duration::from_secs(15)).send().await;
+    Ok(serde_json::json!({
+        "ok": client.as_ref().map(|response| response.status().as_u16()).is_ok(),
+        "endpoint": settings.base(),
+        "error": client.err().map(|error| why(&error)),
+    }))
+}
+
 /// The route as a client built elsewhere takes it: the updater brings its
 /// own `reqwest` and is told the proxy rather than asked per request.
 pub enum Fixed {
@@ -274,11 +354,14 @@ pub async fn test(settings: ProxySettings) -> Result<serde_json::Value> {
         .proxy(reqwest::Proxy::custom(move |url| proxy_for(&settings, &system, url)))
         .timeout(std::time::Duration::from_secs(15))
         .build()?;
-    let reach = |url: &'static str| {
+    let reach = |url: String| {
         let client = client.clone();
         async move { client.get(url).send().await.map(|_| ()).map_err(|error| why(&error)) }
     };
-    let (hub, openrouter) = tokio::join!(reach("https://huggingface.co/api/models?limit=1"), reach("https://openrouter.ai/api/v1/models"));
+    let (hub, openrouter) = tokio::join!(
+        reach(format!("{}/api/models?limit=1", hub())),
+        reach("https://openrouter.ai/api/v1/models".into())
+    );
     Ok(serde_json::json!({
         "huggingface": hub.is_ok(),
         "huggingface_error": hub.err(),
@@ -365,5 +448,27 @@ mod tests {
         assert_eq!(masked("socks5://me:secret@host:1080"), "socks5://me:***@host:1080");
         assert_eq!(masked("1.2.3.4:8000:user:secret"), "1.2.3.4:8000:user:***");
         assert_eq!(masked("user:secret:1.2.3.4:8000"), "user:***:1.2.3.4:8000");
+    }
+
+    #[test]
+    fn a_hub_mirror_rewrites_only_huggingface_hosts() {
+        set_hub(HubSettings { endpoint: Some("https://hf-mirror.com".into()) });
+        assert_eq!(
+            hub_url("https://huggingface.co/org/repo/resolve/main/a.gguf"),
+            "https://hf-mirror.com/org/repo/resolve/main/a.gguf"
+        );
+        assert_eq!(hub_url("https://example.com/x"), "https://example.com/x");
+        set_hub(HubSettings::default());
+        assert_eq!(
+            hub_url("https://huggingface.co/org/repo/resolve/main/a.gguf"),
+            "https://huggingface.co/org/repo/resolve/main/a.gguf"
+        );
+    }
+
+    #[test]
+    fn a_hub_endpoint_keeps_only_its_origin() {
+        let cleaned = HubSettings { endpoint: Some("https://hf-mirror.com/path?x=1".into()) }.validated().unwrap();
+        assert_eq!(cleaned.base(), "https://hf-mirror.com");
+        assert!(HubSettings { endpoint: Some("ftp://mirror".into()) }.validated().is_err());
     }
 }
