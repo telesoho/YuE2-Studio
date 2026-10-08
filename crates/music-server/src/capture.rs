@@ -11,8 +11,7 @@ use serde::Serialize;
 
 pub const SILENCE_PEAK: i32 = 16;
 pub const MIN_SECONDS: f64 = 0.3;
-pub const SILENCE_NOTE: &str =
-    "录音峰值接近静音。这个程序可能禁止回环采集，识谱结果可能没有声音。";
+pub const SILENCE_NOTE: &str = r#"{"code":"captureSilent"}"#;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CaptureTarget {
@@ -92,18 +91,18 @@ pub fn assess_pcm16(sample_rate: u32, channels: u16, pcm: &[u8]) -> (f64, i32, b
 
 pub fn require_usable(duration: f64, frames: usize) -> Result<(), CaptureError> {
     if frames == 0 || duration < MIN_SECONDS {
-        return Err(CaptureError("录音太短，没有保存。".into()));
+        return Err(CaptureError(r#"{"code":"captureTooShort"}"#.into()));
     }
     Ok(())
 }
 
 pub fn write_pcm16_wav(path: &Path, sample_rate: u32, channels: u16, pcm: &[u8]) -> Result<(), CaptureError> {
     if sample_rate == 0 || channels == 0 {
-        return Err(CaptureError("无法写入 WAV：采样率或声道无效。".into()));
+        return Err(CaptureError(r#"{"code":"captureWavRate"}"#.into()));
     }
     let width = channels as usize * 2;
     if width == 0 || pcm.len() % width != 0 {
-        return Err(CaptureError("无法写入 WAV：采样数据长度和声道不一致。".into()));
+        return Err(CaptureError(r#"{"code":"captureWavAlign"}"#.into()));
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| CaptureError(e.to_string()))?;
@@ -178,7 +177,7 @@ impl Recorder {
             let secs = guard.started.map(|at| at.elapsed().as_secs_f64()).unwrap_or(0.0);
             CaptureStatus {
                 recording: true,
-                note: format!("正在录制 {}… {:.0}s", guard.label, secs),
+                note: serde_json::json!({"code":"captureRecording","label": guard.label, "seconds": format!("{:.0}", secs)}).to_string(),
                 path: None,
                 duration: Some(secs),
                 silent: None,
@@ -196,18 +195,18 @@ impl Recorder {
 
     pub fn start(&self, pid: u32, process_name: &str, label: &str, dest: PathBuf) -> Result<(), CaptureError> {
         if pid == 0 {
-            return Err(CaptureError("请选择正在播放的窗口。".into()));
+            return Err(CaptureError(r#"{"code":"captureNoWindow"}"#.into()));
         }
         #[cfg(not(windows))]
         {
             let _ = (process_name, label, dest);
-            return Err(CaptureError("窗录仅在 Windows 上可用。".into()));
+            return Err(CaptureError(r#"{"code":"captureWindowsOnly"}"#.into()));
         }
         #[cfg(windows)]
         {
             let mut guard = self.inner.lock().expect("capture");
             if guard.thread.as_ref().is_some_and(|t| !t.is_finished()) {
-                return Err(CaptureError("已经在录音。".into()));
+                return Err(CaptureError(r#"{"code":"captureBusy"}"#.into()));
             }
             let stop = Arc::new(AtomicBool::new(false));
             let stop_thread = stop.clone();
@@ -251,7 +250,7 @@ impl Recorder {
             if !ready.load(Ordering::Relaxed) && !handle.is_finished() {
                 stop.store(true, Ordering::Relaxed);
                 let _ = handle.join();
-                return Err(CaptureError("录音设备没有在时限内就绪。".into()));
+                return Err(CaptureError(r#"{"code":"captureDeviceTimeout"}"#.into()));
             }
             guard.thread = Some(handle);
             guard.stop = Some(stop);
@@ -268,19 +267,20 @@ impl Recorder {
     pub fn stop(&self) -> Result<Recording, CaptureError> {
         let (handle, stop) = {
             let mut guard = self.inner.lock().expect("capture");
-            let handle = guard.thread.take().ok_or_else(|| CaptureError("没有正在进行的录音。".into()))?;
+            let handle = guard.thread.take().ok_or_else(|| CaptureError(r#"{"code":"captureNotRecording"}"#.into()))?;
             let stop = guard.stop.take();
             (handle, stop)
         };
         if let Some(stop) = stop {
             stop.store(true, Ordering::Relaxed);
         }
-        let recording = handle.join().map_err(|_| CaptureError("录音线程异常结束。".into()))??;
+        let recording = handle.join().map_err(|_| CaptureError(r#"{"code":"captureThreadDied"}"#.into()))??;
         require_usable(recording.duration, if recording.duration > 0.0 { 1 } else { 0 })?;
         let mut guard = self.inner.lock().expect("capture");
-        guard.note = format!("已录制 {:.1} 秒。选择歌词语言后，点「开始识谱」。", recording.duration);
+        // Client builds the finished note from duration + silent.
+        guard.note.clear();
         if recording.silent {
-            guard.note = format!("{SILENCE_NOTE}\n{}", guard.note);
+            guard.note = SILENCE_NOTE.into();
         }
         guard.path = Some(recording.path.clone());
         guard.started = None;
@@ -389,7 +389,7 @@ mod win {
     unsafe fn record_loopback_inner(path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
         let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
         if hr.is_err() && hr.0 as u32 != 0x80010106 {
-            return Err(CaptureError(format!("无法初始化录音线程（{hr:?}）。")));
+            return Err(CaptureError(serde_json::json!({"code":"captureInitFail","detail": format!("{hr:?}")}).to_string()));
         }
         struct ComGuard;
         impl Drop for ComGuard {
@@ -400,15 +400,15 @@ mod win {
         let _com = ComGuard;
 
         let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDEVICE_ENUMERATOR, None, CLSCTX_ALL)
-            .map_err(|e| CaptureError(format!("无法创建音频设备枚举：{e}")))?;
+            .map_err(|e| CaptureError(serde_json::json!({"code":"captureEnumFail","detail": e.to_string()}).to_string()))?;
         let device = enumerator
             .GetDefaultAudioEndpoint(eRender, eConsole)
-            .map_err(|e| CaptureError(format!("无法打开默认播放设备：{e}")))?;
+            .map_err(|e| CaptureError(serde_json::json!({"code":"captureDeviceFail","detail": e.to_string()}).to_string()))?;
         let client: IAudioClient = device
             .Activate(CLSCTX_ALL, None)
-            .map_err(|e| CaptureError(format!("无法激活音频客户端：{e}")))?;
+            .map_err(|e| CaptureError(serde_json::json!({"code":"captureClientFail","detail": e.to_string()}).to_string()))?;
 
-        let mix = client.GetMixFormat().map_err(|e| CaptureError(format!("无法读取混音格式：{e}")))?;
+        let mix = client.GetMixFormat().map_err(|e| CaptureError(serde_json::json!({"code":"captureMixFail","detail": e.to_string()}).to_string()))?;
         let mix = &*mix;
         let channels = mix.nChannels;
         let rate = mix.nSamplesPerSec;
@@ -418,13 +418,13 @@ mod win {
         let flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
         client
             .Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 10_000_000, 0, mix, None)
-            .map_err(|e| CaptureError(format!("无法打开系统回环：{e}")))?;
+            .map_err(|e| CaptureError(serde_json::json!({"code":"captureLoopFail","detail": e.to_string()}).to_string()))?;
 
         let event = CreateEventW(None, false, false, None).map_err(|e| CaptureError(e.to_string()))?;
         client.SetEventHandle(event).map_err(|e| CaptureError(e.to_string()))?;
         let capture: IAudioCaptureClient = client.GetService().map_err(|e| CaptureError(e.to_string()))?;
 
-        client.Start().map_err(|e| CaptureError(format!("无法开始录音：{e}")))?;
+        client.Start().map_err(|e| CaptureError(serde_json::json!({"code":"captureStartFail","detail": e.to_string()}).to_string()))?;
         ready.store(true, Ordering::Relaxed);
 
         let mut pcm = Vec::new();

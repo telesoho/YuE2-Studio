@@ -81,7 +81,7 @@ pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
                 .into_iter()
                 .map(|s| Unassigned { text: s.text, start: s.start, end: s.end })
                 .collect(),
-            warnings: vec!["曲谱无法解析，歌词未对齐到音符".into()],
+            warnings: vec![crate::score::reading::warn_code("scoreWarnParseFail")],
             bpm: None,
         };
     };
@@ -98,10 +98,16 @@ pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
     }
     let mut warnings = Vec::new();
     if (scale - 1.0).abs() > f64::EPSILON || offset.abs() > f64::EPSILON {
-        warnings.push(format!("歌词时间已按倍率 {scale:.2}、偏移 {offset:+.2}s 对齐"));
+        warnings.push(crate::score::reading::warn_fields(
+            "scoreWarnAlignScale",
+            &[("scale", format!("{scale:.2}")), ("offset", format!("{offset:+.2}"))],
+        ));
     }
     if !unassigned.is_empty() {
-        warnings.push(format!("有 {} 个字未能对上旋律音符", unassigned.len()));
+        warnings.push(crate::score::reading::warn_fields(
+            "scoreWarnUnassigned",
+            &[("count", unassigned.len().to_string())],
+        ));
     }
     let positioned = positions_for_groups(&groups);
     let (display, line_slots) = if let Some(ref positioned) = positioned {
@@ -110,13 +116,13 @@ pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
             display_abc(abc, &groups, positioned, &slots)
         } else {
             if !groups.is_empty() && !notes.is_empty() {
-                warnings.push("旋律音符无法逐行切分，谱面不标注歌词".into());
+                warnings.push(crate::score::reading::warn_code("scoreWarnNoLineSplit"));
             }
             (abc.to_string(), None)
         }
     } else {
         if !groups.is_empty() && !notes.is_empty() {
-            warnings.push("旋律音符无法逐行切分，谱面不标注歌词".into());
+            warnings.push(crate::score::reading::warn_code("scoreWarnNoLineSplit"));
         }
         (abc.to_string(), None)
     };

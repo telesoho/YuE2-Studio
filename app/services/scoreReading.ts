@@ -104,8 +104,9 @@ export async function saveSongScore(songId: string, abc: string): Promise<void> 
   }
 }
 
-export async function downloadScoreShare(songId: string): Promise<Blob> {
-  const response = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/score-share`, { method: 'POST' });
+export async function downloadScoreShare(songId: string, lang?: string): Promise<Blob> {
+  const query = lang ? `?lang=${encodeURIComponent(lang)}` : '';
+  const response = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/score-share${query}`, { method: 'POST' });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || `share failed (${response.status})`);

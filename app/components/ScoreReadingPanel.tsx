@@ -13,6 +13,7 @@ import {
   type ScoreReading,
 } from '../services/scoreReading';
 import { apiUrl } from '../services/apiBase';
+import { localizeCode } from '../services/localizeCode';
 
 const CONTROL =
   'w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-pink-500 dark:border-white/10 dark:bg-zinc-900 dark:text-white';
@@ -22,8 +23,9 @@ const CONTROL =
  * export a share zip.
  */
 export const ScoreReadingPanel: React.FC = () => {
-  const { t } = useI18n();
+  const { t, language: uiLanguage } = useI18n();
   const tt = t as unknown as (key: string) => string;
+  const say = useCallback((raw: string) => localizeCode(raw, t), [t]);
   const [file, setFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('zh');
   const [running, setRunning] = useState(false);
@@ -53,8 +55,8 @@ export const ScoreReadingPanel: React.FC = () => {
         setChosen(current => (list.some(item => item.value === current) ? current : list[0]?.value || ''));
         setCaptureNote(list.length ? tt('scoreCaptureFound').replace('{count}', String(list.length)) : tt('scoreCaptureEmpty'));
       })
-      .catch(err => setCaptureNote(err instanceof Error ? err.message : String(err)));
-  }, [tt]);
+      .catch(err => setCaptureNote(say(err instanceof Error ? err.message : String(err))));
+  }, [tt, say]);
 
   useEffect(() => {
     refreshWindows();
@@ -94,7 +96,7 @@ export const ScoreReadingPanel: React.FC = () => {
       setStage('');
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') setError(tt('scoreCancelled'));
-      else setError(err instanceof Error ? err.message : String(err));
+      else setError(say(err instanceof Error ? err.message : String(err)));
     } finally {
       setRunning(false);
     }
@@ -113,7 +115,7 @@ export const ScoreReadingPanel: React.FC = () => {
       setCapturing(true);
       setCaptureNote(tt('scoreCapturing'));
     } catch (err) {
-      setCaptureNote(err instanceof Error ? err.message : String(err));
+      setCaptureNote(say(err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -122,17 +124,18 @@ export const ScoreReadingPanel: React.FC = () => {
       const recording = await stopCapture();
       setCapturing(false);
       setFile(recording.file);
-      setCaptureNote(recording.note || tt('scoreCaptured').replace('{seconds}', recording.duration.toFixed(1)));
+      const done = tt('scoreCaptured').replace('{seconds}', recording.duration.toFixed(1));
+      setCaptureNote(recording.silent ? `${say(recording.note || '{"code":"captureSilent"}')}\n${done}` : done);
     } catch (err) {
       setCapturing(false);
-      setCaptureNote(err instanceof Error ? err.message : String(err));
+      setCaptureNote(say(err instanceof Error ? err.message : String(err)));
     }
   };
 
   const share = async () => {
     if (!result?.song_id) return;
     try {
-      const blob = await downloadScoreShare(result.song_id);
+      const blob = await downloadScoreShare(result.song_id, uiLanguage);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -140,7 +143,7 @@ export const ScoreReadingPanel: React.FC = () => {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(say(err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -242,7 +245,7 @@ export const ScoreReadingPanel: React.FC = () => {
           {(result.warnings?.length ?? 0) > 0 && (
             <ul className="mt-2 list-disc pl-5 text-xs text-amber-700 dark:text-amber-300">
               {result.warnings!.map(item => (
-                <li key={item}>{item}</li>
+                <li key={item}>{say(item)}</li>
               ))}
             </ul>
           )}

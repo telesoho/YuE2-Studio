@@ -158,14 +158,45 @@ pub fn score_settings(abc: &str, display_abc: &str, language: &str, warnings: &[
     })
 }
 
+/// Stable warning payload the UI translates (`{"code":…}` plus optional fields).
+pub fn warn_code(code: &str) -> String {
+    serde_json::json!({ "code": code }).to_string()
+}
+
+pub fn warn_fields(code: &str, fields: &[(&str, String)]) -> String {
+    let mut map = serde_json::Map::new();
+    map.insert("code".into(), serde_json::Value::String(code.into()));
+    for (key, value) in fields {
+        map.insert((*key).into(), serde_json::Value::String(value.clone()));
+    }
+    serde_json::Value::Object(map).to_string()
+}
+
+/// Labels for the offline share page (en default; zh / ja / ko / ru when asked).
+pub struct ShareLabels {
+    pub title: &'static str,
+    pub print: &'static str,
+    pub missing: &'static str,
+}
+
+pub fn share_labels(lang: &str) -> ShareLabels {
+    match lang {
+        "zh" => ShareLabels { title: "简谱", print: "打印简谱", missing: "简谱模块没有载入。" },
+        "ja" => ShareLabels { title: "簡譜", print: "簡譜を印刷", missing: "簡譜モジュールが読み込まれていません。" },
+        "ko" => ShareLabels { title: "간보", print: "간보 인쇄", missing: "간보 모듈을 불러오지 못했습니다." },
+        "ru" => ShareLabels { title: "Цифровка", print: "Печать цифровки", missing: "Модуль цифровки не загрузился." },
+        _ => ShareLabels { title: "Jianpu", print: "Print jianpu", missing: "Jianpu module failed to load." },
+    }
+}
+
 /// Build an offline share zip: index.html (jianpu), score.abc, lyrics, vendor.
-pub fn share_zip(abc: &str, lyrics: &str, vendor: &[(String, Vec<u8>)]) -> anyhow::Result<Vec<u8>> {
+pub fn share_zip(abc: &str, lyrics: &str, vendor: &[(String, Vec<u8>)], lang: &str) -> anyhow::Result<Vec<u8>> {
     let mut buffer = Cursor::new(Vec::new());
     {
         let mut zip = ZipWriter::new(&mut buffer);
         let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         zip.start_file("index.html", options)?;
-        zip.write_all(standalone_jianpu_html(abc).as_bytes())?;
+        zip.write_all(standalone_jianpu_html(abc, lang).as_bytes())?;
         zip.start_file("score.abc", options)?;
         let mut score = abc.trim_end().to_owned();
         score.push('\n');
@@ -206,7 +237,7 @@ pub fn vendor_dir() -> Option<PathBuf> {
 }
 
 pub fn load_vendor() -> anyhow::Result<Vec<(String, Vec<u8>)>> {
-    let dir = vendor_dir().ok_or_else(|| anyhow::anyhow!("简谱资源 missing: app/public/score/abc2svg"))?;
+    let dir = vendor_dir().ok_or_else(|| anyhow::anyhow!("jianpu vendor missing: app/public/score/abc2svg"))?;
     let mut files = Vec::new();
     for name in ["abc2svg-1.js", "jianpu-1.js", "diag-1.js"] {
         let path = dir.join(name);
@@ -216,7 +247,8 @@ pub fn load_vendor() -> anyhow::Result<Vec<(String, Vec<u8>)>> {
     Ok(files)
 }
 
-fn standalone_jianpu_html(abc: &str) -> String {
+fn standalone_jianpu_html(abc: &str, lang: &str) -> String {
+    let labels = share_labels(lang);
     let escaped = abc
         .replace('\\', "\\\\")
         .replace('`', "\\`")
@@ -225,7 +257,7 @@ fn standalone_jianpu_html(abc: &str) -> String {
         r#"<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"/>
-<title>简谱</title>
+<title>{title}</title>
 <style>
 html,body{{margin:0;background:#f7f4ef;color:#1b1712;font:14px/1.4 system-ui,sans-serif}}
 #toolbar{{display:flex;gap:8px;padding:10px 14px;background:#1a2030;color:#e7eaf3}}
@@ -234,7 +266,7 @@ html,body{{margin:0;background:#f7f4ef;color:#1b1712;font:14px/1.4 system-ui,san
 @media print{{#toolbar{{display:none}}}}
 </style>
 </head><body>
-<div id="toolbar"><button type="button" onclick="window.print()">打印简谱</button></div>
+<div id="toolbar"><button type="button" onclick="window.print()">{print}</button></div>
 <div id="paper"></div>
 <script src="vendor/abc2svg-1.js"></script>
 <script src="vendor/jianpu-1.js"></script>
@@ -250,7 +282,7 @@ function withJianpu(src) {{
 (function () {{
   const paper = document.getElementById("paper");
   if (typeof abc2svg === "undefined" || !abc2svg.Abc || !abc2svg.jianpu) {{
-    paper.textContent = "简谱模块没有载入。";
+    paper.textContent = "{missing}";
     return;
   }}
   const user = {{
@@ -266,8 +298,11 @@ function withJianpu(src) {{
   }}
 }})();
 </script>
-</body></html>
-"#
+</body></html>"#,
+        title = labels.title,
+        print = labels.print,
+        missing = labels.missing.replace('\\', "\\\\").replace('"', "\\\""),
+        escaped = escaped,
     )
 }
 
@@ -297,7 +332,7 @@ mod tests {
             ("jianpu-1.js".into(), b"jianpu".to_vec()),
             ("diag-1.js".into(), b"diag".to_vec()),
         ];
-        let bytes = share_zip("X:1\nK:C\n", "[Verse]\n春\n", &vendor).expect("zip");
+        let bytes = share_zip("X:1\nK:C\n", "[Verse]\n春\n", &vendor, "en").expect("zip");
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("open");
         for name in ["index.html", "score.abc", "lyrics.txt", "vendor/abc2svg-1.js", "vendor/jianpu-1.js", "vendor/diag-1.js", "README.txt"] {
             assert!(archive.by_name(name).is_ok(), "missing {name}");

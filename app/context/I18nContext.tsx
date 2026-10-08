@@ -13,8 +13,8 @@ interface I18nContextType {
 // development, this module is evaluated again, and a second context would leave
 // every consumer outside the provider that is already mounted.
 const I18nContext: React.Context<I18nContextType | undefined> =
-  import.meta.hot?.data.i18nContext ?? createContext<I18nContextType | undefined>(undefined);
-if (import.meta.hot) import.meta.hot.data.i18nContext = I18nContext;
+  import.meta.hot?.data?.i18nContext ?? createContext<I18nContextType | undefined>(undefined);
+if (import.meta.hot?.data) import.meta.hot.data.i18nContext = I18nContext;
 
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>(() => {

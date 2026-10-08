@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { jianpuStrings } from '../i18n/jianpu';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -10,6 +11,8 @@ require(path.join(here, '../public/score/score_edit.js'));
 const editor = (globalThis as { yueScoreEditor?: {
   editScore: (abc: string, command: Record<string, unknown>) => { abc: string; error?: string | null };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
+  setStrings?: (next: Record<string, string>) => void;
+  open?: (abc: string, audio: string | null, options?: { strings?: Record<string, string> }) => Promise<string | null>;
 } }).yueScoreEditor!;
 
 const ABC = `X:1
@@ -39,6 +42,7 @@ describe('vendored jianpu editScore', () => {
   });
 
   it('accepts a rest run that mixes one 0 per bar with a sliced whole rest', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
     const text = [
       '1=C  4/4  ♩=120',
       '伴',
@@ -50,5 +54,21 @@ describe('vendored jianpu editScore', () => {
     expect(short.ok).toBe(false);
     expect(short.message).toContain('28 个 0');
     expect(short.message).toContain('2 个 0');
+  });
+
+  it('opens with English chrome', async () => {
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    try {
+      const pending = editor.open?.(ABC, null, { strings: jianpuStrings.en as unknown as Record<string, string> });
+      await Promise.resolve();
+      expect(document.querySelector('.yue-jp-editor h2')?.textContent).toBe('Edit jianpu');
+      (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
+      await pending;
+    } finally {
+      document.querySelector('.yue-jp-editor')?.remove();
+      globals.abc2svg = previous;
+    }
   });
 });

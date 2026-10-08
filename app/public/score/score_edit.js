@@ -17,6 +17,21 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+
+  let strings = {};
+  function setStrings(next) {
+    strings = next && typeof next === "object" ? next : {};
+    applyChrome();
+  }
+  function m(key, vars) {
+    let text = Object.prototype.hasOwnProperty.call(strings, key) ? strings[key] : key;
+    if (vars) {
+      Object.keys(vars).forEach((name) => {
+        text = String(text).split("{" + name + "}").join(String(vars[name]));
+      });
+    }
+    return text;
+  }
   const DURATIONS = new Set([1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48]);
   const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6l8.2-4.8z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h2.6v10H4zm5.4 0H12v10H9.4z"/></svg>';
@@ -540,7 +555,7 @@
         continue;
       }
       const match = TOKEN.exec(line.slice(i));
-      if (!match) return { error: "读不懂这里的记号" };
+      if (!match) return { error: m('jpErrBadToken') };
       const raw = match[0];
       if (match[1] != null) {
         pendingChord = match[1];
@@ -651,8 +666,8 @@
   }
 
   function acceptBar(oldSum, newSum, perBar) {
-    if (newSum > perBar) return "这一小节会超过拍号";
-    if (oldSum === perBar && newSum !== perBar) return "这一小节的拍数对不上";
+    if (newSum > perBar) return m('jpErrBarOver');
+    if (oldSum === perBar && newSum !== perBar) return m('jpErrBarMismatch');
     return null;
   }
 
@@ -745,7 +760,7 @@
     ev.letter = spelled.letter;
     ev.marks = spelled.marks;
     const midi = midiNumber(spelled.letter, spelled.marks, spelled.acc, ev.key, null);
-    if (midi < 0 || midi > 127) return "这个音超出音域";
+    if (midi < 0 || midi > 127) return m('jpErrOutOfRange');
     return null;
   }
 
@@ -834,7 +849,7 @@
     const count = digitGlyphs(ev, parsed.header.lDen);
     if (count <= 1 || ev.kind === "note") return { abc: abc, index: index };
     const sizes = sliceUnits(ev, parsed.header.lDen);
-    if (!sizes) return { abc: abc, index: index, error: "这个休止拆不开" };
+    if (!sizes) return { abc: abc, index: index, error: m('jpErrRestUnsplit') };
     if (slice < 0 || slice >= sizes.length) return { abc: abc, index: index };
     const tokens = sizes.map((units) => "z" + (units === 1 ? "" : String(units))).join("");
     const lines = parsed.lines.slice();
@@ -861,9 +876,9 @@
     const events = voice === "Ins" ? parsed.ins : parsed.events;
     const index = command.index | 0;
     if (!events.length) {
-      return { abc: abc, error: voice === "Ins" ? "没有可编辑的伴奏音符" : "没有可编辑的人声音符" };
+      return { abc: abc, error: voice === "Ins" ? m('jpErrNoInsNotes') : m('jpErrNoVocalNotes') };
     }
-    if (index < 0 || index >= events.length) return { abc: abc, error: "没有这个音" };
+    if (index < 0 || index >= events.length) return { abc: abc, error: m('jpErrNoSuchNote') };
     const ev = events[index];
     const op = command.op;
     let lyricsDirty = false;
@@ -874,7 +889,7 @@
     if (op === "degree") {
       const degree = command.degree | 0;
       if (ev.kind === "zrest" && (ev.bars !== 1 || !checkUnits(ev.units))) {
-        return { abc: abc, error: "整段休止不能改成一个音" };
+        return { abc: abc, error: m('jpErrWholeRestToNote') };
       }
       const wasRest = ev.kind !== "note";
       breakTies(events, index);
@@ -884,7 +899,7 @@
       } else if (degree >= 1 && degree <= 7) {
         const jp = ev.kind === "note" ? readJp(ev) : { octave: 0 };
         const spelled = spell(degree, jp.octave || 0, ev.key, 0);
-        if (!spelled) return { abc: abc, error: "这个音超出音域" };
+        if (!spelled) return { abc: abc, error: m('jpErrOutOfRange') };
         const range = applySpelling(ev, spelled);
         if (range) return { abc: abc, error: range };
         if (wasRest) {
@@ -892,18 +907,18 @@
           lyricsDirty = true;
         }
       } else {
-        return { abc: abc, error: "唱名要用 1 到 7，休止是 0" };
+        return { abc: abc, error: m('jpErrDegreeRange') };
       }
     } else if (op === "octave") {
-      if (ev.kind !== "note") return { abc: abc, error: "休止没有八度" };
+      if (ev.kind !== "note") return { abc: abc, error: m('jpErrRestNoOctave') };
       const jp = readJp(ev);
       const spelled = spell(jp.degree, jp.octave + (command.delta | 0), ev.key, jp.relative);
-      if (!spelled) return { abc: abc, error: "这个音超出音域" };
+      if (!spelled) return { abc: abc, error: m('jpErrOutOfRange') };
       breakTies(events, index);
       const range = applySpelling(ev, spelled);
       if (range) return { abc: abc, error: range };
     } else if (op === "accidental") {
-      if (ev.kind !== "note") return { abc: abc, error: "休止没有升降号" };
+      if (ev.kind !== "note") return { abc: abc, error: m('jpErrRestNoAccidental') };
       const jp = readJp(ev);
       let relative = jp.relative;
       if (command.kind === "sharp") relative = relative === 1 ? 0 : 1;
@@ -914,18 +929,18 @@
         if (abs === 0 && ev.acc) relative = 0;
       }
       const spelled = spell(jp.degree, jp.octave, ev.key, relative);
-      if (!spelled) return { abc: abc, error: "这个音超出音域" };
+      if (!spelled) return { abc: abc, error: m('jpErrOutOfRange') };
       breakTies(events, index);
       const range = applySpelling(ev, spelled);
       if (range) return { abc: abc, error: range };
     } else if (op === "duration") {
-      if (ev.kind === "zrest") return { abc: abc, error: "整段休止先改成音符再改时值" };
+      if (ev.kind === "zrest") return { abc: abc, error: m('jpErrWholeRestDuration') };
       const factor = command.factor;
       breakTies(events, index);
       if (factor === 0.5) {
         const half = ev.units / 2;
         if (!checkUnits(half) || !checkUnits(ev.units - half)) {
-          return { abc: abc, error: "这个时值写不进曲谱" };
+          return { abc: abc, error: m('jpErrDuration') };
         }
         const rest = tonicNote(ev, ev.units - half);
         rest.kind = "rest";
@@ -940,27 +955,27 @@
         const added = factor === 2 ? ev.units : ev.units / 2;
         const nextUnits = factor === 2 ? ev.units * 2 : ev.units + added;
         if (!checkUnits(nextUnits) || !Number.isInteger(added)) {
-          return { abc: abc, error: "这个时值写不进曲谱" };
+          return { abc: abc, error: m('jpErrDuration') };
         }
         const next = events[index + 1];
         if (!next || next.removed || next.line !== ev.line || next.barIndex !== ev.barIndex ||
             (next.kind !== "rest" && next.kind !== "zrest") || next.units < added) {
-          return { abc: abc, error: "这一小节会超过拍号" };
+          return { abc: abc, error: m('jpErrBarOver') };
         }
-        if (next.kind === "zrest") return { abc: abc, error: "这一小节会超过拍号" };
+        if (next.kind === "zrest") return { abc: abc, error: m('jpErrBarOver') };
         const left = next.units - added;
-        if (left !== 0 && !checkUnits(left)) return { abc: abc, error: "这个时值写不进曲谱" };
+        if (left !== 0 && !checkUnits(left)) return { abc: abc, error: m('jpErrDuration') };
         ev.units = nextUnits;
         if (left === 0) next.removed = true;
         else next.units = left;
         lyricsDirty = true;
       } else {
-        return { abc: abc, error: "这个时值写不进曲谱" };
+        return { abc: abc, error: m('jpErrDuration') };
       }
       const problem = acceptBar(oldSum, barSum(events, ev), ev.perBar);
       if (problem) return { abc: abc, error: problem };
     } else if (op === "insert") {
-      if (ev.kind === "zrest" && ev.bars !== 1) return { abc: abc, error: "这里插不进同长度的音" };
+      if (ev.kind === "zrest" && ev.bars !== 1) return { abc: abc, error: m('jpErrInsertSame') };
       breakTies(events, index);
       if (oldSum + ev.units <= ev.perBar) {
         const problem = acceptBar(oldSum, oldSum + ev.units, ev.perBar);
@@ -973,7 +988,7 @@
       }
       if (!ev.spawn) {
         const half = ev.units / 2;
-        if (!checkUnits(half)) return { abc: abc, error: "这里插不进同长度的音" };
+        if (!checkUnits(half)) return { abc: abc, error: m('jpErrInsertSame') };
         const spawned = tonicNote(ev, half);
         ev.units = half;
         if (ev.kind === "zrest") makeRest(ev);
@@ -985,10 +1000,10 @@
       if (ev.kind === "rest" || ev.kind === "zrest") {
         const prev = events[index - 1];
         if (ev.kind === "zrest" || !prev || prev.line !== ev.line || prev.barIndex !== ev.barIndex || prev.kind === "zrest") {
-          return { abc: abc, error: "删掉后这一小节不够拍" };
+          return { abc: abc, error: m('jpErrBarShort') };
         }
         const merged = prev.units + ev.units;
-        if (!checkUnits(merged)) return { abc: abc, error: "删掉后这一小节不够拍" };
+        if (!checkUnits(merged)) return { abc: abc, error: m('jpErrBarShort') };
         breakTies(events, index);
         prev.units = merged;
         ev.removed = true;
@@ -1001,23 +1016,23 @@
       const problem = acceptBar(oldSum, barSum(events, ev.removed ? events[index - 1] || ev : ev), ev.perBar);
       if (problem) return { abc: abc, error: problem };
     } else if (op === "tie") {
-      if (ev.kind !== "note") return { abc: abc, error: "休止不能连音" };
+      if (ev.kind !== "note") return { abc: abc, error: m('jpErrRestNoTie') };
       const next = events[index + 1];
-      if (!samePitch(ev, next)) return { abc: abc, error: "连音要接在后面同样的音上" };
+      if (!samePitch(ev, next)) return { abc: abc, error: m('jpErrTieSame') };
       ev.tie = !ev.tie;
       next.continuesTie = ev.tie;
     } else if (op === "sustain") {
-      if (ev.kind !== "note") return { abc: abc, error: "休止不能延长" };
+      if (ev.kind !== "note") return { abc: abc, error: m('jpErrRestNoSustain') };
       const added = quarterUnits(parsed.header.lDen);
       const nextUnits = ev.units + added;
-      if (!added || !checkUnits(nextUnits)) return { abc: abc, error: "这个时值写不进曲谱" };
+      if (!added || !checkUnits(nextUnits)) return { abc: abc, error: m('jpErrDuration') };
       const next = events[index + 1];
       if (!next || next.removed || next.line !== ev.line || next.barIndex !== ev.barIndex || next.kind !== "rest") {
-        return { abc: abc, error: "后面没有可以让出来的休止" };
+        return { abc: abc, error: m('jpErrNoRestAfter') };
       }
-      if (next.units < added) return { abc: abc, error: "后面的休止不够一拍" };
+      if (next.units < added) return { abc: abc, error: m('jpErrRestTooShort') };
       const left = next.units - added;
-      if (left !== 0 && !checkUnits(left)) return { abc: abc, error: "这个时值写不进曲谱" };
+      if (left !== 0 && !checkUnits(left)) return { abc: abc, error: m('jpErrDuration') };
       breakTies(events, index);
       ev.units = nextUnits;
       if (left === 0) next.removed = true;
@@ -1026,16 +1041,16 @@
       const problem = acceptBar(oldSum, barSum(events, ev), ev.perBar);
       if (problem) return { abc: abc, error: problem };
     } else if (op === "lyric") {
-      if (voice === "Ins") return { abc: abc, error: "伴奏没有歌词" };
-      if (ev.kind !== "note") return { abc: abc, error: "休止的歌词是 *" };
+      if (voice === "Ins") return { abc: abc, error: m('jpErrInsNoLyrics') };
+      if (ev.kind !== "note") return { abc: abc, error: m('jpErrRestLyricStar') };
       const text = String(command.text == null ? "" : command.text).trim();
       ev.lyric = text && text !== "*" ? text : "*";
       lyricsDirty = true;
     } else if (op === "lyric-line") {
-      if (voice === "Ins") return { abc: abc, error: "伴奏没有歌词" };
+      if (voice === "Ins") return { abc: abc, error: m('jpErrInsNoLyrics') };
       const lineNo = ev.line;
       const notes = events.filter((item) => !item.removed && item.line === lineNo && item.kind === "note");
-      if (!notes.length) return { abc: abc, error: "这一行没有可填词的音" };
+      if (!notes.length) return { abc: abc, error: m('jpErrNoLyricNotes') };
       const tokens = splitLyricLine(command.text);
       notes.forEach((note, i) => {
         if (i < tokens.length) {
@@ -1048,7 +1063,7 @@
       leftover = Math.max(0, tokens.length - notes.length);
       lyricsDirty = true;
     } else {
-      return { abc: abc, error: "不支持这个修改" };
+      return { abc: abc, error: m('jpErrUnsupported') };
     }
 
     if (op === "insert") select = index + 1;
@@ -1377,7 +1392,7 @@
     const lines = String(abc || "").split(/\r?\n/);
     const header = parseHeader(lines);
     const kIdx = lines.findIndex((line) => /^K:\s*/.test(line));
-    if (kIdx < 0) return { error: "读不懂曲谱头", header: header, lines: lines, items: [] };
+    if (kIdx < 0) return { error: m('jpErrBadHeader'), header: header, lines: lines, items: [] };
     let key = header.key;
     let perBar = perBarUnits(header.meter, header.lDen);
     const items = [];
@@ -1569,7 +1584,7 @@
     const walked = walkBody(abc);
     if (walked.error) return { text: "", error: walked.error, marks: [] };
     const beat = quarterUnits(walked.header.lDen);
-    if (!beat) return { text: "", error: "这个曲谱的单位写不成一拍", marks: [] };
+    if (!beat) return { text: "", error: m('jpErrBadUnit'), marks: [] };
     const header = walked.header;
     let text = jianpuKeyLabel(header.key) + "  " + header.meter[0] + "/" + header.meter[1] + "  ♩=" + header.bpm;
     const marks = [];
@@ -1620,7 +1635,7 @@
       const tokens = [];
       for (const ev of bar) {
         const dur = spellDuration(ev.units, beat);
-        if (!dur) return { error: "这个时值写不成文本谱" };
+        if (!dur) return { error: m('jpErrDurToText') };
         const id = group;
         group += 1;
         if (ev.key && ev.key.name !== running) {
@@ -1631,7 +1646,7 @@
           tokens.push({ text: '"' + ev.chord + '"', voice: ev.voice, index: ev.index, group: id });
         }
         const written = jianpuToken(ev, dur);
-        if (!written) return { error: "这个音写不成文本谱" };
+        if (!written) return { error: m('jpErrNoteToText') };
         tokens.push({ text: written, voice: ev.voice, index: ev.index, group: id });
         for (let dash = 0; dash < dur.dashes; dash++) {
           tokens.push({ text: "-", voice: ev.voice, index: ev.index, group: id });
@@ -1666,14 +1681,14 @@
       }
       if (line[i] === '"') {
         const end = line.indexOf('"', i + 1);
-        if (end < 0) return { error: "和弦没有写完" };
+        if (end < 0) return { error: m('jpErrChordOpen') };
         items.push({ kind: "chord", text: line.slice(i + 1, end), start: i, end: end + 1 });
         i = end + 1;
         continue;
       }
       if (line.startsWith("[K:", i)) {
         const end = line.indexOf("]", i);
-        if (end < 0) return { error: "转调没有写完" };
+        if (end < 0) return { error: m('jpErrKeyOpen') };
         items.push({ kind: "key", text: line.slice(i + 3, end).trim(), start: i, end: end + 1 });
         i = end + 1;
         continue;
@@ -1682,10 +1697,10 @@
       if (!match) {
         let j = i;
         while (j < line.length && !/[\s|]/.test(line[j])) j += 1;
-        return { error: "读不懂这个记号：" + line.slice(i, j) };
+        return { error: m('jpErrToken', { token: line.slice(i, j) }) };
       }
       const oct = match[3] || "";
-      if (oct.indexOf("'") >= 0 && oct.indexOf(",") >= 0) return { error: "读不懂这个记号：八度" };
+      if (oct.indexOf("'") >= 0 && oct.indexOf(",") >= 0) return { error: m('jpErrTokenOctave') };
       items.push({
         kind: "note",
         acc: match[1] || "",
@@ -1715,11 +1730,11 @@
   function buildTextNote(item, key, beat, chord) {
     const octave = (item.oct.split("'").length - 1) - (item.oct.split(",").length - 1);
     const base = unitsFromMarks(item.slashes, item.dotted, beat);
-    if (base == null) return { error: "这个时值写不进曲谱" };
+    if (base == null) return { error: m('jpErrDuration') };
     if (item.degree === 0) {
-      if (item.acc) return { error: "休止没有升降号" };
-      if (item.oct) return { error: "休止没有八度" };
-      if (item.tie) return { error: "休止不能连音" };
+      if (item.acc) return { error: m('jpErrRestNoAccidental') };
+      if (item.oct) return { error: m('jpErrRestNoOctave') };
+      if (item.tie) return { error: m('jpErrRestNoTie') };
       return {
         event: {
           kind: "rest",
@@ -1740,9 +1755,9 @@
     }
     const relative = textRelative(item.acc, item.degree, key);
     const spelled = spell(item.degree, octave, key, relative);
-    if (!spelled) return { error: "这个音超出音域" };
+    if (!spelled) return { error: m('jpErrOutOfRange') };
     const midi = midiNumber(spelled.letter, spelled.marks, spelled.acc, key, null);
-    if (midi < 0 || midi > 127) return { error: "这个音超出音域" };
+    if (midi < 0 || midi > 127) return { error: m('jpErrOutOfRange') };
     return {
       event: {
         kind: "note",
@@ -1786,7 +1801,7 @@
       if (item.kind === "dash") {
         if (!current) {
           const any = bars.some((bar) => bar.length);
-          return { error: any ? "延长线不能跨过小节" : "延长线前面没有音" };
+          return { error: any ? m('jpErrSustainCross') : m('jpErrSustainNoNote') };
         }
         current.units += beat;
         current.markEnd = lineStart + item.end;
@@ -1794,7 +1809,7 @@
       }
       if (item.kind === "chord") {
         closeNote();
-        if (!CHORD_RE.test(item.text)) return { error: "这个和弦写不进曲谱" };
+        if (!CHORD_RE.test(item.text)) return { error: m('jpErrBadChord') };
         pendingChord = item.text;
         pendingStart = item.start;
         continue;
@@ -1802,7 +1817,7 @@
       if (item.kind === "key") {
         closeNote();
         const next = keyFromName(item.text);
-        if (!knownKey(next.name)) return { error: "这个转调写不进曲谱" };
+        if (!knownKey(next.name)) return { error: m('jpErrBadKeyChange') };
         key = next;
         continue;
       }
@@ -1818,7 +1833,7 @@
     closeNote();
     while (bars.length && !bars[0].length) bars.shift();
     while (bars.length && !bars[bars.length - 1].length) bars.pop();
-    if (!bars.length) return { error: "没有音符" };
+    if (!bars.length) return { error: m('jpErrNoNotes') };
     return { bars: bars };
   }
 
@@ -1877,29 +1892,29 @@
       if (items[i].type !== "comment") continue;
       let j = i + 1;
       while (j < items.length && items[j].type === "comment") j += 1;
-      if (j >= items.length || items[j].type !== "music") push("这一段还没有谱");
+      if (j >= items.length || items[j].type !== "music") push(m('jpErrSectionEmpty'));
     }
     function checkLine(item) {
       if (!item) return;
-      if (item.bars.length < 1 || item.bars.length > 4) push("一行最多四个小节");
+      if (item.bars.length < 1 || item.bars.length > 4) push(m('jpErrMaxBars'));
       for (const bar of item.bars) {
         if (!bar.length) {
-          push("有一个空小节");
+          push(m('jpErrEmptyBar'));
           continue;
         }
         let units = 0;
         for (const ev of bar) {
           units += ev.units;
-          if (!DURATIONS.has(ev.units)) push("这个时值写不进曲谱");
-          if (item.voice === "Ins" && ev.chord) push("和弦要写在唱谱上");
+          if (!DURATIONS.has(ev.units)) push(m('jpErrDuration'));
+          if (item.voice === "Ins" && ev.chord) push(m('jpErrChordOnIns'));
         }
-        if (units !== perBar) push((item.voice === "Ins" ? "伴" : "唱") + "的小节拍数对不上");
+        if (units !== perBar) push(m('jpErrVoiceBarBeats', { voice: item.voice === 'Ins' ? '伴' : '唱' }));
       }
     }
     function checkTies(events) {
       for (let i = 0; i < events.length; i++) {
         if (!events[i].tie) continue;
-        if (!sameWritten(events[i], events[i + 1])) push("连音要接在后面同样的音上");
+        if (!sameWritten(events[i], events[i + 1])) push(m('jpErrTieSame'));
       }
     }
     const vocalEvents = [];
@@ -1909,19 +1924,19 @@
       music += 1;
       checkLine(group.vocal);
       checkLine(group.ins);
-      if (!group.vocal || !group.ins) push("唱和伴的小节对不上");
-      else if (group.vocal.bars.length !== group.ins.bars.length) push("唱和伴的小节对不上");
+      if (!group.vocal || !group.ins) push(m('jpErrVoicesBars'));
+      else if (group.vocal.bars.length !== group.ins.bars.length) push(m('jpErrVoicesBars'));
       else {
         for (let b = 0; b < group.vocal.bars.length; b++) {
           const left = group.vocal.bars[b][0];
           const right = group.ins.bars[b][0];
-          if (left && right && left.key.name !== right.key.name) push("唱和伴的转调对不上");
+          if (left && right && left.key.name !== right.key.name) push(m('jpErrVoicesKey'));
         }
       }
       for (const ev of flattenBars(group.vocal)) vocalEvents.push(ev);
       for (const ev of flattenBars(group.ins)) insEvents.push(ev);
     }
-    if (!music) push("先写唱和伴");
+    if (!music) push(m('jpErrNeedVoices'));
     checkTies(vocalEvents);
     checkTies(insEvents);
     return warnings;
@@ -1993,10 +2008,10 @@
     const base = String(baseAbc || "");
     const baseLines = base.split(/\r?\n/);
     const headerEnd = baseLines.findIndex((line) => /^K:\s*/.test(line));
-    if (headerEnd < 0) return { abc: null, error: "读不懂曲谱头", warning: null, note: null, marks: [] };
+    if (headerEnd < 0) return { abc: null, error: m('jpErrBadHeader'), warning: null, note: null, marks: [] };
     const baseHeader = parseHeader(baseLines);
     const beat = quarterUnits(baseHeader.lDen);
-    if (!beat) return { abc: null, error: "这个曲谱的单位写不成一拍", warning: null, note: null, marks: [] };
+    if (!beat) return { abc: null, error: m('jpErrBadUnit'), warning: null, note: null, marks: [] };
     let meter = baseHeader.meter.slice();
     let bpm = baseHeader.bpm;
     let key = cloneKey(baseHeader.key);
@@ -2020,15 +2035,15 @@
         const match = TEXT_HEADER.exec(trim);
         const labeled = match && keyFromJianpuLabel(match[1], match[2]);
         if (!match || !labeled) {
-          return { abc: null, error: "第 " + (li + 1) + " 行：调号读不懂", warning: null, note: null, marks: [] };
+          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrBadKey') }), warning: null, note: null, marks: [] };
         }
         const nextMeter = [Number(match[3]), Number(match[4])];
         const per = perBarUnits(nextMeter, baseHeader.lDen);
         if (!nextMeter[0] || !nextMeter[1] || !Number.isInteger(per) || per <= 0 || (nextMeter[1] & (nextMeter[1] - 1)) !== 0) {
-          return { abc: null, error: "这个拍号写不进曲谱", warning: null, note: null, marks: [] };
+          return { abc: null, error: m('jpErrBadMeter'), warning: null, note: null, marks: [] };
         }
         const tempo = Number(match[5]);
-        if (!tempo) return { abc: null, error: "速度要写成正整数", warning: null, note: null, marks: [] };
+        if (!tempo) return { abc: null, error: m('jpErrTempoInt'), warning: null, note: null, marks: [] };
         meter = nextMeter;
         bpm = tempo;
         key = labeled;
@@ -2047,7 +2062,7 @@
       }
       if (trim.startsWith("词")) {
         if (voice === "Ins") {
-          return { abc: null, error: "第 " + (li + 1) + " 行：伴奏没有歌词", warning: null, note: null, marks: [] };
+          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineInsLyrics') }), warning: null, note: null, marks: [] };
         }
         let vocalItem = null;
         for (let prev = items.length - 1; prev >= 0; prev--) {
@@ -2057,10 +2072,10 @@
           }
         }
         if (!vocalItem) {
-          return { abc: null, error: "第 " + (li + 1) + " 行：词没有唱谱", warning: null, note: null, marks: [] };
+          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineLyricNoVocal') }), warning: null, note: null, marks: [] };
         }
         if (vocalItem.lyricSet) {
-          return { abc: null, error: "第 " + (li + 1) + " 行：这一行已经有词", warning: null, note: null, marks: [] };
+          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineHasLyric') }), warning: null, note: null, marks: [] };
         }
         const spans = lyricLineSpans(raw);
         const notes = flattenBars(vocalItem).filter((ev) => ev.kind === "note");
@@ -2072,16 +2087,16 @@
           notes[n].lyricMarkEnd = starts[li] + span.end;
         }
         const extra = Math.max(0, spans.length - notes.length);
-        if (extra && !note) note = "还有 " + extra + " 个字没有音符";
+        if (extra && !note) note = m('jpLeftoverSyllables', { count: extra });
         vocalItem.lyricSet = true;
         continue;
       }
       if (!voice) {
-        return { abc: null, error: "第 " + (li + 1) + " 行：要写在唱或伴下面", warning: null, note: null, marks: [] };
+        return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrUnderVoice') }), warning: null, note: null, marks: [] };
       }
       const parsed = parseMusicLine(raw, starts[li], beat, key);
       if (parsed.error) {
-        return { abc: null, error: "第 " + (li + 1) + " 行：" + parsed.error, warning: null, note: null, marks: [] };
+        return { abc: null, error: m('jpErrLine', { line: li + 1, detail: parsed.error }), warning: null, note: null, marks: [] };
       }
       items.push({ type: "music", voice: voice, bars: parsed.bars, lyricSet: false });
     }
@@ -2144,7 +2159,7 @@
   }
 
   function writtenNotes(text, beat) {
-    if (!beat) return { error: "这个曲谱的单位写不成一拍" };
+    if (!beat) return { error: m('jpErrBadUnit') };
     const voices = { Vocal: [], Ins: [] };
     let voice = null;
     let saw = false;
@@ -2166,7 +2181,7 @@
         continue;
       }
       if (trim.startsWith("词")) continue;
-      if (!voice) return { error: "要写在唱或伴下面" };
+      if (!voice) return { error: m('jpErrUnderVoice') };
       const scanned = scanTextTokens(raw);
       if (scanned.error) return scanned;
       let current = null;
@@ -2181,16 +2196,16 @@
           continue;
         }
         if (item.kind === "dash") {
-          if (!current) return { error: "延长线前面没有音" };
+          if (!current) return { error: m('jpErrSustainNoNote') };
           current.units += beat;
           continue;
         }
         flush();
         if (item.degree === 0 && (item.acc || item.oct || item.tie)) {
-          return { error: "休止没有升降号" };
+          return { error: m('jpErrRestNoAccidental') };
         }
         const units = unitsFromMarks(item.slashes, item.dotted, beat);
-        if (units == null) return { error: "这个时值写不进曲谱" };
+        if (units == null) return { error: m('jpErrDuration') };
         const octave = (item.oct.split("'").length - 1) - (item.oct.split(",").length - 1);
         current = {
           degree: item.degree,
@@ -2274,9 +2289,9 @@
         const same = head && String(item.degree) === head.digit
           && (item.octave || 0) === (head.octave || 0)
           && sameAcc(item.acc, head.acc);
-        if (!head) fail("第 " + ordinal + " 个音：文本是 " + want + "，谱上没有");
+        if (!head) fail(m('jpErrNoteMissing', { n: ordinal, want: want }));
         else if (!same) {
-          fail("第 " + ordinal + " 个音：文本是 " + want + "，谱上是 " + printed);
+          fail(m('jpErrNoteMismatch', { n: ordinal, want: want, shown: printed }));
           marks.push({ voice: voice, glyph: j });
         }
         if (head) j += 1;
@@ -2316,17 +2331,17 @@
         continue;
       }
       if (zeros === 0 && shown[j]) {
-        fail("第 " + start + " 个音：文本是 0，谱上是 " + describeShown(shown[j]));
+        fail(m('jpErrRestMismatch', { n: start, shown: describeShown(shown[j]) }));
         marks.push({ voice: voice, glyph: j });
         j += 1;
         continue;
       }
-      fail("第 " + start + " 个音：文本是 " + expanded + " 个 0，谱上是 " + zeros + " 个 0");
+      fail(m('jpErrRestCount', { n: start, want: expanded, shown: zeros }));
       for (let n = 0; n < zeros; n++) marks.push({ voice: voice, glyph: j + n });
       j += zeros;
     }
     while (shown[j]) {
-      fail("多了音：谱上是 " + describeShown(shown[j]));
+      fail(m('jpErrExtraGlyph', { shown: describeShown(shown[j]) }));
       marks.push({ voice: voice, glyph: j });
       j += 1;
     }
@@ -2336,7 +2351,7 @@
   function compareJianpuNotes(text, svg, beat, lDen, perBar) {
     const written = writtenNotes(text, beat);
     if (written.error) {
-      return { ok: false, unreadable: true, message: "文本还读不懂，没法对谱", marks: [] };
+      return { ok: false, unreadable: true, message: m('jpTextUnreadable'), marks: [] };
     }
     const shown = shownNotes(svg);
     const vocal = alignVoice(written.voices.Vocal, shown.Vocal, "Vocal", lDen, perBar || 0);
@@ -2344,7 +2359,7 @@
     const marks = vocal.marks.concat(ins.marks);
     const message = vocal.message || ins.message;
     if (message) return { ok: false, unreadable: false, message: message, marks: marks };
-    return { ok: true, unreadable: false, message: "和简谱一致", marks: [] };
+    return { ok: true, unreadable: false, message: m('jpMatchOk'), marks: [] };
   }
 
   function textMarkFor(marks, voice, index) {
@@ -2792,36 +2807,36 @@
     root.innerHTML = [
       '<div class="yue-jp-card" tabindex="-1">',
       '<div class="yue-jp-bar">',
-      "<h2>编辑简谱</h2>",
+      '<h2 data-i18n="jpTitle"></h2>',
       '<span class="yue-jp-meta"></span>',
-      '<label class="yue-jp-diagram">和弦图 ',
-      '<select data-act="diagram" aria-label="和弦图">',
-      '<option value="off">不显示</option>',
-      '<option value="guitar">吉他</option>',
-      '<option value="ukulele">尤克里里</option>',
+      '<label class="yue-jp-diagram"><span data-i18n="jpDiagram"></span> ',
+      '<select data-act="diagram" data-i18n-aria="jpDiagram">',
+      '<option value="off" data-i18n="jpDiagramOff"></option>',
+      '<option value="guitar" data-i18n="jpDiagramGuitar"></option>',
+      '<option value="ukulele" data-i18n="jpDiagramUkulele"></option>',
       "</select></label>",
       '<button type="button" data-act="mode" data-mode="midi" hidden>MIDI</button>',
-      '<button type="button" data-act="mode" data-mode="source" hidden>原声</button>',
-      '<button type="button" class="icon" data-act="play" aria-label="播放" title="播放">' + PLAY_ICON + "</button>",
-      '<button type="button" class="icon" data-act="stop" aria-label="停止" title="停止">' + STOP_ICON + "</button>",
+      '<button type="button" data-act="mode" data-mode="source" data-i18n="jpSource" hidden></button>',
+      '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
+      '<button type="button" class="icon" data-act="stop" data-i18n-aria="jpStop" data-i18n-title="jpStop">' + STOP_ICON + "</button>",
       '<span class="yue-jp-clock">0:00</span>',
-      '<button type="button" data-act="save">保存</button>',
-      '<button type="button" data-act="ok" class="primary">完成</button>',
-      '<button type="button" data-act="cancel">取消</button>',
+      '<button type="button" data-act="save" data-i18n="jpSave"></button>',
+      '<button type="button" data-act="ok" class="primary" data-i18n="jpDone"></button>',
+      '<button type="button" data-act="cancel" data-i18n="jpCancel"></button>',
       "</div>",
       '<div class="yue-jp-tools" hidden></div>',
       '<div class="yue-jp-status"></div>',
       '<div class="yue-jp-body">',
       '<div class="yue-jp-text">',
-      '<label for="yue-jp-score-text">文本谱</label>',
+      '<label for="yue-jp-score-text" data-i18n="jpTextScore"></label>',
       '<p class="yue-jp-check"></p>',
       '<div class="yue-jp-text-frame">',
-      '<textarea id="yue-jp-score-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="soft" aria-label="文本谱"></textarea>',
+      '<textarea id="yue-jp-score-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="soft" data-i18n-aria="jpTextScore"></textarea>',
       "</div>",
       '<p class="yue-jp-hint"></p>',
       "</div>",
       '<div class="yue-jp-split" role="separator" aria-orientation="vertical"',
-      ' aria-label="调整文本谱宽度" aria-valuemin="220" aria-valuemax="420" aria-valuenow="420" tabindex="0"></div>',
+      ' data-i18n-aria="jpSplitAria" aria-valuemin="220" aria-valuemax="420" aria-valuenow="420" tabindex="0"></div>',
       '<div class="yue-jp-paper"></div>',
       "</div>",
       "</div>",
@@ -2841,7 +2856,7 @@
     ui.check = root.querySelector(".yue-jp-check");
     ui.hint = root.querySelector(".yue-jp-hint");
     ui.diagram = root.querySelector("[data-act='diagram']");
-    ui.hint.textContent = "1 一拍 · 1/ 半拍 · 1// 十六分 · - 延长一拍 · 1' 高八度 · 1, 低八度 · #b 升降 · 0 休止 · ~ 连音";
+    ui.hint.textContent = m('jpHint');
     if (ui.diagram) {
       ui.diagram.value = readSavedDiagram();
       ui.diagram.addEventListener("change", () => {
@@ -2934,6 +2949,26 @@
     return m + ":" + String(s).padStart(2, "0");
   }
 
+
+  function applyChrome() {
+    if (!ui.root) return;
+    ui.root.querySelectorAll("[data-i18n]").forEach((el) => {
+      el.textContent = m(el.getAttribute("data-i18n"));
+    });
+    ui.root.querySelectorAll("[data-i18n-aria]").forEach((el) => {
+      el.setAttribute("aria-label", m(el.getAttribute("data-i18n-aria")));
+    });
+    ui.root.querySelectorAll("[data-i18n-title]").forEach((el) => {
+      el.title = m(el.getAttribute("data-i18n-title"));
+    });
+    if (ui.hint) ui.hint.textContent = m("jpHint");
+    if (ui.tools) {
+      ui.tools.innerHTML = "";
+      fillTools(ui.tools);
+    }
+    setPlayLabel(ui.playing ? "pause" : "play");
+  }
+
   function setStatus(text) {
     if (ui.status) ui.status.textContent = text || "";
   }
@@ -2941,7 +2976,7 @@
   function clearSavedNote() {
     if (!ui.savedNote) return;
     ui.savedNote = false;
-    if (ui.status && ui.status.textContent === "已保存") setStatus("");
+    if (ui.savedSticky) { ui.savedSticky = false; setStatus(""); }
   }
 
   function stopSaveWatch() {
@@ -2974,6 +3009,7 @@
       stopSaveWatch();
       if (!text) return;
       ui.savedNote = true;
+      ui.savedSticky = true;
       setStatus(text);
     };
     if (ui.saveNote && typeof MutationObserver !== "undefined") {
@@ -2996,27 +3032,27 @@
     const groups = [
       ["1", "2", "3", "4", "5", "6", "7", "0"].map((digit) => ({
         label: digit,
-        title: digit === "0" ? "休止（0）" : "唱名 " + digit,
+        title: digit === "0" ? m("jpRest0") : m("jpDegree", { digit: digit }),
         className: "digit",
         attrs: { act: "degree", degree: digit },
       })),
       [
-        { label: "↑", title: "升高八度", attrs: { act: "octave", delta: "1" } },
-        { label: "↓", title: "降低八度", attrs: { act: "octave", delta: "-1" } },
-        { label: "♯", title: "升号（#）", attrs: { act: "accidental", kind: "sharp" } },
-        { label: "♭", title: "降号（b）", attrs: { act: "accidental", kind: "flat" } },
-        { label: "♮", title: "还原号（n）", attrs: { act: "accidental", kind: "natural" } },
+        { label: "↑", title: m("jpOctaveUp"), attrs: { act: "octave", delta: "1" } },
+        { label: "↓", title: m("jpOctaveDown"), attrs: { act: "octave", delta: "-1" } },
+        { label: "♯", title: m("jpSharp"), attrs: { act: "accidental", kind: "sharp" } },
+        { label: "♭", title: m("jpFlat"), attrs: { act: "accidental", kind: "flat" } },
+        { label: "♮", title: m("jpNatural"), attrs: { act: "accidental", kind: "natural" } },
       ],
       [
-        { label: "½", title: "时值减半", attrs: { act: "duration", factor: "0.5" } },
-        { label: "×2", title: "时值加倍", attrs: { act: "duration", factor: "2" } },
-        { label: "附点", title: "附点", attrs: { act: "duration", factor: "1.5" } },
-        { label: "延长", title: "延长音节：从后面的休止让出一拍", attrs: { act: "sustain" } },
+        { label: "½", title: m("jpHalve"), attrs: { act: "duration", factor: "0.5" } },
+        { label: "×2", title: m("jpDouble"), attrs: { act: "duration", factor: "2" } },
+        { label: m("jpDot"), title: m("jpDotTitle"), attrs: { act: "duration", factor: "1.5" } },
+        { label: m("jpSustain"), title: m("jpSustainTitle"), attrs: { act: "sustain" } },
       ],
       [
-        { label: "连音", title: "连音符：接到后面同样的音，再按一次取消", attrs: { act: "tie" } },
-        { label: "插入", title: "在这个音后面插入", attrs: { act: "insert" } },
-        { label: "删除", title: "删除这个音", attrs: { act: "delete" } },
+        { label: m("jpTie"), title: m("jpTieTitle"), attrs: { act: "tie" } },
+        { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
+        { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
       ],
     ];
     groups.forEach((specs) => {
@@ -3545,10 +3581,10 @@
     const info = inspectScore(ui.abc);
     ui.meta.textContent = info.error ? "" : info.keyLabel + "  ·  ♩=" + info.bpm;
     if (typeof abc2svg === "undefined" || !abc2svg.Abc || !abc2svg.jianpu) {
-      ui.paper.innerHTML = "<p>简谱模块没有载入。</p>";
+      ui.paper.innerHTML = '<p>' + m('jpModuleMissing') + '</p>';
       ui.scoreSvg = "";
       clearMismatch();
-      showCheck({ ok: false, message: "没法对谱" });
+      showCheck({ ok: false, message: m('jpCannotCompare') });
       return;
     }
     const diagram = currentDiagram();
@@ -3559,34 +3595,34 @@
       if (diagram !== DIAGRAM_OFF) {
         try {
           svg = renderJianpuSvg(ui.abc, DIAGRAM_OFF);
-          setStatus("和弦图画不出来，先只显示简谱。");
+          ui.statusSticky = true; setStatus(m('jpDiagramFail'));
         } catch (fallbackErr) {
-          ui.paper.textContent = "简谱渲染失败";
+          ui.paper.textContent = m('jpRenderFail');
           ui.scoreSvg = "";
           clearMismatch();
-          showCheck({ ok: false, message: "没法对谱" });
+          showCheck({ ok: false, message: m('jpCannotCompare') });
           setStatus(String((fallbackErr && fallbackErr.message) || fallbackErr || err && err.message || err));
           return;
         }
       } else {
-        ui.paper.textContent = "简谱渲染失败";
+        ui.paper.textContent = m('jpRenderFail');
         ui.scoreSvg = "";
         clearMismatch();
-        showCheck({ ok: false, message: "没法对谱" });
+        showCheck({ ok: false, message: m('jpCannotCompare') });
         setStatus(String((err && err.message) || err));
         return;
       }
     }
     ui.scoreSvg = svg;
-    ui.paper.innerHTML = svg || "<p>简谱是空的。</p>";
+    ui.paper.innerHTML = svg || ('<p>' + m('jpEmpty') + '</p>');
     if (diagram !== DIAGRAM_OFF && svg.indexOf('class="diag"') < 0 && /"[A-G]/.test(ui.abc)) {
-      if (!diagReady()) setStatus("和弦图模块没有载入。");
+      if (!diagReady()) { ui.statusSticky = true; setStatus(m('jpDiagMissing')); }
     }
     const vocalOk = stampVoice("Vocal");
     const insOk = stampVoice("Ins");
     stampLyrics();
-    if (!vocalOk) setStatus("简谱上的音和人声对不上。");
-    else if (!insOk) setStatus("伴奏谱上的音对不上。");
+    if (!vocalOk) { ui.statusSticky = true; setStatus(m('jpVocalMismatch')); }
+    else if (!insOk) { ui.statusSticky = true; setStatus(m('jpInsMismatch')); }
     if (ui.index >= 0) {
       const pool = eventsFor(ui.abc, ui.voice);
       if (ui.index >= pool.length) {
@@ -3672,7 +3708,7 @@
       el.dataset.voice = "Vocal";
       el.dataset.idx = String(hit.index);
       el.setAttribute("role", "button");
-      el.setAttribute("aria-label", "歌词 " + (el.textContent || "").replace(/\s+/g, ""));
+      el.setAttribute('aria-label', m('jpLyricAria', { text: (el.textContent || '').replace(/\s+/g, '') }));
     };
     hits.forEach(claim);
     const claimedGlyph = new Set(hits.map((hit) => hit.glyph));
@@ -3733,14 +3769,14 @@
     if (!ui.check || !ui.text) return;
     if (ui.textBlocked) {
       clearMismatch();
-      showCheck({ ok: false, message: "文本还读不懂，没法对谱" });
+      showCheck({ ok: false, message: m('jpTextUnreadable') });
       return;
     }
     const svg = ui.scoreSvg || "";
     if (!/<text\b[^>]*\bfj\b/.test(svg)) {
       if (!svg) return;
       clearMismatch();
-      showCheck({ ok: false, message: "没法对谱" });
+      showCheck({ ok: false, message: m('jpCannotCompare') });
       return;
     }
     const header = parseHeader(String(ui.abc || "").split(/\r?\n/));
@@ -3762,7 +3798,7 @@
     const parsed = parseJianpuText(ui.text.value, ui.sourceAbc || ui.abc);
     if (!parsed.abc) {
       ui.textBlocked = true;
-      ui.textError = parsed.error || "读不懂这行";
+      ui.textError = parsed.error || m('jpBadLine');
       ui.textMarks = [];
       setStatus(ui.textError);
       refreshNoteCheck();
@@ -3780,7 +3816,7 @@
       renderScore();
     } else refreshNoteCheck();
     if (parsed.warning || parsed.note) setStatus(parsed.warning || parsed.note);
-    else if (!ui.status || !/对不上|失败|没有载入/.test(ui.status.textContent || "")) setStatus("");
+    else if (!ui.statusSticky) setStatus("");
     if (document.activeElement === ui.text) syncCaret();
     showTextMark();
   }
@@ -3855,9 +3891,9 @@
       if (!parsed.abc || parsed.error || parsed.warning) {
         if (!parsed.abc) {
           ui.textBlocked = true;
-          ui.textError = parsed.error || "文本谱还不能写回";
+          ui.textError = parsed.error || m('jpCannotWriteBack');
         }
-        setStatus(parsed.error || parsed.warning || "文本谱还不能写回");
+        setStatus(parsed.error || parsed.warning || m('jpCannotWriteBack'));
         return null;
       }
       ui.abc = parsed.abc;
@@ -3878,7 +3914,7 @@
     const host = ui.saveButton;
     const target = host && (host.querySelector("button") || host);
     if (!target || !target.click) {
-      setStatus("这一页不能保存简谱");
+      setStatus(m('jpCannotSaveHere'));
       return;
     }
     watchSaveNote();
@@ -3896,13 +3932,13 @@
       applyText();
     }
     if (ui.textBlocked) {
-      setStatus(ui.textError || "先改好文本谱里读不懂的记号");
+      setStatus(ui.textError || m('jpFixTextFirst'));
       return false;
     }
     clearSavedNote();
     stopPlayback();
     if (ui.index < 0) {
-      setStatus("先点一个音符");
+      setStatus(m('jpPickNote'));
       return false;
     }
     const next = editScore(ui.abc, Object.assign({
@@ -3919,12 +3955,12 @@
       if (next.index != null) ui.index = next.index;
       ui.slice = 0;
     }
-    if (next.leftover) setStatus("还有 " + next.leftover + " 个字没有音符");
+    if (next.leftover) setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
     else setStatus("");
     refreshTextFromAbc();
     renderScore();
     if (next.leftover && ui.status && !ui.status.textContent) {
-      setStatus("还有 " + next.leftover + " 个字没有音符");
+      setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
     }
     if (command.op === "degree" || command.op === "octave" || command.op === "accidental") {
       playMidi(noteMidi(ui.abc, ui.index, ui.voice));
@@ -3979,11 +4015,11 @@
     if (ctx.state === "suspended" && ctx.resume) ctx.resume();
     const known = window.yuePiano.voice && window.yuePiano.voice(ctx);
     const previous = ui.status ? ui.status.textContent : "";
-    if (!known) setStatus("正在加载钢琴音色");
+    if (!known) setStatus(m('jpLoadingPiano'));
     const loading = window.yuePiano.prepare ? window.yuePiano.prepare(ctx) : Promise.resolve(null);
     Promise.resolve(loading).then(function (voice) {
-      if (!known && ui.status && ui.status.textContent === "正在加载钢琴音色") {
-        setStatus(voice && voice.kind === "synthetic" ? "采样钢琴加载失败，改用合成音色" : previous);
+      if (!known && ui.status && ui.status.textContent === m('jpLoadingPiano')) {
+        setStatus(voice && voice.kind === "synthetic" ? m('jpSynthFallback') : previous);
       }
       window.yuePiano.schedule(ctx, { midi: midi, volume: 0.18 }, ctx.currentTime + 0.02, 0.42, ui.osc);
     });
@@ -4006,9 +4042,9 @@
 
   function playHint() {
     if (ui.audioUrl) {
-      return "点唱谱或伴奏上的一个音来改，会响起这个音。可播放 MIDI 或源音频；听源音频时简谱会把大致位置保持在画面中间，点简谱可跳转。歌词在文本谱的词行里改。";
+      return m('jpPlayHintAudio');
     }
-    return "点唱谱或伴奏上的一个音来改，会响起这个音。歌词在文本谱的词行里改。";
+    return m('jpPlayHint');
   }
 
   function syncTransport() {
@@ -4030,18 +4066,19 @@
     stopPlayback();
     ui.transport = next;
     syncTransport();
-    setStatus(playHint());
+    ui.statusSticky = false; setStatus(playHint());
   }
 
-  function setPlayLabel(text) {
+  function setPlayLabel(state) {
     if (!ui.root) return;
     const button = ui.root.querySelector("[data-act='play']");
     if (!button) return;
-    const playing = text === "暂停";
+    const playing = state === "pause" || state === true;
+    ui.playing = playing;
     button.innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
-    button.setAttribute("aria-label", playing ? "暂停" : "播放");
+    button.setAttribute("aria-label", playing ? m("jpPause") : m("jpPlay"));
     button.setAttribute("aria-pressed", playing ? "true" : "false");
-    button.title = playing ? "暂停" : "播放";
+    button.title = playing ? m("jpPause") : m("jpPlay");
   }
 
   function setPlayClock(now, total) {
@@ -4097,7 +4134,7 @@
     ui.sourceTouched = false;
     ui.transport = "midi";
     syncTransport();
-    setPlayLabel("播放");
+    setPlayLabel("play");
     setStatus(message);
   }
 
@@ -4108,20 +4145,20 @@
     try {
       audio = new Audio(ui.audioUrl);
     } catch (err) {
-      abandonSource("源音频打不开，改为试听简谱。");
+      abandonSource(m('jpSourceFail'));
       return null;
     }
     audio.preload = "auto";
     audio.addEventListener("error", () => {
       if (ui.audio !== audio || !ui.audioUrl) return;
-      abandonSource("源音频打不开，改为试听简谱。");
+      abandonSource(m('jpSourceFail'));
     });
     audio.addEventListener("ended", () => {
       if (ui.audio !== audio) return;
       ui.generation += 1;
       if (ui.raf) cancelAnimationFrame(ui.raf);
       ui.raf = 0;
-      setPlayLabel("播放");
+      setPlayLabel("play");
       paintPlayhead(audio.currentTime || 0);
     });
     ui.audio = audio;
@@ -4176,7 +4213,7 @@
       if (ui.raf) cancelAnimationFrame(ui.raf);
       ui.raf = 0;
       ui.sourceTouched = true;
-      setPlayLabel("播放");
+      setPlayLabel("play");
       paintPlayhead(audio.currentTime || 0);
       return;
     }
@@ -4189,10 +4226,10 @@
     if (started && typeof started.catch === "function") {
       started.catch(() => {
         if (ui.generation !== generation) return;
-        abandonSource("源音频打不开，改为试听简谱。");
+        abandonSource(m('jpSourceFail'));
       });
     }
-    setPlayLabel("暂停");
+    setPlayLabel("pause");
     tickSource(audio, generation);
   }
 
@@ -4259,7 +4296,7 @@
     ui.sourceTouched = false;
     heads().forEach((el) => el.classList.remove("yue-play"));
     clearPlayhead();
-    setPlayLabel("播放");
+    setPlayLabel("play");
     if (ui.clock) ui.clock.textContent = "0:00";
   }
 
@@ -4272,7 +4309,7 @@
     ui.raf = 0;
     silenceMidi();
     ui.midiOffset = Math.max(0, position);
-    setPlayLabel("播放");
+    setPlayLabel("play");
     if (ui.midiTotal > 0) {
       setPlayClock(ui.midiOffset, ui.midiTotal);
       paintPlayhead(ui.midiOffset);
@@ -4282,16 +4319,16 @@
   function playMidiFrom(position) {
     const score = timeline(ui.abc);
     if (score.error || !score.notes.length) {
-      setStatus(score.error || "没有可播放的音符");
+      setStatus(score.error || m('jpNoPlayable'));
       return;
     }
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) {
-      setStatus("这个浏览器不能播放 MIDI");
+      setStatus(m('jpNoMidiBrowser'));
       return;
     }
     if (!window.yuePiano) {
-      setStatus("钢琴音色未加载");
+      setStatus(m('jpPianoMissing'));
       return;
     }
     const total = score.notes.reduce((max, note) => Math.max(max, note.start + note.duration), 0);
@@ -4301,9 +4338,9 @@
     if (ui.ctx.state === "suspended" && ui.ctx.resume) ui.ctx.resume();
     ui.arming = true;
     ui.midiTotal = total;
-    setPlayLabel("暂停");
+    setPlayLabel("pause");
     const known = window.yuePiano.voice && window.yuePiano.voice(ui.ctx);
-    if (!known) setStatus("正在加载钢琴音色");
+    if (!known) setStatus(m('jpLoadingPiano'));
     const generation = ++ui.generation;
     const loading = window.yuePiano.prepare ? window.yuePiano.prepare(ui.ctx) : Promise.resolve(null);
     Promise.resolve(loading).then(function (voice) {
@@ -4334,7 +4371,7 @@
         }
         return now;
       };
-      setStatus(voice && voice.kind === "synthetic" ? "采样钢琴加载失败，改用合成音色" : playHint());
+      setStatus(voice && voice.kind === "synthetic" ? m('jpSynthFallback') : playHint());
       const marks = playMarks(ui.abc);
       ui.marks = marks;
       const tick = () => {
@@ -4364,13 +4401,13 @@
         if (now < total - 0.02) ui.raf = requestAnimationFrame(tick);
         else stopPlayback();
       };
-      setPlayLabel("暂停");
+      setPlayLabel("pause");
       tick();
     }).catch(function (err) {
       if (ui.generation !== generation) return;
       ui.arming = false;
       ui.midiPlaying = false;
-      setPlayLabel("播放");
+      setPlayLabel("play");
       setStatus(String((err && err.message) || err));
     });
   }
@@ -4400,6 +4437,8 @@
 
   function open(abc, audioFile, options) {
     ensureDom();
+    if (options && options.strings) setStrings(options.strings);
+    else applyChrome();
     stopPlayback();
     stopSaveWatch();
     ui.saveButton = options && options.saveButton || null;
@@ -4420,6 +4459,7 @@
       ui.slice = 0;
       refreshTextFromAbc();
       ui.resolve = resolve;
+      ui.statusSticky = false;
       setStatus(playHint());
       if (ui.clock) ui.clock.textContent = "0:00";
       ui.root.hidden = false;
@@ -4428,13 +4468,13 @@
       ensureJianpu().then((ok) => {
         if (ui.resolve !== resolve) return;
         if (!ok) {
-          ui.paper.innerHTML = "<p>简谱模块没有载入。</p>";
+          ui.paper.innerHTML = '<p>' + m('jpModuleMissing') + '</p>';
           return;
         }
         renderScore();
       }).catch(() => {
         if (ui.resolve !== resolve) return;
-        ui.paper.innerHTML = "<p>简谱模块没有载入。</p>";
+        ui.paper.innerHTML = '<p>' + m('jpModuleMissing') + '</p>';
       });
       ui.card.focus();
     });
@@ -4482,6 +4522,8 @@
     compareJianpuNotes: compareJianpuNotes,
     clampTextWidth: clampTextWidth,
     open: open,
+    setStrings: setStrings,
+    applyChrome: applyChrome,
     currentAbc: currentAbc,
   };
 });

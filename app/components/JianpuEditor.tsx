@@ -1,12 +1,25 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useI18n } from '../context/I18nContext';
+import { jianpuStrings } from '../i18n/jianpu';
+import type { Language } from '../i18n/translations';
 import { saveSongScore } from '../services/scoreReading';
 
 declare global {
   interface Window {
     yuePiano?: { prepare?: (ctx: AudioContext) => Promise<unknown> };
     yueScoreEditor?: {
-      open: (abc: string, audio: string | null, options?: { saveButton?: HTMLElement | null; saveNote?: HTMLElement | null }) => Promise<string | null>;
+      open: (
+        abc: string,
+        audio: string | null,
+        options?: {
+          saveButton?: HTMLElement | null;
+          saveNote?: HTMLElement | null;
+          strings?: Record<string, string>;
+        },
+      ) => Promise<string | null>;
       currentAbc: () => string;
+      setStrings?: (next: Record<string, string>) => void;
+      applyChrome?: () => void;
     };
   }
 }
@@ -37,6 +50,10 @@ function loadEditor(): Promise<void> {
   return loading;
 }
 
+function catalog(language: Language): Record<string, string> {
+  return { ...jianpuStrings[language] };
+}
+
 /**
  * Opens the vendored jianpu editor over the page. Save writes through the
  * studio service when a library song id is given; closing returns the ABC.
@@ -48,10 +65,15 @@ export const JianpuEditor: React.FC<{
   onClose: (edited: string | null) => void;
   onSaved?: () => void;
 }> = ({ abc, audioUrl, songId, onClose, onSaved }) => {
+  const { language, t } = useI18n();
+  const strings = useMemo(() => catalog(language), [language]);
   const saveButton = useRef<HTMLButtonElement | null>(null);
   const saveNote = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const stringsRef = useRef(strings);
+  stringsRef.current = strings;
 
   useEffect(() => {
     let alive = true;
@@ -69,6 +91,7 @@ export const JianpuEditor: React.FC<{
         const edited = await open(abc, audioUrl || null, {
           saveButton: saveButton.current,
           saveNote: saveNote.current,
+          strings: stringsRef.current,
         });
         if (alive) onCloseRef.current(edited);
       } catch {
@@ -83,16 +106,20 @@ export const JianpuEditor: React.FC<{
     };
   }, [abc, audioUrl]);
 
+  useEffect(() => {
+    window.yueScoreEditor?.setStrings?.(strings);
+  }, [strings]);
+
   const persist = async () => {
     const current = window.yueScoreEditor?.currentAbc?.() || abc;
     if (!songId) {
-      if (saveNote.current) saveNote.current.textContent = '已更新（表单）';
+      if (saveNote.current) saveNote.current.textContent = t('jpUpdatedForm');
       onSaved?.();
       return;
     }
     try {
       await saveSongScore(songId, current);
-      if (saveNote.current) saveNote.current.textContent = '已保存';
+      if (saveNote.current) saveNote.current.textContent = t('jpSaved');
       onSaved?.();
     } catch (error) {
       if (saveNote.current) saveNote.current.textContent = error instanceof Error ? error.message : String(error);

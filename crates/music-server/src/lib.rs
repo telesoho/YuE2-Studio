@@ -7686,17 +7686,23 @@ async fn run_score_reading(
                     return;
                 }
                 Ok(Err(error)) => {
-                    warnings.push(format!("人声分离失败，改用原混音：{error:#}"));
+                    warnings.push(score::reading::warn_fields(
+                        "scoreWarnVocalsFailed",
+                        &[("error", format!("{error:#}"))],
+                    ));
                     source_path.clone()
                 }
                 Err(error) => {
-                    warnings.push(format!("人声分离失败，改用原混音：{error}"));
+                    warnings.push(score::reading::warn_fields(
+                        "scoreWarnVocalsFailed",
+                        &[("error", error.to_string())],
+                    ));
                     source_path.clone()
                 }
             }
         }
         None => {
-            warnings.push("人声分离未就绪，改用原混音".into());
+            warnings.push(score::reading::warn_code("scoreWarnVocalsMissing"));
             source_path.clone()
         }
     };
@@ -7712,10 +7718,10 @@ async fn run_score_reading(
         other => Some(other.to_owned()),
     };
     let timed_words = if !config.available() || matches!(config.provider, lyrics_sync::AsrProvider::None) {
-        warnings.push("未配置歌词识别，曲谱已保存".into());
+        warnings.push(score::reading::warn_code("scoreWarnLyricsOff"));
         Vec::new()
     } else if !ensure_local_recogniser(&state, &config, &id).await {
-        warnings.push("歌词识别模型未能就绪，曲谱已保存".into());
+        warnings.push(score::reading::warn_code("scoreWarnLyricsModel"));
         Vec::new()
     } else if cancel.load(std::sync::atomic::Ordering::Relaxed) {
         mark_score_reading_cancelled(&state, &id).await;
@@ -7755,7 +7761,10 @@ async fn run_score_reading(
         match words {
             Ok(words) => score::reading::words_with_ends(&words),
             Err(error) => {
-                warnings.push(format!("歌词识别失败：{error:#}"));
+                warnings.push(score::reading::warn_fields(
+                    "scoreWarnLyricsFailed",
+                    &[("error", format!("{error:#}"))],
+                ));
                 Vec::new()
             }
         }
@@ -7909,9 +7918,16 @@ async fn save_song_score(
         .map(Json)
 }
 
+#[derive(Deserialize)]
+struct ShareScoreQuery {
+    #[serde(default)]
+    lang: Option<String>,
+}
+
 async fn share_song_score(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<ShareScoreQuery>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ApiError>)> {
     let song = state
         .library
@@ -7927,10 +7943,12 @@ async fn share_song_score(
         .unwrap_or("")
         .to_owned();
     if display.trim().is_empty() {
-        return Err(api_error(StatusCode::BAD_REQUEST, "该记录没有可导出的曲谱".into()));
+        return Err(api_error(StatusCode::BAD_REQUEST, score::reading::warn_code("scoreShareNoScore")));
     }
+    let lang = query.lang.as_deref().unwrap_or("en");
     let vendor = score::reading::load_vendor().map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
-    let bytes = score::reading::share_zip(&display, &song.lyrics, &vendor).map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    let bytes = score::reading::share_zip(&display, &song.lyrics, &vendor, lang)
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
     Ok(axum::response::Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/zip")
@@ -7963,7 +7981,7 @@ async fn capture_start(
         .next()
         .and_then(|value| value.parse().ok())
         .filter(|pid| *pid > 0)
-        .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "请选择正在播放的窗口。".into()))?;
+        .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, score::reading::warn_code("captureNoWindow")))?;
     let label = request.label.unwrap_or_else(|| format!("pid {pid}"));
     let process_name = request.process_name.unwrap_or_else(|| format!("pid {pid}"));
     let root = studio_data_root().unwrap_or_else(|| PathBuf::from("."));
