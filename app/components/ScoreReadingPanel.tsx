@@ -34,6 +34,7 @@ export const ScoreReadingPanel: React.FC = () => {
   const [result, setResult] = useState<ScoreReading | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [windows, setWindows] = useState<CaptureWindow[]>([]);
+  const [listRev, setListRev] = useState(0);
   const [chosen, setChosen] = useState<string>('');
   const [capturing, setCapturing] = useState(false);
   const [captureNote, setCaptureNote] = useState('');
@@ -52,6 +53,7 @@ export const ScoreReadingPanel: React.FC = () => {
     void listCaptureWindows()
       .then(list => {
         setWindows(list);
+        setListRev(rev => rev + 1);
         setChosen(current => (list.some(item => item.value === current) ? current : list[0]?.value || ''));
         setCaptureNote(list.length ? tt('scoreCaptureFound').replace('{count}', String(list.length)) : tt('scoreCaptureEmpty'));
       })
@@ -203,14 +205,21 @@ export const ScoreReadingPanel: React.FC = () => {
         <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-white/5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{tt('scoreCapture')}</h3>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <select className={`${CONTROL} max-w-md`} value={chosen} onChange={event => setChosen(event.target.value)} disabled={capturing}>
+            {/* key: Chromium keeps the closed select's old caption when only the option text changes. */}
+            <select
+              key={listRev}
+              className={`${CONTROL} min-w-0 max-w-md`}
+              value={chosen}
+              onChange={event => setChosen(event.target.value)}
+              disabled={capturing}
+            >
               {windows.map(item => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
               ))}
             </select>
-            <button type="button" className="text-xs text-pink-600 dark:text-pink-300" onClick={refreshWindows}>
+            <button type="button" className="relative z-10 shrink-0 px-1 text-xs text-pink-600 dark:text-pink-300" onClick={refreshWindows}>
               {tt('scoreCaptureRefresh')}
             </button>
             {!capturing ? (

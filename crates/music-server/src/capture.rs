@@ -305,6 +305,13 @@ pub fn list_playing_windows() -> Result<Vec<CaptureTarget>, CaptureError> {
     }
 }
 
+/// One row per window. `value` is `pid:hwnd`. Collapsing by pid kept only the
+/// first window of a process, so 刷新 kept showing the same row.
+pub fn keep_each_window(targets: Vec<CaptureTarget>) -> Vec<CaptureTarget> {
+    let mut seen = std::collections::HashSet::new();
+    targets.into_iter().filter(|target| seen.insert(target.value.clone())).collect()
+}
+
 #[cfg(windows)]
 mod win {
     use super::*;
@@ -354,7 +361,7 @@ mod win {
                     pid,
                     label: format!("{title} — {process_name}"),
                     process_name,
-                    value: pid.to_string(),
+                    value: format!("{pid}:{}", hwnd.0 as usize),
                 });
                 windows::Win32::Foundation::TRUE
             }
@@ -363,9 +370,7 @@ mod win {
         unsafe {
             let _ = EnumWindows(Some(each), LPARAM(&mut state as *mut State as isize));
         }
-        let mut seen = std::collections::HashSet::new();
-        state.targets.retain(|t| seen.insert(t.pid));
-        Ok(state.targets)
+        Ok(super::keep_each_window(state.targets))
     }
 
     fn process_name(pid: u32) -> Option<String> {
@@ -508,5 +513,20 @@ mod tests {
         assert!(dur > 0.0);
         assert!(require_usable(0.1, 10).is_err());
         assert!(require_usable(1.0, 10).is_ok());
+    }
+
+    fn target(pid: u32, value: &str, label: &str) -> CaptureTarget {
+        CaptureTarget { pid, label: label.into(), process_name: "chrome.exe".into(), value: value.into() }
+    }
+
+    #[test]
+    fn each_window_of_a_process_stays_in_the_list() {
+        let rows = keep_each_window(vec![
+            target(1, "1:10", "YuE2 Studio"),
+            target(1, "1:11", "YouTube"),
+            target(1, "1:10", "YuE2 Studio again"),
+            target(2, "2:20", "Cursor"),
+        ]);
+        assert_eq!(rows.iter().map(|row| row.label.as_str()).collect::<Vec<_>>(), ["YuE2 Studio", "YouTube", "Cursor"]);
     }
 }
