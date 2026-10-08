@@ -12,6 +12,7 @@ import { saveFile } from '../services/saveFile';
 import { useBridgeCommand } from '../services/mcpBridge';
 import { EXAMPLES, randomExample } from '../services/examples';
 import { ScoreView } from './ScoreView';
+import { JianpuEditor } from './JianpuEditor';
 import { MidiEditor } from './midi/MidiEditor';
 import { MidiImportDialog } from './MidiImportDialog';
 import { trackMidiBase64 } from '../services/midiEditor';
@@ -358,6 +359,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [selectedPlan, setSelectedPlan] = useState(0);
   const composeRun = useRef<AbortController | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [jianpuOpen, setJianpuOpen] = useState(false);
   const [coverSource, setCoverSource] = useState<string>('');
   // the library song a cover's melody was taken from, which the new song names
   const [coverSongId, setCoverSongId] = useState<string | null>(null);
@@ -1363,6 +1365,15 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                     <Piano size={13} />
                     {tt('scoreEditor')}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setJianpuOpen(true)}
+                    disabled={composing || !abc.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-pink-500/40 px-3 py-1.5 text-xs font-semibold text-pink-600 transition hover:bg-pink-500/10 disabled:opacity-50 dark:text-pink-300"
+                  >
+                    <FileMusic size={13} />
+                    {tt('scoreEditJianpu')}
+                  </button>
                   <span className="text-[11px] leading-4 text-zinc-500">{composing ? tt('composeScoreCancel') : tt('composeScoreHint')}</span>
                 </div>
                 {plans.length > 1 && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -1647,6 +1658,18 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             },
           }}
           onClose={() => setEditorOpen(false)}
+        />
+      )}
+      {jianpuOpen && abc.trim() && (
+        <JianpuEditor
+          abc={abc}
+          onClose={edited => {
+            setJianpuOpen(false);
+            if (edited) {
+              setAbc(edited.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n'));
+              setShowNotation(true);
+            }
+          }}
         />
       )}
       {midiCover && (

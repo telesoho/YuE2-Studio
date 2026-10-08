@@ -46,6 +46,11 @@ impl EngineLog {
         self.lines.lock().expect("engine log").as_ref().map(|lines| lines.iter().cloned().collect())
     }
 
+    /// The running job's progress right now, if the log still names one.
+    pub fn current(&self) -> Option<Progress> {
+        self.progress.borrow().clone()
+    }
+
     /// The running job's progress as server-sent events: the current value
     /// first, then its changes.
     pub fn progress_events(&self) -> impl Stream<Item = Result<Event, Infallible>> + use<> {

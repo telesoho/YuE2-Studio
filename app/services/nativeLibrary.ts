@@ -86,8 +86,14 @@ export function mapNativeLibrarySong(song: NativeLibrarySong): Song {
     tags,
     derived: (() => {
       const derived = metadata.derived as { from?: unknown; from_title?: unknown; tool?: unknown; settings?: unknown } | null | undefined;
-      if (!derived || typeof derived.from !== 'string' || typeof derived.tool !== 'string') return null;
-      return { from: derived.from, fromTitle: typeof derived.from_title === 'string' ? derived.from_title : '', tool: derived.tool, settings: (derived.settings ?? undefined) as Record<string, unknown> | undefined };
+      if (!derived || typeof derived.tool !== 'string') return null;
+      // 识谱 stores tool=score with settings only; stems/covers also name `from`.
+      return {
+        from: typeof derived.from === 'string' ? derived.from : '',
+        fromTitle: typeof derived.from_title === 'string' ? derived.from_title : '',
+        tool: derived.tool,
+        settings: (derived.settings ?? undefined) as Record<string, unknown> | undefined,
+      };
     })(),
     // The address changes with the record, so a switched version is fetched
     // again instead of replayed from the browser's cache.

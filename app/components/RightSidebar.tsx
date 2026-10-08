@@ -12,6 +12,7 @@ import { apiUrl } from '../services/apiBase';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { SongCover } from './AlbumCover';
 import { ScoreView } from './ScoreView';
+import { JianpuEditor } from './JianpuEditor';
 import { localized, useAdapterLibrary, usesFromSettings } from '../services/adapters';
 import { useSongActions } from '../context/SongActionsContext';
 import { downloadSongAudio } from '../services/songDownload';
@@ -760,11 +761,23 @@ const ActionButton: React.FC<{ icon: React.ReactNode; label?: string; active?: b
 /** The ABC score a track was performed from, engraved, with the way back into the form. */
 const SongScore: React.FC<{ song: Song }> = ({ song }) => {
     const { t } = useI18n();
+    const tt = t as unknown as (key: string) => string;
     const [open, setOpen] = useState(true);
-    const abc = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
+    const [jianpuOpen, setJianpuOpen] = useState(false);
+    const [abcLive, setAbcLive] = useState<string | null>(null);
+    const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
         : '';
+    const derived = song.derived ?? (song.metadata?.derived as Song['derived'] | undefined);
+    const settings = derived?.settings;
+    const fromReading = typeof settings?.display_abc === 'string'
+        ? String(settings.display_abc).trim()
+        : typeof settings?.abc === 'string'
+            ? String(settings.abc).trim()
+            : '';
+    const abc = (abcLive ?? fromReading ?? fromParams).trim();
     const cot = (song.generationParams as Record<string, unknown> | undefined)?.cot;
+    const isScoreReading = derived?.tool === 'score';
     if (!abc) return null;
     return (
         <div className="bg-white dark:bg-black/20 rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden">
@@ -776,7 +789,14 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={() => void saveFile(`${song.title || 'score'}.abc`, { blob: new Blob([`${abc}\n`], { type: 'text/vnd.abc' }) })}
+                        onClick={() => setJianpuOpen(true)}
+                        className="flex items-center gap-1 text-[10px] font-semibold text-pink-600 hover:text-pink-500 dark:text-pink-300"
+                    >
+                        {tt('scoreEditJianpu')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void saveFile(`${song.title || 'score'}.abc`, { blob: new Blob([`${abc.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n')}\n`], { type: 'text/vnd.abc' }) })}
                         className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-black dark:hover:text-white"
                     >
                         <Download size={12} /> .abc
@@ -784,7 +804,7 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
                     <button
                         type="button"
                         onClick={() => window.dispatchEvent(new CustomEvent('yue:use-score', {
-                            detail: { abc, cot: cot === 'melody' || cot === 'full' ? cot : 'full', lyrics: song.lyrics, title: song.title },
+                            detail: { abc: abc.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n'), cot: cot === 'melody' || cot === 'full' ? cot : 'full', lyrics: song.lyrics, title: song.title },
                         }))}
                         className="flex items-center gap-1 text-[10px] font-semibold text-pink-600 hover:text-pink-500 dark:text-pink-300"
                     >
@@ -794,8 +814,18 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
             </div>
             {open && (
                 <div className="max-h-[420px] overflow-auto bg-white p-2 custom-scrollbar">
-                    <ScoreView abc={abc} title={song.title} />
+                    <ScoreView abc={abc.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n')} title={song.title} />
                 </div>
+            )}
+            {jianpuOpen && (
+                <JianpuEditor
+                    abc={abc}
+                    songId={isScoreReading ? song.id : null}
+                    onClose={edited => {
+                        setJianpuOpen(false);
+                        if (edited) setAbcLive(edited);
+                    }}
+                />
             )}
         </div>
     );

@@ -3,12 +3,14 @@
 //! whose notation module reads everything back with m-a-p's own reader of the dialect.
 
 pub mod abc;
+pub mod align;
 pub mod api;
 pub mod edits;
 pub mod export;
 pub mod import;
 pub mod notation;
 pub mod phrasing;
+pub mod reading;
 pub mod rebuild;
 pub mod sections;
 pub mod smf;

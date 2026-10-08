@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useOpenRouterSettings, useSetupStatus } from '../services/studioQueries';
-import { Disc, Layers, Library, Moon, Newspaper, ScrollText, Search, SlidersHorizontal, Sun } from 'lucide-react';
+import { BookAudio, Disc, Layers, Library, Moon, Newspaper, ScrollText, Search, SlidersHorizontal, Sun } from 'lucide-react';
 import { View } from '../types';
 import { useI18n } from '../context/I18nContext';
 import { profileLabel } from '../services/modelCatalog';
@@ -129,6 +129,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <nav className="flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto px-3 scrollbar-hide">
           <NavItem icon={<Disc size={20} />} label={t('create')} active={currentView === 'create'} onClick={() => onNavigate('create')} isExpanded={isOpen} />
+          <NavItem icon={<BookAudio size={20} />} label={t('scoreReading')} active={currentView === 'score'} onClick={() => onNavigate('score')} isExpanded={isOpen} />
           <NavItem icon={<Library size={20} />} label={t('library')} active={currentView === 'library'} onClick={() => onNavigate('library')} isExpanded={isOpen} />
           <NavItem icon={<Search size={20} />} label={t('search')} active={currentView === 'search'} onClick={() => onNavigate('search')} isExpanded={isOpen} />
           <NavItem icon={<Layers size={20} />} label={t('adaptersNav')} active={currentView === 'adapters'} onClick={() => onNavigate('adapters')} isExpanded={isOpen} />

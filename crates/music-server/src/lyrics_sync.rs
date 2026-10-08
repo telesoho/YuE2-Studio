@@ -1267,6 +1267,18 @@ impl LyricsSync {
     /// and wrote nothing at all, so the only thing anyone ever saw was
     /// "whisper-cli produced no LRC file".
     pub fn whisper_words(&self, config: &LyricsSyncConfig, audio: &Path, language: Option<&str>, _lyrics: &str) -> Result<Vec<(f64, String)>> {
+        self.whisper_words_cancellable(config, audio, language, _lyrics, &AtomicBool::new(false))
+    }
+
+    /// Same as [`Self::whisper_words`], stopping the child when `cancel` is set.
+    pub fn whisper_words_cancellable(
+        &self,
+        config: &LyricsSyncConfig,
+        audio: &Path,
+        language: Option<&str>,
+        _lyrics: &str,
+        cancel: &AtomicBool,
+    ) -> Result<Vec<(f64, String)>> {
         let binary = self.whisper_binary().ok_or_else(|| anyhow!("the Whisper runtime is not installed"))?;
         let size = config
             .whisper_model
@@ -1288,16 +1300,16 @@ impl LyricsSync {
         fs::create_dir_all(&out_dir).with_context(|| format!("create {}", out_dir.display()))?;
 
         let on_card = config.runtime.uses_cuda();
-        let mut outcome = self.run_whisper(&binary, size, &wav, &out_dir, language, on_card);
+        let mut outcome = self.run_whisper_cancelled(&binary, size, &wav, &out_dir, language, on_card, cancel);
         // CTranslate2 fails inside itself on a machine without usable CUDA, so
         // the card is tried and the processor is the answer to its refusal -
         // once, and only in that direction.
-        if outcome.is_err() && on_card {
+        if outcome.is_err() && on_card && !cancel.load(Ordering::Relaxed) {
             let refused = outcome.unwrap_err();
             fs::remove_dir_all(&out_dir).ok();
             fs::create_dir_all(&out_dir).ok();
             outcome = self
-                .run_whisper(&binary, size, &wav, &out_dir, language, false)
+                .run_whisper_cancelled(&binary, size, &wav, &out_dir, language, false, cancel)
                 .with_context(|| format!("the card was tried first and refused: {refused}"));
         }
         fs::remove_file(&wav).ok();
@@ -1323,8 +1335,17 @@ impl LyricsSync {
 
     /// One run of the recogniser, with its complaints kept: a failure here is
     /// the only place that ever says why nothing was recognised.
-    fn run_whisper(&self, binary: &Path, size: &str, wav: &Path, out_dir: &Path, language: Option<&str>, on_card: bool) -> Result<()> {
-        self.run_whisper_many(binary, size, &[wav.to_path_buf()], out_dir, language, on_card, &mut || {}, &AtomicBool::new(false))
+    fn run_whisper_cancelled(
+        &self,
+        binary: &Path,
+        size: &str,
+        wav: &Path,
+        out_dir: &Path,
+        language: Option<&str>,
+        on_card: bool,
+        cancel: &AtomicBool,
+    ) -> Result<()> {
+        self.run_whisper_many(binary, size, &[wav.to_path_buf()], out_dir, language, on_card, &mut || {}, cancel)
     }
 
     /// Whisper over every file in one process; `poll` is called while it
