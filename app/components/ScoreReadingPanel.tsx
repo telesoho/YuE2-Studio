@@ -14,6 +14,7 @@ import {
 } from '../services/scoreReading';
 import { apiUrl } from '../services/apiBase';
 import { localizeCode } from '../services/localizeCode';
+import { LYRIC_LANGUAGES, lyricLanguageLabel } from '../services/lyricLanguages';
 
 const CONTROL =
   'w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-pink-500 dark:border-white/10 dark:bg-zinc-900 dark:text-white';
@@ -167,10 +168,13 @@ export const ScoreReadingPanel: React.FC = () => {
             <input type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a" className="hidden" onChange={onUpload} />
           </label>
           {file && <span className="text-xs text-zinc-500">{file.name}</span>}
-          <select className={`${CONTROL} max-w-[8rem]`} value={language} onChange={event => setLanguage(event.target.value)} aria-label={tt('scoreLanguage')}>
-            <option value="zh">zh</option>
-            <option value="en">en</option>
+          <select className={`${CONTROL} max-w-[14rem]`} value={language} onChange={event => setLanguage(event.target.value)} aria-label={tt('scoreLanguage')}>
             <option value="auto">auto</option>
+            {LYRIC_LANGUAGES.map(lang => (
+              <option key={lang.code} value={lang.code}>
+                {lyricLanguageLabel(lang)}
+              </option>
+            ))}
           </select>
           <button
             type="button"
