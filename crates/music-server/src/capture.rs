@@ -55,10 +55,12 @@ impl std::fmt::Display for CaptureError {
 impl std::error::Error for CaptureError {}
 
 /// Keep windows on other virtual desktops. Drop app-cloaked windows.
+#[cfg(test)]
 pub fn window_listed(visible: bool, cloaked: u32) -> bool {
     visible && (cloaked & 0x1) == 0
 }
 
+#[cfg(test)]
 pub fn on_current_desktop(cloaked: u32) -> bool {
     (cloaked & 0x2) == 0
 }
@@ -315,7 +317,7 @@ pub fn keep_each_window(targets: Vec<CaptureTarget>) -> Vec<CaptureTarget> {
 #[cfg(windows)]
 mod win {
     use super::*;
-    use windows::core::{Interface, GUID};
+    use windows::core::GUID;
     use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM};
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, AUDCLNT_SHAREMODE_SHARED,
@@ -392,84 +394,87 @@ mod win {
     }
 
     unsafe fn record_loopback_inner(path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
-        let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
-        if hr.is_err() && hr.0 as u32 != 0x80010106 {
-            return Err(CaptureError(serde_json::json!({"code":"captureInitFail","detail": format!("{hr:?}")}).to_string()));
-        }
-        struct ComGuard;
-        impl Drop for ComGuard {
-            fn drop(&mut self) {
-                unsafe { CoUninitialize() };
+        // edition 2024: unsafe ops need an unsafe block even inside unsafe fn
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if hr.is_err() && hr.0 as u32 != 0x80010106 {
+                return Err(CaptureError(serde_json::json!({"code":"captureInitFail","detail": format!("{hr:?}")}).to_string()));
             }
-        }
-        let _com = ComGuard;
-
-        let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDEVICE_ENUMERATOR, None, CLSCTX_ALL)
-            .map_err(|e| CaptureError(serde_json::json!({"code":"captureEnumFail","detail": e.to_string()}).to_string()))?;
-        let device = enumerator
-            .GetDefaultAudioEndpoint(eRender, eConsole)
-            .map_err(|e| CaptureError(serde_json::json!({"code":"captureDeviceFail","detail": e.to_string()}).to_string()))?;
-        let client: IAudioClient = device
-            .Activate(CLSCTX_ALL, None)
-            .map_err(|e| CaptureError(serde_json::json!({"code":"captureClientFail","detail": e.to_string()}).to_string()))?;
-
-        let mix = client.GetMixFormat().map_err(|e| CaptureError(serde_json::json!({"code":"captureMixFail","detail": e.to_string()}).to_string()))?;
-        let mix = &*mix;
-        let channels = mix.nChannels;
-        let rate = mix.nSamplesPerSec;
-        let bits = mix.wBitsPerSample;
-        let block = mix.nBlockAlign as usize;
-
-        let flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-        client
-            .Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 10_000_000, 0, mix, None)
-            .map_err(|e| CaptureError(serde_json::json!({"code":"captureLoopFail","detail": e.to_string()}).to_string()))?;
-
-        let event = CreateEventW(None, false, false, None).map_err(|e| CaptureError(e.to_string()))?;
-        client.SetEventHandle(event).map_err(|e| CaptureError(e.to_string()))?;
-        let capture: IAudioCaptureClient = client.GetService().map_err(|e| CaptureError(e.to_string()))?;
-
-        client.Start().map_err(|e| CaptureError(serde_json::json!({"code":"captureStartFail","detail": e.to_string()}).to_string()))?;
-        ready.store(true, Ordering::Relaxed);
-
-        let mut pcm = Vec::new();
-        while !stop.load(Ordering::Relaxed) {
-            let _ = WaitForSingleObject(event, 100);
-            loop {
-                let packet = match capture.GetNextPacketSize() {
-                    Ok(size) => size,
-                    Err(_) => break,
-                };
-                if packet == 0 {
-                    break;
+            struct ComGuard;
+            impl Drop for ComGuard {
+                fn drop(&mut self) {
+                    unsafe { CoUninitialize() };
                 }
-                let mut data = std::ptr::null_mut();
-                let mut frames = 0u32;
-                let mut flags = 0u32;
-                let mut device_pos = 0u64;
-                let mut qpc = 0u64;
-                if capture
-                    .GetBuffer(&mut data, &mut frames, &mut flags, Some(&mut device_pos), Some(&mut qpc))
-                    .is_err()
-                {
-                    break;
-                }
-                if frames > 0 && !data.is_null() && (flags & 0x2) == 0 {
-                    let bytes = frames as usize * block;
-                    let slice = unsafe { std::slice::from_raw_parts(data as *const u8, bytes) };
-                    append_as_pcm16(&mut pcm, slice, bits, channels);
-                }
-                let _ = unsafe { capture.ReleaseBuffer(frames) };
             }
-        }
-        let _ = unsafe { client.Stop() };
-        let _ = unsafe { CloseHandle(event) };
+            let _com = ComGuard;
 
-        let (duration, _peak, silent) = assess_pcm16(rate, channels, &pcm);
-        let frames = pcm.len() / (channels as usize * 2).max(1);
-        require_usable(duration, frames)?;
-        write_pcm16_wav(path, rate, channels, &pcm)?;
-        Ok((duration, silent))
+            let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDEVICE_ENUMERATOR, None, CLSCTX_ALL)
+                .map_err(|e| CaptureError(serde_json::json!({"code":"captureEnumFail","detail": e.to_string()}).to_string()))?;
+            let device = enumerator
+                .GetDefaultAudioEndpoint(eRender, eConsole)
+                .map_err(|e| CaptureError(serde_json::json!({"code":"captureDeviceFail","detail": e.to_string()}).to_string()))?;
+            let client: IAudioClient = device
+                .Activate(CLSCTX_ALL, None)
+                .map_err(|e| CaptureError(serde_json::json!({"code":"captureClientFail","detail": e.to_string()}).to_string()))?;
+
+            let mix = client.GetMixFormat().map_err(|e| CaptureError(serde_json::json!({"code":"captureMixFail","detail": e.to_string()}).to_string()))?;
+            let mix = &*mix;
+            let channels = mix.nChannels;
+            let rate = mix.nSamplesPerSec;
+            let bits = mix.wBitsPerSample;
+            let block = mix.nBlockAlign as usize;
+
+            let flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+            client
+                .Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 10_000_000, 0, mix, None)
+                .map_err(|e| CaptureError(serde_json::json!({"code":"captureLoopFail","detail": e.to_string()}).to_string()))?;
+
+            let event = CreateEventW(None, false, false, None).map_err(|e| CaptureError(e.to_string()))?;
+            client.SetEventHandle(event).map_err(|e| CaptureError(e.to_string()))?;
+            let capture: IAudioCaptureClient = client.GetService().map_err(|e| CaptureError(e.to_string()))?;
+
+            client.Start().map_err(|e| CaptureError(serde_json::json!({"code":"captureStartFail","detail": e.to_string()}).to_string()))?;
+            ready.store(true, Ordering::Relaxed);
+
+            let mut pcm = Vec::new();
+            while !stop.load(Ordering::Relaxed) {
+                let _ = WaitForSingleObject(event, 100);
+                loop {
+                    let packet = match capture.GetNextPacketSize() {
+                        Ok(size) => size,
+                        Err(_) => break,
+                    };
+                    if packet == 0 {
+                        break;
+                    }
+                    let mut data = std::ptr::null_mut();
+                    let mut frames = 0u32;
+                    let mut flags = 0u32;
+                    let mut device_pos = 0u64;
+                    let mut qpc = 0u64;
+                    if capture
+                        .GetBuffer(&mut data, &mut frames, &mut flags, Some(&mut device_pos), Some(&mut qpc))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    if frames > 0 && !data.is_null() && (flags & 0x2) == 0 {
+                        let bytes = frames as usize * block;
+                        let slice = std::slice::from_raw_parts(data as *const u8, bytes);
+                        append_as_pcm16(&mut pcm, slice, bits, channels);
+                    }
+                    let _ = capture.ReleaseBuffer(frames);
+                }
+            }
+            let _ = client.Stop();
+            let _ = CloseHandle(event);
+
+            let (duration, _peak, silent) = assess_pcm16(rate, channels, &pcm);
+            let frames = pcm.len() / (channels as usize * 2).max(1);
+            require_usable(duration, frames)?;
+            write_pcm16_wav(path, rate, channels, &pcm)?;
+            Ok((duration, silent))
+        }
     }
 
     fn append_as_pcm16(out: &mut Vec<u8>, raw: &[u8], bits: u16, channels: u16) {

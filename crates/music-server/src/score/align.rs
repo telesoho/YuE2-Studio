@@ -34,16 +34,18 @@ pub struct AlignedNote {
 pub struct Unassigned {
     pub text: String,
     pub start: f64,
-    pub end: f64,
 }
 
 #[derive(Clone, Debug)]
 pub struct LyricAlignment {
     pub lyrics: String,
     pub display_abc: String,
+    #[allow(dead_code)]
     pub notes: Vec<AlignedNote>,
+    #[allow(dead_code)]
     pub unassigned: Vec<Unassigned>,
     pub warnings: Vec<String>,
+    #[allow(dead_code)]
     pub bpm: Option<u32>,
 }
 
@@ -56,7 +58,6 @@ struct LyricGroup {
 }
 
 struct VocalGroup {
-    section: String,
     tag: String,
     index: usize,
     music: String,
@@ -79,7 +80,7 @@ pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
             notes: Vec::new(),
             unassigned: syllables
                 .into_iter()
-                .map(|s| Unassigned { text: s.text, start: s.start, end: s.end })
+                .map(|s| Unassigned { text: s.text, start: s.start })
                 .collect(),
             warnings: vec![crate::score::reading::warn_code("scoreWarnParseFail")],
             bpm: None,
@@ -320,7 +321,7 @@ fn place_lyric_groups(notes: &[AlignedNote], groups: &[LyricGroup], scale: f64, 
         let candidates = overlap_candidates(notes, cursor, start, end);
         if candidates.is_empty() || texts.is_empty() {
             for text in &texts {
-                unassigned.push(Unassigned { text: text.clone(), start: group.start, end: group.end });
+                unassigned.push(Unassigned { text: text.clone(), start: group.start });
             }
             continue;
         }
@@ -428,7 +429,6 @@ fn vocal_groups(abc: &str) -> Vec<VocalGroup> {
             }
             if cursor < lines.len() {
                 groups.push(VocalGroup {
-                    section: section.clone(),
                     tag: section_tag(&section),
                     index: cursor,
                     music: lines[cursor].to_string(),

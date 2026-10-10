@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
-use super::align::{self, TimedWord};
+use super::align::TimedWord;
+#[cfg(test)]
+use super::align;
 
 /// Stages reported to the UI while a reading runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -71,10 +73,6 @@ impl Reading {
 
     pub fn set_progress(&self, value: f64) {
         self.progress.store(value.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
-    }
-
-    pub fn cancelled(&self) -> bool {
-        self.cancel.load(Ordering::Relaxed)
     }
 }
 
