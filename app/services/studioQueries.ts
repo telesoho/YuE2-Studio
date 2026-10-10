@@ -14,7 +14,10 @@ export const queryClient = new QueryClient({
       // the service is on this computer: a failed read is shown, not retried in a loop
       retry: false,
       refetchOnWindowFocus: false,
+      // and it answers with the computer offline, when the default mode would hold every read until a network comes back
+      networkMode: 'always',
     },
+    mutations: { networkMode: 'always' },
   },
 });
 
@@ -214,4 +217,19 @@ if (typeof window !== 'undefined') {
     window.clearTimeout(libraryBurst);
     libraryBurst = window.setTimeout(libraryChanged, 200);
   });
+}
+
+const hubStateKey = ['hub-state'] as const;
+
+/** The hub notices that fit now and the telemetry choice; the service refreshes the feed itself every six hours. */
+export function useHubState(lang: string) {
+  return useQuery({
+    queryKey: [...hubStateKey, lang],
+    queryFn: () => readJson<import('./studioHub').HubState>(`/v1/hub/state?lang=${encodeURIComponent(lang)}`),
+    refetchInterval: 60_000,
+  });
+}
+
+export function hubStateChanged(): void {
+  void queryClient.invalidateQueries({ queryKey: hubStateKey });
 }

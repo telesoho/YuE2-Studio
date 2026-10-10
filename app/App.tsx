@@ -124,6 +124,11 @@ import { createNativePlaylist, deleteNativeSong, moveStoredLikes, setNativeSongL
 import { foldStems } from './services/songStems';
 import { noteStudioMessage } from './services/journal';
 import { JournalPanel } from './components/JournalPanel';
+import { hubStateChanged, useHubState } from './services/studioQueries';
+import { setTelemetry, showsNow, type HubButton } from './services/studioHub';
+import { HubBars } from './components/HubBars';
+import { ShellPrompts } from './components/ShellPrompts';
+import { HubPopup } from './components/HubPopup';
 
 /** Where versions before 3.3 kept the likes, in the window's own storage. */
 const STORED_LIKES_KEY = 'yue2-studio-liked-song-ids';
@@ -155,7 +160,7 @@ function NativeUnavailableView({ title, detail }: { title: string; detail: strin
 
 function AppContent() {
   // i18n
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   // Responsive
   const { isMobile, isDesktop } = useResponsive();
@@ -281,10 +286,23 @@ function AppContent() {
     return stored ? parseFloat(stored) : 0.8;
   });
   const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [isShuffle, setIsShuffle] = useState(false);
+  const [isShuffle, setIsShuffle] = useState(() => {
+    try { return localStorage.getItem('player.shuffle') === '1'; } catch { return false; }
+  });
   // stop: play this track to its end and stay there, as Winamp's and
   // foobar's "stop after current"; next and previous still move by hand
-  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one' | 'stop'>('all');
+  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one' | 'stop'>(() => {
+    try {
+      const stored = localStorage.getItem('player.repeat');
+      return stored === 'none' || stored === 'one' || stored === 'stop' ? stored : 'all';
+    } catch { return 'all'; }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('player.repeat', repeatMode);
+      localStorage.setItem('player.shuffle', isShuffle ? '1' : '0');
+    } catch { /* kept until a reload */ }
+  }, [repeatMode, isShuffle]);
   const repeatModeRef = useRef(repeatMode);
   repeatModeRef.current = repeatMode;
 
@@ -376,13 +394,67 @@ function AppContent() {
       if (window.innerWidth < 768) setMobileShowList(true);
     },
   });
+  // Anonymous statistics are on by default: the start screen's checkbox decides on a first run, and an install that
+  // updated past that screen keeps the default until it is unchecked in Settings.
+  const hub = useHubState(language);
+  // Strips from the hub show to everyone; popups stay in its test channel (STUDIO_HUB_TEST=1) until they are released.
+  const hubItems = nativeSetupReady && hub.data ? hub.data.items.filter(item => item.kind === 'bar' || hub.data?.test) : [];
+  const [hubClosed, setHubClosed] = useState<Set<string>>(() => new Set());
+  const hubStart = useRef(Date.now());
+  const [hubElapsed, setHubElapsed] = useState(0);
+  const hubNextDelay = hubItems.reduce<number | null>((next, item) => (item.rules.delay_s > hubElapsed && (next === null || item.rules.delay_s < next) ? item.rules.delay_s : next), null);
+  // the delays count from the window being ready, not from a first run's downloads
+  useEffect(() => {
+    if (!nativeSetupReady) return;
+    hubStart.current = Date.now();
+    setHubElapsed(0);
+  }, [nativeSetupReady]);
+  useEffect(() => {
+    if (hubNextDelay === null) return;
+    const timer = window.setTimeout(() => setHubElapsed(Math.floor((Date.now() - hubStart.current) / 1000)), Math.max(0, hubStart.current + hubNextDelay * 1000 - Date.now()) + 50);
+    return () => window.clearTimeout(timer);
+  }, [hubNextDelay]);
+  const closeHubNotice = (id: string) => {
+    setHubClosed(previous => new Set(previous).add(id));
+    hubStateChanged();
+  };
+  const hubPopup = hubItems.find(item => item.kind === 'popup' && !hubClosed.has(item.id) && showsNow(item, hubElapsed, currentView));
+  const openHubTarget = (target: NonNullable<HubButton['target']>) => {
+    if (target === 'news') {
+      setCurrentView('news');
+      window.history.pushState({}, '', '/news');
+      return;
+    }
+    setSettingsSection(target === 'models' ? 'models' : target === 'update' ? 'about' : null);
+    setShowSettingsModal(true);
+  };
+  useEffect(() => {
+    const telemetry = hub.data?.telemetry;
+    if (!nativeSetupReady || !telemetry || telemetry.acknowledged || telemetry.disabledByEnv) return;
+    setTelemetry(telemetry.enabled, true).catch((error: Error) => console.warn('[hub] the statistics default was not saved:', error.message)).finally(hubStateChanged);
+  }, [nativeSetupReady, hub.data?.telemetry.acknowledged]);
+
+  // The button's second press: every job of the service, not only this
+  // window's, so it says how many and asks.
+  const stopEverything = async () => {
+    const response = await fetch('/v1/music/jobs').catch(() => null);
+    const running = response?.ok ? ((await response.json().catch(() => [])) as unknown[]).length : 0;
+    setConfirmDialog({
+      title: t('stopEverythingTitle'),
+      message: t('stopEverythingConfirm').replace('{count}', String(running)),
+      onConfirm: () => {
+        setConfirmDialog(null);
+        void generations.cancelAll(true);
+      },
+    });
+  };
   // The list beside the form shows the playlist the songs go into, and the
   // songs being made for it; with none chosen it is the whole library.
   const createScope = playlists.find(entry => entry.id === createPlaylistId) ?? null;
   const createSongs = useMemo(() => {
     if (!createScope) return generations.songs;
     const inside = new Set(createScope.songIds ?? []);
-    return generations.songs.filter(song => (song.isGenerating || song.stage === 'cancelled'
+    return generations.songs.filter(song => (song.isGenerating || song.stage === 'cancelled' || song.stage === 'failed'
       ? song.playlistId === createScope.id
       : inside.has(song.id)));
   }, [generations.songs, createScope]);
@@ -807,6 +879,14 @@ function AppContent() {
   // while the Winamp mode is on, Winamp is the player the agent drives
   const inWinamp = async (change: Record<string, unknown>) => ({ text: `Winamp: ${await winampControl()!.set(change)}` });
   useBridgeCommand('player_play', ({ song_id, song_ids, stem }) => {
+    // the player is the person's: what they are listening to is never switched or paused by an agent
+    const winamp = winampControl()?.state();
+    const listeningTo = winamp
+      ? (winamp.playing ? ((winamp.song as { title?: string } | null)?.title ?? '') : null)
+      : (currentSong && isPlaying ? currentSong.title : null);
+    if (listeningTo !== null) {
+      return { text: `The person is listening${listeningTo ? ` to ${listeningTo}` : ''}; the player was left as it is. Do not start songs while they listen.` };
+    }
     if (Array.isArray(song_ids) && song_ids.length) {
       // a list of songs becomes the queue, played from its first
       const list = song_ids.map((id) => songById(id)).filter((song) => song.audioUrl);
@@ -1064,7 +1144,7 @@ function AppContent() {
       if (event.type === 'yue:transcribe-song' && detail?.song) {
         setCreateRequest({ id: Date.now(), kind: 'transcribe', song: detail.song, melodyOnly: Boolean(detail.melodyOnly) });
       } else if (event.type === 'yue:use-score' && detail?.abc) {
-        setCreateRequest({ id: Date.now(), kind: 'score', abc: detail.abc, cot: detail.cot, lyrics: detail.lyrics, title: detail.title });
+        setCreateRequest({ id: Date.now(), kind: 'score', abc: detail.abc, cot: detail.cot, lyrics: detail.lyrics, title: detail.title, edit: Boolean(detail.edit) });
       } else if (event.type === 'yue:cover-midi' && detail?.song) {
         setCreateRequest({ id: Date.now(), kind: 'midi', song: detail.song });
       }
@@ -1218,8 +1298,8 @@ function AppContent() {
                 onSongUpdate={handleSongUpdate}
                 onCancelJob={generations.cancel}
                 onResetJob={generations.reset}
-                onCancelAll={generations.cancelAll}
-                onResetAll={generations.cancelAll}
+                onCancelAll={() => void generations.cancelAll()}
+                onResetAll={stopEverything}
                 activeJobCount={generations.activeJobCount}
               />
             </div>
@@ -1286,6 +1366,9 @@ function AppContent() {
   return (
     <SongActionsProvider value={songActions}>
     <div className="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-white dark:bg-suno text-zinc-900 dark:text-white font-sans antialiased selection:bg-pink-500/30 transition-colors duration-300">
+      <HubBars items={hubItems} elapsed={hubElapsed} view={currentView} closed={hubClosed} onClosed={closeHubNotice} />
+      {hubPopup && <HubPopup item={hubPopup} onClose={() => closeHubNotice(hubPopup.id)} onOpen={openHubTarget} />}
+      <ShellPrompts />
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <Sidebar
           currentView={currentView}

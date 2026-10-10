@@ -99,7 +99,20 @@ pub fn hear_batch(
     let prompt = work.path().join("prompt.prose.txt");
     std::fs::write(&prompt, PROSE_PROMPT)?;
     let list = work.path().join("songs.tsv");
-    let listing: Vec<String> = audio.iter().enumerate().map(|(index, path)| format!("{}\t{}", path.display(), work.path().join(index.to_string()).display())).collect();
+    // ace-caption reads WAV and MP3 only and wants ffmpeg for the rest; a song kept as FLAC goes in as the
+    // 16 kHz mono WAV it would have made of it
+    let mut inputs = Vec::with_capacity(audio.len());
+    for (index, path) in audio.iter().enumerate() {
+        let readable = path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("wav") || extension.eq_ignore_ascii_case("mp3"));
+        if readable {
+            inputs.push(path.clone());
+        } else {
+            let wav = work.path().join(format!("{index}.source.wav"));
+            crate::audio_pcm::write_wav16k_mono(path, &wav).with_context(|| format!("decode {} for the captioner", path.display()))?;
+            inputs.push(wav);
+        }
+    }
+    let listing: Vec<String> = inputs.iter().enumerate().map(|(index, path)| format!("{}\t{}", path.display(), work.path().join(index.to_string()).display())).collect();
     std::fs::write(&list, listing.join("\n"))?;
 
     let mut command = Command::new(exe);
@@ -115,12 +128,11 @@ pub fn hear_batch(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
     if let Some(libraries) = libraries {
-        let mut path = std::ffi::OsString::from(libraries.as_os_str());
-        if let Some(existing) = std::env::var_os("PATH") {
-            path.push(";");
-            path.push(existing);
+        let mut paths = vec![std::path::PathBuf::from(libraries.as_os_str())];
+        paths.extend(std::env::var_os("PATH").iter().flat_map(std::env::split_paths));
+        if let Ok(path) = std::env::join_paths(paths) {
+            command.env("PATH", path);
         }
-        command.env("PATH", path);
     }
     quiet(&mut command);
     let mut child = command.spawn().with_context(|| format!("start {}", exe.display()))?;

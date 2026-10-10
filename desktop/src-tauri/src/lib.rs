@@ -35,8 +35,10 @@ fn studio_data_directory() -> PathBuf {
     // in F:\AI, not in their profile on C:. Only when the install directory
     // cannot be written to - Program Files, a read-only share - does the studio
     // fall back to AppData, because then it has nowhere else to go.
+    // On macOS the executable sits inside a signed .app bundle that must not
+    // be written to, so an installation always uses Application Support.
     let beside_the_executable = executable_directory().join("data");
-    if directory_is_writable(&beside_the_executable) {
+    if !cfg!(target_os = "macos") && directory_is_writable(&beside_the_executable) {
         return beside_the_executable;
     }
 
@@ -47,7 +49,14 @@ fn studio_data_directory() -> PathBuf {
         }
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join("Library").join("Application Support").join(STUDIO_DATA_DIRECTORY);
+        }
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         if let Some(root) = std::env::var_os("XDG_DATA_HOME") {
             return PathBuf::from(root).join("yue2-studio");
@@ -214,8 +223,127 @@ fn start_service() -> Result<(), String> {
     }
 }
 
-fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+/// One request to the studio's own service: its body; `Err(true)` when it took
+/// the request and gave nothing readable back, `Err(false)` when nothing listens.
+fn service_call(method: &str, path: &str, wait: Duration) -> Result<String, bool> {
+    use std::io::{Read, Write};
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, SERVER_PORT);
+    let Ok(mut stream) = TcpStream::connect_timeout(&address.into(), Duration::from_millis(500)) else {
+        return Err(false);
+    };
+    let _ = stream.set_read_timeout(Some(wait));
+    let request = format!("{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{SERVER_PORT}\r\nContent-Length: 0\r\n\r\n");
+    let mut response = String::new();
+    if stream.write_all(request.as_bytes()).is_err() || stream.read_to_string(&mut response).is_err() {
+        return Err(true);
+    }
+    response.split("\r\n\r\n").nth(1).map(str::to_owned).ok_or(true)
+}
+
+/// The songs queued or being made, by job id; `None` when the service could not say in `wait`.
+fn songs_in_progress(wait: Duration) -> Option<Vec<String>> {
+    match service_call("GET", "/v1/music/jobs", wait) {
+        Ok(body) => serde_json::from_str::<Vec<serde_json::Value>>(&body)
+            .ok()
+            .map(|jobs| jobs.iter().filter_map(|job| job.get("id").and_then(serde_json::Value::as_str).map(str::to_owned)).collect()),
+        Err(false) => Some(Vec::new()),
+        Err(true) => None,
+    }
+}
+
+/// What the shell asks the window and is still waiting on: the question about
+/// quitting, and an update found but not answered. The window draws both in the
+/// studio's own language and answers through the commands below.
+#[derive(Default)]
+struct Prompts {
+    update: std::sync::Mutex<Option<tauri_plugin_updater::Update>>,
+    quit_asked: std::sync::atomic::AtomicBool,
+    quit_seen: std::sync::atomic::AtomicBool,
+}
+
+/// A portable copy is updated by hand: the window offers the download page instead.
+fn update_offer(version: &str) -> serde_json::Value {
+    serde_json::json!({ "version": version, "portable": is_portable(), "page": RELEASES_URL })
+}
+
+/// Quit, asking first only when a song is being generated. The window asks;
+/// a window that never showed the question (frozen, still loading) does not
+/// keep the studio open when the person closes it again.
+fn confirm_quit(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    use tauri::{Emitter, Manager};
+    let running = songs_in_progress(Duration::from_secs(2));
+    if running.as_ref().is_some_and(Vec::is_empty) {
+        quit_now(app, Vec::new());
+        return;
+    }
+    let prompts = app.state::<Prompts>();
+    if prompts.quit_asked.load(Ordering::SeqCst) && !prompts.quit_seen.load(Ordering::SeqCst) {
+        quit_now(app, running.unwrap_or_default());
+        return;
+    }
+    prompts.quit_asked.store(true, Ordering::SeqCst);
+    prompts.quit_seen.store(false, Ordering::SeqCst);
+    if app.emit_to("main", "studio://quit-asked", ()).is_err() {
+        quit_now(app, running.unwrap_or_default());
+    }
+}
+
+/// A song the person agreed to stop is stopped before the studio goes, so the
+/// next start does not make it again as one the studio was cut off on; the
+/// day's statistics leave now rather than at the next start.
+fn quit_now(app: &tauri::AppHandle, running: Vec<String>) {
+    use tauri::Manager;
+    // the person is done with the window; what follows can take seconds on a slow network
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    let running = if running.is_empty() { songs_in_progress(Duration::from_secs(15)).unwrap_or_default() } else { running };
+    for id in running {
+        let _ = service_call("POST", &format!("/v1/music/jobs/{id}"), Duration::from_secs(5));
+    }
+    let _ = service_call("POST", "/v1/hub/flush", Duration::from_secs(10));
+    app.exit(0);
+}
+
+#[tauri::command]
+fn quit_prompt_shown(prompts: tauri::State<'_, Prompts>) {
+    prompts.quit_seen.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn quit_prompt_cancelled(prompts: tauri::State<'_, Prompts>) {
+    prompts.quit_asked.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn quit_studio(app: tauri::AppHandle) {
+    std::thread::spawn(move || quit_now(&app, Vec::new()));
+}
+
+/// The update found at start, for a window that loaded after the event went out.
+#[tauri::command]
+fn pending_update(prompts: tauri::State<'_, Prompts>) -> Option<serde_json::Value> {
+    prompts.update.lock().ok()?.as_ref().map(|update| update_offer(&update.version))
+}
+
+/// Downloads and runs the installer; the studio restarts into the new version.
+/// An error comes back to the window, which shows it.
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, prompts: tauri::State<'_, Prompts>) -> Result<(), String> {
+    let update = prompts.update.lock().map_err(|_| "the update state is poisoned".to_string())?.take().ok_or("no update is waiting")?;
+    if let Err(error) = update.download_and_install(|_, _| {}, || {}).await {
+        let message = error.to_string();
+        if let Ok(mut slot) = prompts.update.lock() {
+            *slot = Some(update);
+        }
+        return Err(message);
+    }
+    app.restart();
+}
+
+fn spawn_update_check(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
     use tauri_plugin_updater::UpdaterExt;
 
     tauri::async_runtime::spawn(async move {
@@ -251,43 +379,11 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             Ok(Some(update)) => update,
             _ => return,
         };
-
-        let version = update.version.clone();
-        if portable {
-            let open_release = app
-                .dialog()
-                .message(format!("YuE2 Studio {version} is available. Open the download page?"))
-                .title("YuE2 Studio update")
-                .kind(MessageDialogKind::Info)
-                .buttons(MessageDialogButtons::OkCancelCustom("Open".into(), "Later".into()))
-                .blocking_show();
-            if open_release {
-                use tauri_plugin_opener::OpenerExt;
-                let _ = app.opener().open_url(RELEASES_URL, None::<&str>);
-            }
-            return;
+        let offer = update_offer(&update.version);
+        if let Ok(mut slot) = app.state::<Prompts>().update.lock() {
+            *slot = Some(update);
         }
-
-        let install = app
-            .dialog()
-            .message(format!("YuE2 Studio {version} is available. Install it now?"))
-            .title("YuE2 Studio update")
-            .kind(MessageDialogKind::Info)
-            .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Later".into()))
-            .blocking_show();
-        if !install {
-            return;
-        }
-
-        if let Err(error) = update.download_and_install(|_, _| {}, || {}).await {
-            app.dialog()
-                .message(format!("Could not install the update: {error}"))
-                .title("YuE2 Studio update")
-                .kind(MessageDialogKind::Error)
-                .blocking_show();
-            return;
-        }
-        app.restart();
+        let _ = app.emit_to("main", "studio://update-available", offer);
     });
 }
 
@@ -487,7 +583,24 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![open_visualizer_window, set_window_region]);
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(tauri_plugin_window_state::StateFlags::SIZE | tauri_plugin_window_state::StateFlags::POSITION | tauri_plugin_window_state::StateFlags::MAXIMIZED)
+                // an absolute name: the plugin joins it to AppData, which a portable copy never writes
+                .with_filename(studio_data_directory().join("window-state.json").to_string_lossy())
+                .with_filter(|label| label == "main")
+                .build(),
+        )
+        .manage(Prompts::default())
+        .invoke_handler(tauri::generate_handler![
+            open_visualizer_window,
+            set_window_region,
+            quit_prompt_shown,
+            quit_prompt_cancelled,
+            quit_studio,
+            pending_update,
+            install_update
+        ]);
     if updater_configured {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
@@ -541,8 +654,36 @@ pub fn run() {
             };
 
             window.build()?;
+            // The stock Quit item terminates the app, closing the window
+            // before anything can ask. Cmd+Q is a menu item of our own that
+            // asks first; the window stays up until the answer.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{Menu, MenuItem, MenuItemKind};
+                let menu = Menu::default(app.handle())?;
+                for item in menu.items()? {
+                    if let MenuItemKind::Submenu(submenu) = item {
+                        for entry in submenu.items()? {
+                            if let MenuItemKind::Predefined(predefined) = &entry {
+                                if predefined.text()?.starts_with("Quit") {
+                                    submenu.remove(predefined)?;
+                                    submenu.append(&MenuItem::with_id(app.handle(), "quit-confirm", "Quit YuE2 Studio", true, Some("CmdOrCtrl+Q"))?)?;
+                                }
+                            }
+                        }
+                    }
+                }
+                app.set_menu(menu)?;
+                app.on_menu_event(|app, event| {
+                    if event.id().as_ref() != "quit-confirm" {
+                        return;
+                    }
+                    let app = app.clone();
+                    std::thread::spawn(move || confirm_quit(&app));
+                });
+            }
             if updater_configured {
-                spawn_update_check(app.handle().clone(), is_portable());
+                spawn_update_check(app.handle().clone());
             }
             // The webview starts loading the moment the window exists, and the
             // service can finish binding a fraction of a second later. That is
@@ -573,7 +714,29 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(context)
-        .expect("error while running YuE2 Studio");
+        .build(context)
+        .expect("error while building YuE2 Studio")
+        .run(|app, event| {
+            // Quitting stops a song that is being generated, so ask first, but
+            // only then. Closing the main window quits the studio on every
+            // platform; Cmd+Q and the Dock reach it as an exit request with no
+            // code. An exit the app requests itself carries a code and goes
+            // through.
+            match &event {
+                // the service is asked off the event loop: it can take seconds to answer
+                tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::CloseRequested { api, .. }, .. } if label == "main" => {
+                    api.prevent_close();
+                    let app = app.clone();
+                    std::thread::spawn(move || confirm_quit(&app));
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::ExitRequested { code: None, api, .. } => {
+                    api.prevent_exit();
+                    let app = app.clone();
+                    std::thread::spawn(move || confirm_quit(&app));
+                }
+                _ => {}
+            }
+        });
 }
 
