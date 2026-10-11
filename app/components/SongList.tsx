@@ -786,6 +786,12 @@ const SongItem: React.FC<SongItemProps> = ({
                                 <StemIcon song={song} size={11} />
                                 {stemName(song)}
                             </span>
+                        ) : song.derived && !song.derived.from ? (
+                            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-xs border border-zinc-300 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:border-white/15 dark:text-zinc-300">
+                                {song.derived.tool === 'score'
+                                    ? t('madeFromScore')
+                                    : `${t('madeFrom')} · ${t(`derivedTool_${song.derived.tool}` as TranslationKey)}`}
+                            </span>
                         ) : song.derived && (
                             <button
                                 type="button"
