@@ -17,6 +17,13 @@ const editor = (globalThis as { yueScoreEditor?: {
     viewHeight: number,
     maxScroll: number,
   ) => number;
+  easeScrollStep: (
+    shown: number,
+    target: number,
+    dt: number,
+    tau: number,
+    snap: number,
+  ) => number;
   setStrings?: (next: Record<string, string>) => void;
   open?: (abc: string, audio: string | null, options?: { strings?: Record<string, string> }) => Promise<string | null>;
 } }).yueScoreEditor!;
@@ -74,6 +81,16 @@ describe('vendored jianpu editScore', () => {
     expect(editor.sourceScrollTop(anchors, 10, 200, 500)).toBe(Math.max(0, 300 - 200 * 0.35));
     expect(editor.sourceScrollTop(anchors, 99, 200, 500)).toBe(Math.max(0, 300 - 200 * 0.35));
     expect(editor.sourceScrollTop(anchors, 5, 200, 40)).toBe(40);
+  });
+
+  it('eases source scroll toward the target', () => {
+    expect(editor.easeScrollStep(0, 400, 0.016, 0.16, 200)).toBe(400);
+    const step = editor.easeScrollStep(100, 200, 0.016, 0.16, 400);
+    expect(step).toBeGreaterThan(100);
+    expect(step).toBeLessThan(120);
+    const settled = editor.easeScrollStep(100, 200, 2, 0.16, 400);
+    expect(settled).toBeGreaterThan(199);
+    expect(settled).toBeLessThanOrEqual(200);
   });
 
   it('opens with English chrome', async () => {

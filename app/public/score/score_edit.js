@@ -2694,6 +2694,10 @@
     textVisible: true,
     scrollRaf: 0,
     scrollGoal: null,
+    sourceAnchors: null,
+    sourceAnchorKey: "",
+    sourceScrollShown: null,
+    sourceScrollAt: 0,
   };
 
   function applyTextWidth(px, persist) {
@@ -3572,15 +3576,21 @@
 
   // Content y of the first vocal glyph on each system, with that glyph's score clock.
   const SOURCE_ROW_Y_TOL = 18;
+  const SOURCE_SCROLL_TAU = 0.16;
 
   function sourceRowAnchors(paper, marks) {
     if (!paper || !marks || !marks.length || !paper.getBoundingClientRect) return [];
     const paperBox = paper.getBoundingClientRect();
     const scrollTop = paper.scrollTop || 0;
+    const byKey = new Map();
+    for (const el of heads()) {
+      const voice = el.dataset.voice || "Vocal";
+      byKey.set(voice + ":" + el.dataset.idx + ":" + (el.dataset.slice || "0"), el);
+    }
     const items = [];
     for (const mark of marks) {
       if (!mark || (mark.voice && mark.voice !== "Vocal")) continue;
-      const node = headFor(mark);
+      const node = byKey.get((mark.voice || "Vocal") + ":" + mark.index + ":" + mark.slice);
       if (!node || !node.getBoundingClientRect) continue;
       const box = node.getBoundingClientRect();
       items.push({
@@ -3619,15 +3629,55 @@
     return Math.max(0, Math.min(max, y - view * 0.35));
   }
 
+  // Exponential follow. |target - shown| >= snap → stick; else move by (1 - e^(-dt/tau)).
+  function easeScrollStep(shown, target, dt, tau, snap) {
+    const to = Number(target);
+    if (!Number.isFinite(to)) {
+      const from = Number(shown);
+      return Number.isFinite(from) ? from : 0;
+    }
+    const from = Number(shown);
+    if (!Number.isFinite(from)) return to;
+    const band = Number.isFinite(Number(snap)) ? Math.max(0, Number(snap)) : 0;
+    if (band > 0 && Math.abs(to - from) >= band) return to;
+    const t = Math.max(0, Number(dt) || 0);
+    if (t <= 0) return from;
+    const tauSec = Math.max(1e-6, Number(tau) || SOURCE_SCROLL_TAU);
+    return from + (to - from) * (1 - Math.exp(-t / tauSec));
+  }
+
+  function clearSourceScroll() {
+    ui.sourceAnchors = null;
+    ui.sourceAnchorKey = "";
+    ui.sourceScrollShown = null;
+    ui.sourceScrollAt = 0;
+  }
+
   function followSourceScroll(now) {
     const host = ui.paper;
     if (!host) return;
     stopEaseScroll();
     const marks = ui.marks && ui.marks.length ? ui.marks : playMarks(ui.abc);
     ui.marks = marks;
-    const anchors = sourceRowAnchors(host, marks);
-    const maxScroll = Math.max(0, (host.scrollHeight || 0) - (host.clientHeight || 0));
-    host.scrollTop = sourceScrollTop(anchors, now, host.clientHeight || 0, maxScroll);
+    const key = (host.clientWidth || 0) + "x" + (host.scrollHeight || 0);
+    if (!ui.sourceAnchors || ui.sourceAnchorKey !== key) {
+      ui.sourceAnchors = sourceRowAnchors(host, marks);
+      ui.sourceAnchorKey = key;
+    }
+    const view = host.clientHeight || 0;
+    const maxScroll = Math.max(0, (host.scrollHeight || 0) - view);
+    const target = sourceScrollTop(ui.sourceAnchors, now, view, maxScroll);
+    const nowMs = typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    const dt = ui.sourceScrollShown == null || !ui.sourceScrollAt
+      ? 0
+      : Math.max(0, (nowMs - ui.sourceScrollAt) / 1000);
+    const snap = Math.max(80, view * 0.5);
+    const next = ui.sourceScrollShown == null
+      ? target
+      : easeScrollStep(ui.sourceScrollShown, target, dt, SOURCE_SCROLL_TAU, snap);
+    ui.sourceScrollShown = next;
+    ui.sourceScrollAt = nowMs;
+    host.scrollTop = next;
   }
 
   const ABC2SVG_SRC = "/score/abc2svg/abc2svg-1.js";
@@ -3737,6 +3787,7 @@
 
   function renderScore() {
     stopEaseScroll();
+    clearSourceScroll();
     ui.marks = playMarks(ui.abc);
     ui.playhead = null;
     ui.playKey = "";
@@ -4268,6 +4319,7 @@
       ui.playKey = vocal.voice + ":" + vocal.index + ":" + vocal.slice;
       return;
     }
+    if (followsScore(ui.transport)) followSourceScroll(at);
     const mark = cursorAt(marks, at);
     if (!mark) {
       clearPlayhead();
@@ -4279,7 +4331,6 @@
     if (playKey === ui.playKey && ui.playhead) return;
     ui.playKey = playKey;
     drawPlayhead(node);
-    if (followsScore(ui.transport)) followPlayhead(node);
   }
 
   function abandonSource(message) {
@@ -4446,6 +4497,7 @@
     if (ui.raf) cancelAnimationFrame(ui.raf);
     ui.raf = 0;
     stopEaseScroll();
+    clearSourceScroll();
     silenceMidi();
     if (ui.audio) {
       ui.audio.pause();
@@ -4546,6 +4598,7 @@
           const key = (el.dataset.voice || "Vocal") + ":" + el.dataset.idx;
           el.classList.toggle("yue-play", active.has(key));
         });
+        followSourceScroll(now);
         const mark = cursorAt(marks, Math.max(0, now));
         const playKey = mark ? mark.voice + ":" + mark.index + ":" + mark.slice : "";
         if (playKey !== ui.playKey) {
@@ -4553,7 +4606,6 @@
           if (node) {
             ui.playKey = playKey;
             drawPlayhead(node);
-            followPlayhead(node);
           }
         }
         if (now < total - 0.02) ui.raf = requestAnimationFrame(tick);
@@ -4683,6 +4735,7 @@
     textScrollTarget: textScrollTarget,
     centerScroll: centerScroll,
     sourceScrollTop: sourceScrollTop,
+    easeScrollStep: easeScrollStep,
     compareJianpuNotes: compareJianpuNotes,
     clampTextWidth: clampTextWidth,
     open: open,
