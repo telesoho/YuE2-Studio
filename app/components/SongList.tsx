@@ -30,6 +30,10 @@ interface SongListProps {
     librarySongs?: Song[];
     /** The playlist the list shows, when it is not the whole library. */
     scopeName?: string;
+    /** Header label when the list is a filtered slice (e.g. score readings). */
+    listTitle?: string;
+    /** Empty-state copy when the slice has no songs and no filters apply. */
+    emptyMessage?: string;
     /** The library is still being read: an empty list is not an answer yet. */
     loading?: boolean;
     onToggleLike: (songId: string) => void;
@@ -114,6 +118,8 @@ export const SongList: React.FC<SongListProps> = ({
     onSelect,
     librarySongs,
     scopeName,
+    listTitle,
+    emptyMessage,
     loading = false,
     onToggleLike,
     onAddToPlaylist,
@@ -340,7 +346,7 @@ export const SongList: React.FC<SongListProps> = ({
                                 <span className="truncate">{t('playlist')} · {scopeName}</span>
                             </span>
                         ) : (
-                            <span className="font-medium text-zinc-900 dark:text-white">{t('library')}</span>
+                            <span className="font-medium text-zinc-900 dark:text-white">{listTitle || t('library')}</span>
                         )}
                         <span className="text-zinc-400 dark:text-zinc-600">·</span>
                         <span>{songCount(librarySize)}</span>
@@ -492,10 +498,12 @@ export const SongList: React.FC<SongListProps> = ({
                     ) : listItems.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-64 text-zinc-500 space-y-4 border border-dashed border-zinc-200 dark:border-white/5 rounded-2xl bg-zinc-50 dark:bg-white/2">
                             <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-white/5 flex items-center justify-center">
-                                {scopeName && !searchQuery && activeFilters.size === 0 ? <ListMusic size={32} /> : <Filter size={32} />}
+                                {(scopeName || emptyMessage) && !searchQuery && activeFilters.size === 0 ? <ListMusic size={32} /> : <Filter size={32} />}
                             </div>
                             {scopeName && !searchQuery && activeFilters.size === 0 ? (
                                 <p className="max-w-xs text-center font-medium">{t('playlistEmptyCreate')}</p>
+                            ) : emptyMessage && !searchQuery && activeFilters.size === 0 ? (
+                                <p className="max-w-xs text-center font-medium">{emptyMessage}</p>
                             ) : (
                                 <>
                                     <p className="font-medium">{t('noSongsMatchFilters')}</p>

@@ -14,7 +14,7 @@ import { SongActions, SongActionsProvider } from './context/SongActionsContext';
 import { useBridgeCommand } from './services/mcpBridge';
 import { apiUrl } from './services/apiBase';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { libraryChanged, queryClient, updateLibraryPlaylists, updateLibrarySongs, useLibraryPlaylists, useLibrarySongs, useSetupStatus } from './services/studioQueries';
+import { libraryChanged, librarySongsNow, queryClient, updateLibraryPlaylists, updateLibrarySongs, useLibraryPlaylists, useLibrarySongs, useSetupStatus } from './services/studioQueries';
 import { useGenerations } from './services/generations';
 import { SettingsModal } from './components/SettingsModal';
 import { Song, View, Playlist } from './types';
@@ -168,6 +168,7 @@ function AppContent() {
   // Auth
   const { user } = useAuth();
   const leftPanel = useResizablePanel('create', 420, 320, 1200, 'left', t('createMusic'));
+  const scoreLeftPanel = useResizablePanel('score', 420, 320, 1200, 'left', t('scoreReading'));
   const rightPanel = useResizablePanel('details', 400, 320, 1200, 'right', t('songDetails'));
   const [nativeSetupReady, setNativeSetupReady] = useState(false);
   // A track sent here from a menu's "separate into stems".
@@ -458,6 +459,23 @@ function AppContent() {
       ? song.playlistId === createScope.id
       : inside.has(song.id)));
   }, [generations.songs, createScope]);
+  const scoreSongs = useMemo(
+    () => librarySongs.filter(song => song.derived?.tool === 'score'),
+    [librarySongs],
+  );
+
+  const handleScoreDone = useCallback(async (songId: string) => {
+    libraryChanged();
+    await queryClient.refetchQueries({ queryKey: ['library'] });
+    const song = librarySongsNow()?.find(entry => entry.id === songId);
+    if (!song) return;
+    setSelectedSong(song);
+    setShowRightSidebar(true);
+    if (window.innerWidth < 768) {
+      setMobileShowList(true);
+      setShowMobileDetails(true);
+    }
+  }, []);
 
   // The library asked for while the service was still starting came back
   // empty; once the service answers again it is read afresh.
@@ -1171,6 +1189,7 @@ function AppContent() {
   // the details show the library's copy of the song, so a cover or a rename
   // made after it was opened appears there too
   const selectedShown = selectedSong ? librarySongs.find(song => song.id === selectedSong.id) ?? selectedSong : null;
+  const scoreSelected = selectedShown?.derived?.tool === 'score' ? selectedShown : null;
 
   const renderContent = (view: typeof currentView = currentView) => {
     switch (view) {
@@ -1230,7 +1249,81 @@ function AppContent() {
         return <NewsPage />;
 
       case 'score':
-        return <ScoreReadingPanel />;
+        return (
+          <div className="relative flex h-full min-h-0 min-w-0 w-full overflow-hidden">
+            <div
+              className={`
+                ${mobileShowList ? 'hidden md:block' : 'w-full'}
+                md:block min-h-0 min-w-0 shrink-0 h-full bg-zinc-50 dark:bg-suno-panel relative z-10 transition-colors duration-300
+              `}
+              style={{ width: window.innerWidth >= 768 ? scoreLeftPanel.width : undefined }}
+            >
+              <ScoreReadingPanel onDone={songId => void handleScoreDone(songId)} />
+            </div>
+            {scoreLeftPanel.handle}
+
+            <div className={`
+              ${!mobileShowList ? 'hidden md:flex' : 'flex'}
+              min-h-0 min-w-0 flex-1 flex-col h-full overflow-hidden bg-white dark:bg-suno transition-colors duration-300
+            `}>
+              <SongList
+                songs={scoreSongs}
+                listTitle={t('scoreLibrary')}
+                emptyMessage={t('scoreLibraryEmpty')}
+                loading={libraryRead.isPending}
+                librarySongs={librarySongs}
+                currentSong={currentSong}
+                selectedSong={scoreSelected}
+                likedSongIds={likedSongIds}
+                isPlaying={isPlaying}
+                onPlay={playSong}
+                onSelect={(s) => {
+                  setSelectedSong(s);
+                  setShowRightSidebar(true);
+                }}
+                onToggleLike={toggleLike}
+                onAddToPlaylist={openAddToPlaylistModal}
+                onOpenCoverRegen={openCoverRegen}
+                onShowDetails={handleShowDetails}
+                onDeleteMany={handleDeleteSongs}
+                onSongUpdate={handleSongUpdate}
+              />
+            </div>
+
+            {showRightSidebar && scoreSelected && (
+              <>
+              {rightPanel.handle}
+              <div
+                className="hidden xl:block min-h-0 min-w-0 shrink-0 h-full bg-zinc-50 dark:bg-suno-panel relative z-10 transition-colors duration-300"
+                style={{ width: rightPanel.width }}
+              >
+                <RightSidebar
+                  song={scoreSelected}
+                  onClose={() => setShowRightSidebar(false)}
+                  onOpenCoverRegen={() => selectedSong && openCoverRegen(selectedSong)}
+                  onReuse={handleReuse}
+                  onSongUpdate={handleSongUpdate}
+                  isLiked={scoreSelected ? likedSongIds.has(scoreSelected.id) : false}
+                  onToggleLike={toggleLike}
+                  onPlay={playSong}
+                  isPlaying={isPlaying}
+                  currentSong={currentSong}
+                />
+              </div>
+              </>
+            )}
+
+            <div className="md:hidden absolute top-4 right-4 z-50">
+              <button
+                onClick={() => setMobileShowList(!mobileShowList)}
+                className="bg-zinc-800 text-white px-4 py-2 rounded-full shadow-lg border border-white/10 flex items-center gap-2 text-sm font-bold"
+              >
+                {mobileShowList ? t('scoreReading') : t('viewList')}
+                <List size={16} />
+              </button>
+            </div>
+          </div>
+        );
 
       case 'create':
       default:
@@ -1377,6 +1470,8 @@ function AppContent() {
             if (v === 'create') {
               setMobileShowList(false);
               window.history.pushState({}, '', '/');
+            } else if (v === 'score') {
+              setMobileShowList(false);
             } else if (v === 'library') {
               window.history.pushState({}, '', '/library');
             } else if (v === 'search') {

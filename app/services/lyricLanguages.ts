@@ -130,6 +130,30 @@ const rest = Object.keys(WHISPER)
 /** Whisper tokenizer.LANGUAGES (100 codes): studio languages first, then A–Z by English name. */
 export const LYRIC_LANGUAGES: LyricLanguage[] = [...PINNED.map(entry), ...rest];
 
+/** Whisper code → BCP 47 when they differ. */
+const BCP47: Record<string, string> = { jw: 'jv', tl: 'fil' };
+
+/** ICU has no self-locale; avoid falling back to the OS language. */
+const NATIVE: Record<string, string> = {
+  la: 'Latina',
+  ht: 'Kreyòl ayisyen',
+  ba: 'башҡорт теле',
+};
+
+function nativeName(code: string, english: string): string {
+  if (NATIVE[code]) return NATIVE[code];
+  const locale = BCP47[code] ?? code;
+  try {
+    const names = new Intl.DisplayNames([locale], { type: 'language' });
+    const resolved = names.resolvedOptions().locale.toLowerCase();
+    const tag = locale.toLowerCase();
+    if (!resolved.startsWith(tag.slice(0, 2)) && resolved !== tag) return english;
+    return names.of(locale) || english;
+  } catch {
+    return english;
+  }
+}
+
 export function lyricLanguageLabel(lang: LyricLanguage): string {
-  return `${lang.name} (${lang.code})`;
+  return `${nativeName(lang.code, lang.name)} (${lang.code})`;
 }

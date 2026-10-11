@@ -17,6 +17,8 @@ import { localized, useAdapterLibrary, usesFromSettings } from '../services/adap
 import { useSongActions } from '../context/SongActionsContext';
 import { downloadSongAudio } from '../services/songDownload';
 import { saveFile } from '../services/saveFile';
+import { downloadScoreShare } from '../services/scoreReading';
+import { localizeCode } from '../services/localizeCode';
 import { stemOf } from '../services/songStems';
 import { named } from '../services/accessibleName';
 import { exactMoment } from '../services/dates';
@@ -811,11 +813,13 @@ const ActionButton: React.FC<{ icon: React.ReactNode; label?: string; active?: b
 
 /** The ABC score a track was performed from, engraved, with the way back into the form. */
 const SongScore: React.FC<{ song: Song }> = ({ song }) => {
-    const { t } = useI18n();
+    const { t, language: uiLanguage } = useI18n();
     const tt = t as unknown as (key: string) => string;
+    const say = (raw: string) => localizeCode(raw, t);
     const [open, setOpen] = useState(true);
     const [jianpuOpen, setJianpuOpen] = useState(false);
     const [abcLive, setAbcLive] = useState<string | null>(null);
+    const [sharing, setSharing] = useState(false);
     const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
         : '';
@@ -829,6 +833,21 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
     const abc = (abcLive ?? fromReading ?? fromParams).trim();
     const cot = (song.generationParams as Record<string, unknown> | undefined)?.cot;
     const isScoreReading = derived?.tool === 'score';
+    const warnings = Array.isArray(settings?.warnings)
+        ? (settings.warnings as unknown[]).filter((item): item is string => typeof item === 'string')
+        : [];
+    const share = async () => {
+        if (!isScoreReading || sharing) return;
+        setSharing(true);
+        try {
+            const blob = await downloadScoreShare(song.id, uiLanguage);
+            await saveFile(`${song.title || song.id}-share.zip`, { blob });
+        } catch (error) {
+            console.warn('[score] share package failed:', error instanceof Error ? error.message : error);
+        } finally {
+            setSharing(false);
+        }
+    };
     if (!abc) return null;
     return (
         <div className="bg-white dark:bg-black/20 rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden">
@@ -845,6 +864,17 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
                     >
                         {tt('scoreEditJianpu')}
                     </button>
+                    {isScoreReading && (
+                        <button
+                            type="button"
+                            disabled={sharing}
+                            onClick={() => void share()}
+                            className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-black dark:hover:text-white disabled:opacity-50"
+                        >
+                            {sharing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                            {tt('scoreShare')}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => void saveFile(`${song.title || 'score'}.abc`, { blob: new Blob([`${abc.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n')}\n`], { type: 'text/vnd.abc' }) })}
@@ -864,15 +894,24 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
                 </div>
             </div>
             {open && (
-                <div className="max-h-[420px] overflow-auto bg-white p-2 custom-scrollbar">
-                    <ScoreView
-                        abc={abc}
-                        title={song.title}
-                        onEdit={() => window.dispatchEvent(new CustomEvent('yue:use-score', {
-                            detail: { abc, cot: cot === 'melody' || cot === 'full' ? cot : 'full', lyrics: song.lyrics, title: song.title, edit: true },
-                        }))}
-                    />
-                </div>
+                <>
+                    {warnings.length > 0 && (
+                        <ul className="list-disc space-y-1 border-b border-zinc-100 px-4 py-2 pl-8 text-[11px] text-amber-700 dark:border-white/5 dark:text-amber-300">
+                            {warnings.map(item => (
+                                <li key={item}>{say(item)}</li>
+                            ))}
+                        </ul>
+                    )}
+                    <div className="max-h-[420px] overflow-auto bg-white p-2 custom-scrollbar">
+                        <ScoreView
+                            abc={abc}
+                            title={song.title}
+                            onEdit={() => window.dispatchEvent(new CustomEvent('yue:use-score', {
+                                detail: { abc, cot: cot === 'melody' || cot === 'full' ? cot : 'full', lyrics: song.lyrics, title: song.title, edit: true },
+                            }))}
+                        />
+                    </div>
+                </>
             )}
             {jianpuOpen && (
                 <JianpuEditor
