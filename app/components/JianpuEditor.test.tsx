@@ -23,6 +23,7 @@ C4D4E4F4|`;
 describe('JianpuEditor', () => {
   it('opens the score editor under StrictMode', async () => {
     localStorage.setItem('language', 'en');
+    localStorage.setItem('yue-jp-chord-diagram', 'off');
     const globals = globalThis as { abc2svg?: unknown };
     const previous = globals.abc2svg;
     globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
@@ -50,6 +51,17 @@ describe('JianpuEditor', () => {
       expect(cancel?.querySelector('svg')).toBeTruthy();
       expect(cancel?.textContent?.trim()).toBe('');
       expect(cancel?.getAttribute('title')).toBe('Cancel');
+      const diagram = document.querySelector('.yue-jp-editor [data-act="diagram"]');
+      expect(diagram).toBeInstanceOf(HTMLButtonElement);
+      expect(diagram?.getAttribute('data-diagram')).toBe('off');
+      expect(diagram?.querySelector('svg')).toBeTruthy();
+      const offSvg = diagram?.innerHTML ?? '';
+      await act(async () => {
+        (diagram as HTMLButtonElement).click();
+      });
+      expect(diagram?.getAttribute('data-diagram')).toBe('guitar');
+      expect(diagram?.querySelector('svg')).toBeTruthy();
+      expect(diagram?.innerHTML).not.toBe(offSvg);
       expect(closed).toEqual([]);
     } finally {
       await act(async () => {

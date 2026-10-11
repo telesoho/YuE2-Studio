@@ -37,7 +37,14 @@
   const PAUSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h2.6v10H4zm5.4 0H12v10H9.4z"/></svg>';
   const STOP_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4h8v8H4z"/></svg>';
   const TEXT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h6.2L13 5.3V14.5H3zm6.2 0v3.8H13M5.2 8h5.6M5.2 10.5h5.6M5.2 13h3.5"/></svg>';
-  const DIAGRAM_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v1.2H2.5zm0 4h11v1.2H2.5zm0 4h11v1.2H2.5zM5 2.2v11.6h1.2V2.2zm4.8 0v11.6H11V2.2z"/></svg>';
+  const DIAGRAM_OFF_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v1.2H2.5zm0 4h11v1.2H2.5zm0 4h11v1.2H2.5zM5 2.2v11.6h1.2V2.2zm4.8 0v11.6H11V2.2z"/><path d="M2.2 13.2 12.8 2.6l1 1L3.2 14.2z"/></svg>';
+  const DIAGRAM_GUITAR_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 .8h1v14.8H1zM3.5 .8h1v14.8h-1zM6 .8h1v14.8H6zM8.5 .8h1v14.8h-1zM11 .8h1v14.8H11zM13.5 .8h1v14.8h-1zM1 .8h13.5v1.6H1zM1 6h13.5v.8H1zM1 10.4h13.5v.8H1zM1 14.8h13.5v.8H1zM2.8 13a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0M5.3 8.6a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0M10.3 4.2a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0"/></svg>';
+  const DIAGRAM_UKULELE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 .8h1v14.8H1zM5.2 .8h1v14.8h-1zM9.3 .8h1v14.8h-1zM13.5 .8h1v14.8h-1zM1 .8h13.5v1.6H1zM1 6h13.5v.8H1zM1 10.4h13.5v.8H1zM1 14.8h13.5v.8H1zM4.5 8.6a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0M8.6 13a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0M12.8 8.6a1.2 1.2 0 1 1 2.4 0 1.2 1.2 0 1 1-2.4 0"/></svg>';
+  function diagramIcon(kind) {
+    if (kind === "guitar") return DIAGRAM_GUITAR_ICON;
+    if (kind === "ukulele") return DIAGRAM_UKULELE_ICON;
+    return DIAGRAM_OFF_ICON;
+  }
   const MIDI_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 1.5v8.1A2.6 2.6 0 1 0 8.6 12V4.8H13V1.5z"/></svg>';
   const SOURCE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 6h1.8v4H1.8zm3.2-2h1.8v8H5zm3.2-1.5h1.8v11H8.2zm3.2 2.5h1.8v6h-1.8z"/></svg>';
   const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8.5L14 5.5V14H2zm2 0v4h6V2M4.5 9.5h7V14h-7z"/></svg>';
@@ -2581,6 +2588,7 @@
     const kind = currentDiagram();
     ui.diagram.setAttribute("data-diagram", kind);
     ui.diagram.classList.toggle("on", kind !== DIAGRAM_OFF);
+    ui.diagram.innerHTML = diagramIcon(kind);
     const tip = m("jpDiagram") + " · " + diagramChoiceLabel(kind);
     ui.diagram.title = tip;
     ui.diagram.setAttribute("aria-label", tip);
@@ -2906,7 +2914,7 @@
       '<div class="yue-jp-bar">',
       '<h2 data-i18n="jpTitle"></h2>',
       '<span class="yue-jp-meta"></span>',
-      '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_ICON + "</button>",
+      '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_OFF_ICON + "</button>",
       '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="midi" title="MIDI" aria-label="MIDI" hidden>' + MIDI_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="source" data-i18n-aria="jpSource" data-i18n-title="jpSource" hidden>' + SOURCE_ICON + "</button>",
