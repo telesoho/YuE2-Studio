@@ -15,11 +15,13 @@ declare global {
           saveButton?: HTMLElement | null;
           saveNote?: HTMLElement | null;
           strings?: Record<string, string>;
+          title?: string | null;
         },
       ) => Promise<string | null>;
       currentAbc: () => string;
       setStrings?: (next: Record<string, string>) => void;
       applyChrome?: () => void;
+      leadSheet?: (abc: string, fallbackTitle?: string) => unknown;
     };
   }
 }
@@ -62,9 +64,11 @@ export const JianpuEditor: React.FC<{
   abc: string;
   audioUrl?: string | null;
   songId?: string | null;
+  /** Library / form song name for blank T: display (not written into ABC). */
+  title?: string | null;
   onClose: (edited: string | null) => void;
   onSaved?: () => void;
-}> = ({ abc, audioUrl, songId, onClose, onSaved }) => {
+}> = ({ abc, audioUrl, songId, title, onClose, onSaved }) => {
   const { language, t } = useI18n();
   const strings = useMemo(() => catalog(language), [language]);
   const saveButton = useRef<HTMLButtonElement | null>(null);
@@ -74,6 +78,8 @@ export const JianpuEditor: React.FC<{
 
   const stringsRef = useRef(strings);
   stringsRef.current = strings;
+  const titleRef = useRef(title);
+  titleRef.current = title;
 
   useEffect(() => {
     let alive = true;
@@ -92,6 +98,7 @@ export const JianpuEditor: React.FC<{
           saveButton: saveButton.current,
           saveNote: saveNote.current,
           strings: stringsRef.current,
+          title: titleRef.current,
         });
         if (alive) onCloseRef.current(edited);
       } catch {
@@ -104,7 +111,7 @@ export const JianpuEditor: React.FC<{
       const root = document.querySelector('.yue-jp-editor');
       if (root instanceof HTMLElement) root.hidden = true;
     };
-  }, [abc, audioUrl]);
+  }, [abc, audioUrl, title]);
 
   useEffect(() => {
     window.yueScoreEditor?.setStrings?.(strings);

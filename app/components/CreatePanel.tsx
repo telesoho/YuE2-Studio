@@ -1908,6 +1908,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       {jianpuOpen && abc.trim() && (
         <JianpuEditor
           abc={abc}
+          title={name}
           onClose={edited => {
             setJianpuOpen(false);
             if (edited) {

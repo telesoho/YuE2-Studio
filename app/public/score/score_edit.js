@@ -50,6 +50,8 @@
   const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8.5L14 5.5V14H2zm2 0v4h6V2M4.5 9.5h7V14h-7z"/></svg>';
   const DONE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.3 11.6 2.9 8.2l1.4-1.4 2 2 5.5-5.5 1.4 1.4z"/></svg>';
   const CANCEL_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.1 8 6.7l4.6-4.6 1.3 1.3L9.3 8l4.6 4.6-1.3 1.3L8 9.3l-4.6 4.6-1.3-1.3L6.7 8 2.1 3.4z"/></svg>';
+  const PRINT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h8v3.2H4zm-1.5 4.2h11A1.5 1.5 0 0 1 15 7.2v4.3h-2.5V9.2H3.5v2.3H1V7.2A1.5 1.5 0 0 1 2.5 5.7zm1.8 5.3h7.4V14.5H4.3z"/></svg>';
+  const LEAD_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h12v1.2H2zm0 3.2h7v1.2H2zm0 3.2h12v1.2H2zm0 3.2h7v1.2H2zM11 6.2l3 2.2-3 2.2z"/></svg>';
   const STEPS = "CDEFGAB";
   const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const ACC = { "^^": 2, "^": 1, "=": 0, _: -1, __: -2 };
@@ -210,7 +212,7 @@
   }
 
   function previewAbc(abc, diagram) {
-    const src = jianpuAbcWithDirective(String(abc || ""));
+    const src = jianpuAbcWithDirective(withDisplayTitle(String(abc || ""), ui.songTitle));
     const kind = normalizeDiagram(diagram);
     if (kind === DIAGRAM_OFF) return src;
     if (typeof abc2svg !== "undefined" && !abc2svg.diag) return src;
@@ -1675,6 +1677,200 @@
     return buildJianpuText(abc).text || "";
   }
 
+  function parseTitle(abc) {
+    // Keep the match on one line: \s would eat the newline after a blank T:.
+    const match = /^T:[ \t]*(.*)$/m.exec(String(abc || ""));
+    return match ? String(match[1] || "").trim() : "";
+  }
+
+  /** Library song name when the score keeps a blank T: (YuE2 dialect). */
+  function displayTitle(abc, fallback) {
+    return parseTitle(abc) || String(fallback || "").trim();
+  }
+
+  /** Fill a blank T: for engraving / print only; does not mutate the stored score. */
+  function withDisplayTitle(abc, fallback) {
+    const src = String(abc || "");
+    const title = String(fallback || "").trim();
+    if (!title || parseTitle(src)) return src;
+    return src.replace(/^T:[ \t]*$/m, "T:" + title);
+  }
+
+  // Guitar shape key for %%diagram 6, same spelling rules as diag-1.js.
+  function resolveGuitarShape(symbol) {
+    const raw = String(symbol || "").trim();
+    const empty = { symbol: raw, shapeKey: "", frets: "" };
+    if (!raw) return empty;
+    const table = typeof abc2svg !== "undefined" && abc2svg.diag && abc2svg.diag.cd6;
+    let t = raw.replace(/<[^>]*>/g, "");
+    const parts = t.match(/([A-G][#♯b♭]?)([^/]*)\/?/);
+    if (parts && parts[2] && typeof abc2svg !== "undefined" && abc2svg.ch_alias) {
+      const aliased = abc2svg.ch_alias[parts[2]];
+      if (aliased != null) t = t.replace(parts[2], aliased);
+    }
+    t = t.replace("/", ".").replace(/\u266f/g, "#").replace(/\u266d/g, "b");
+    const roots = {
+      Bb: "A#", Eb: "D#", Ab: "G#", Db: "C#", Gb: "F#",
+      Cb: "B", Fb: "E", "E#": "F", "B#": "C",
+    };
+    const rootMatch = /^([A-G](?:#|b)?)(.*)$/.exec(t);
+    let spelled = t;
+    if (rootMatch && roots[rootMatch[1]] != null) {
+      spelled = roots[rootMatch[1]] + rootMatch[2];
+    }
+    spelled = spelled.replace(/m\+7/g, "m(maj7)");
+    if (!table) return { symbol: raw, shapeKey: spelled, frets: "" };
+    if (table[spelled]) return { symbol: raw, shapeKey: spelled, frets: table[spelled] };
+    const root = spelled.split(".")[0];
+    if (root && table[root]) return { symbol: raw, shapeKey: root, frets: table[root] };
+    return { symbol: raw, shapeKey: "", frets: "" };
+  }
+
+  function guitarDiagramSvg(frets) {
+    const n = 6;
+    const d = String(frets || "").split(" ");
+    if (d.length < 3) return "";
+    const x0 = 2 - 2 * n;
+    let dc = '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24h20m0 6h-20m0 6h20m0 6h-20m0 6h20"/>'
+      + '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24v24m4 0v-24m4 0v24m4 0v-24m4 0v24m4 0v-24"/>';
+    const l = d[1].split(",");
+    if (!l[0] || l[0].slice(-1) == l[1]) {
+      dc += '<path stroke="currentColor" fill="none" stroke-width="1.6" d="M-10.2 -24.5h20.4"/>';
+    }
+    if (l[0]) {
+      dc += '<text x="' + (x0 - 10) + '" y="' + ((l[1] || 1) * 6 - 25)
+        + '" font-size="7" font-style="italic" fill="currentColor">' + l[0] + "</text>";
+    }
+    dc += '<text x="-12,-8,-4,0,4,8" y="-26" font-size="6" fill="currentColor">'
+      + d[2].replace(/[y0]/g, "\u00a0") + "</text>";
+    for (let i = 0; i < n; i++) {
+      const f = d[0][i];
+      if (f && f !== "x" && f !== "0") {
+        dc += '<circle fill="currentColor" cx="' + (i * 4 + x0) + '" cy="' + (f * 6 - 27) + '" r="1.5"/>';
+      }
+    }
+    if (d[3]) {
+      const barre = d[3].match(/barre=(\d)-(\d)/);
+      if (barre) {
+        dc += '<path stroke="currentColor" fill="none" stroke-width="1.4" d="M'
+          + ((n - Number(barre[1])) * 4 + x0 - 2) + " -21h"
+          + ((Number(barre[1]) - Number(barre[2])) * 4 + 4) + '"/>';
+      }
+    }
+    return '<svg class="yue-jp-lead-diag" viewBox="-22 -36 44 44" width="56" height="56" aria-hidden="true">'
+      + dc + "</svg>";
+  }
+
+  function rememberChord(order, seen, symbol) {
+    const name = String(symbol || "").trim();
+    if (!name || !spellChord(name) || seen.has(name)) return;
+    seen.add(name);
+    order.push(resolveGuitarShape(name));
+  }
+
+  function leadLyricCells(events) {
+    const cells = [];
+    let pending = "";
+    for (const ev of events) {
+      if (ev.chord) pending = ev.chord;
+      if (ev.kind !== "note") continue;
+      if (!lyricIsDrawn(ev.lyric)) continue;
+      cells.push({ text: displayLyricToken(ev.lyric), chord: pending || "" });
+      pending = "";
+    }
+    return cells;
+  }
+
+  function leadBeatCells(events, beat, perBar) {
+    if (!beat || !perBar) return [];
+    const bars = layoutBars(events);
+    const cells = [];
+    for (let b = 0; b < bars.length; b++) {
+      if (b) cells.push({ text: "|", chord: "", bar: true });
+      let units = 0;
+      const onBeat = {};
+      for (const ev of bars[b]) {
+        if (ev.chord) {
+          const at = Math.floor(units / beat);
+          if (onBeat[at] == null) onBeat[at] = ev.chord;
+        }
+        units += ev.units;
+      }
+      const beats = Math.max(1, Math.round((units || perBar) / beat));
+      for (let i = 0; i < beats; i++) {
+        cells.push({ text: "-", chord: onBeat[i] || "", bar: false });
+      }
+    }
+    return cells;
+  }
+
+  /**
+   * Lyrics + chords only: sections from % comments, syllable or beat rows,
+   * and guitar shapes for the chords that appear (order of first use).
+   */
+  function leadSheet(abc, fallbackTitle) {
+    const songTitle = fallbackTitle != null ? String(fallbackTitle).trim() : (ui.songTitle || "");
+    const walked = walkBody(abc);
+    const header = walked.header || parseHeader(String(abc || "").split(/\r?\n/));
+    const empty = {
+      error: walked.error || null,
+      title: displayTitle(abc, songTitle),
+      meter: header.meter[0] + "/" + header.meter[1],
+      bpm: header.bpm,
+      keyLabel: jianpuKeyLabel(header.key),
+      chords: [],
+      sections: [],
+    };
+    if (walked.error) return empty;
+    const beat = quarterUnits(header.lDen);
+    const perBar = perBarUnits(header.meter, header.lDen);
+    if (!beat || !perBar) {
+      empty.error = m("jpErrBadUnit");
+      return empty;
+    }
+    const chordOrder = [];
+    const chordSeen = new Set();
+    const sections = [];
+    let current = { label: "", lines: [] };
+    function flush() {
+      if (current.lines.length || current.label) sections.push(current);
+      current = { label: "", lines: [] };
+    }
+    for (const item of walked.items) {
+      if (item.type === "comment") {
+        const label = String(item.text || "").replace(/^%\s*/, "").trim();
+        if (!current.lines.length) current.label = label;
+        else {
+          flush();
+          current.label = label;
+        }
+        continue;
+      }
+      if (item.voice !== "Vocal") continue;
+      for (const ev of item.events) {
+        if (ev.chord) rememberChord(chordOrder, chordSeen, ev.chord);
+      }
+      const lyric = formatLyric(item.events);
+      if (lyric.line) {
+        const cells = leadLyricCells(item.events);
+        if (cells.length) current.lines.push({ kind: "lyrics", cells: cells });
+      } else {
+        const cells = leadBeatCells(item.events, beat, perBar);
+        if (cells.length) current.lines.push({ kind: "beats", cells: cells });
+      }
+    }
+    flush();
+    return {
+      error: null,
+      title: displayTitle(abc, songTitle),
+      meter: header.meter[0] + "/" + header.meter[1],
+      bpm: header.bpm,
+      keyLabel: jianpuKeyLabel(header.key),
+      chords: chordOrder,
+      sections: sections,
+    };
+  }
+
   function scanTextTokens(line) {
     const items = [];
     let i = 0;
@@ -2698,6 +2894,8 @@
     sourceAnchorKey: "",
     sourceScrollShown: null,
     sourceScrollAt: 0,
+    view: "jianpu",
+    songTitle: "",
   };
 
   function applyTextWidth(px, persist) {
@@ -2908,6 +3106,32 @@
       "text.fj.yue-jp-mismatch{fill:#d9480f;}",
       "text.fj.yue-play{fill:#0b7285;}",
       "line.yue-playhead{stroke:#e03131;stroke-width:2;pointer-events:none;}",
+      ".yue-jp-lead{color:#18181b;max-width:920px;margin:0 auto;padding:8px 4px 32px;",
+      "font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;}",
+      "html.dark .yue-jp-lead{color:#fafafa;}",
+      ".yue-jp-lead-title{font-size:28px;font-weight:700;margin:0 0 8px;}",
+      ".yue-jp-lead-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 16px;",
+      "padding:10px 12px;border:1px solid #e4e4e7;border-radius:10px;font-size:13px;}",
+      "html.dark .yue-jp-lead-meta{border-color:rgba(255,255,255,.12);}",
+      ".yue-jp-lead-meta b{font-weight:650;margin-right:6px;opacity:.7;}",
+      ".yue-jp-lead-diags{display:flex;flex-wrap:wrap;gap:14px 18px;margin:0 0 20px;}",
+      ".yue-jp-lead-chord{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px;}",
+      ".yue-jp-lead-chord-name{font-size:13px;font-weight:650;}",
+      ".yue-jp-lead-diag{display:block;color:#18181b;}",
+      "html.dark .yue-jp-lead-diag{color:#fafafa;}",
+      ".yue-jp-lead-sec{margin:0 0 14px;}",
+      ".yue-jp-lead-sec-h{margin:0 0 10px;padding:6px 12px;border-radius:6px;",
+      "background:#e4e4e7;font-size:14px;font-weight:650;}",
+      "html.dark .yue-jp-lead-sec-h{background:#3f3f46;}",
+      ".yue-jp-lead-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:0;margin:0 0 12px;}",
+      ".yue-jp-lead-cell{display:flex;flex-direction:column;align-items:center;",
+      "min-width:1.2em;padding:0 1px;}",
+      ".yue-jp-lead-cell.bar{min-width:.6em;padding:0 4px;opacity:.45;}",
+      ".yue-jp-lead-ch{min-height:1.15em;font-size:13px;font-weight:700;color:#c22525;",
+      "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.15;}",
+      "html.dark .yue-jp-lead-ch{color:#fb7185;}",
+      ".yue-jp-lead-ly{min-height:1.35em;white-space:pre;}",
+      ".yue-jp-bar button.lead-label{padding:6px 10px;font-size:13px;}",
     ].join("");
     document.head.appendChild(style);
     const root = document.createElement("div");
@@ -2920,6 +3144,8 @@
       '<span class="yue-jp-meta"></span>',
       '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_OFF_ICON + "</button>",
       '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
+      '<button type="button" class="lead-label" data-act="lead" data-i18n="jpLead" data-i18n-aria="jpLead" data-i18n-title="jpLead"></button>',
+      '<button type="button" class="icon" data-act="print" data-i18n-aria="jpPdf" data-i18n-title="jpPdfHint">' + PRINT_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="midi" title="MIDI" aria-label="MIDI" hidden>' + MIDI_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="source" data-i18n-aria="jpSource" data-i18n-title="jpSource" hidden>' + SOURCE_ICON + "</button>",
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
@@ -3002,6 +3228,8 @@
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
       else if (act === "diagram") cycleDiagram();
+      else if (act === "lead") openLeadWindow();
+      else if (act === "print") printJianpu();
       else if (act === "text") setTextVisible(ui.textVisible === false);
       else if (act === "play") togglePlay();
       else if (act === "stop") stopPlayback();
@@ -3073,6 +3301,217 @@
     setPlayLabel(ui.playing ? "pause" : "play");
     syncDiagram();
     syncTextVisible();
+    syncLeadButton();
+  }
+
+  function syncLeadButton() {
+    const button = ui.root && ui.root.querySelector("[data-act='lead']");
+    if (!button) return;
+    button.classList.remove("on");
+    button.removeAttribute("aria-pressed");
+    button.textContent = m("jpLead");
+    button.title = m("jpLead");
+    button.setAttribute("aria-label", m("jpLead"));
+    button.setAttribute("data-i18n", "jpLead");
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? "" : text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function leadSheetBodyHtml(sheet) {
+    let html = '<div class="yue-jp-lead">';
+    if (sheet.title) html += '<h3 class="yue-jp-lead-title">' + escapeHtml(sheet.title) + "</h3>";
+    html += '<div class="yue-jp-lead-meta">'
+      + "<div><b>" + escapeHtml(m("jpLeadMeter")) + "</b>" + escapeHtml(sheet.meter) + "</div>"
+      + "<div><b>" + escapeHtml(m("jpLeadTempo")) + "</b>" + escapeHtml(String(sheet.bpm)) + "</div>"
+      + "<div><b>" + escapeHtml(m("jpLeadKey")) + "</b>" + escapeHtml(sheet.keyLabel) + "</div>"
+      + "</div>";
+    if (sheet.chords.length) {
+      html += '<div class="yue-jp-lead-diags">';
+      for (const chord of sheet.chords) {
+        html += '<div class="yue-jp-lead-chord"><div class="yue-jp-lead-chord-name">'
+          + escapeHtml(chord.symbol) + "</div>";
+        const diag = guitarDiagramSvg(chord.frets);
+        html += diag || '<div class="yue-jp-lead-diag" style="height:56px"></div>';
+        html += "</div>";
+      }
+      html += "</div>";
+    }
+    for (const section of sheet.sections) {
+      html += '<section class="yue-jp-lead-sec">';
+      if (section.label) {
+        html += '<div class="yue-jp-lead-sec-h">' + escapeHtml(section.label) + "</div>";
+      }
+      for (const line of section.lines) {
+        html += '<div class="yue-jp-lead-row">';
+        for (const cell of line.cells) {
+          html += '<div class="yue-jp-lead-cell' + (cell.bar ? " bar" : "") + '">'
+            + '<div class="yue-jp-lead-ch">' + escapeHtml(cell.chord || "\u00a0") + "</div>"
+            + '<div class="yue-jp-lead-ly">' + escapeHtml(cell.text || "") + "</div>"
+            + "</div>";
+        }
+        html += "</div>";
+      }
+      html += "</section>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  function leadSheetDocument(sheet) {
+    const title = escapeHtml(sheet.title || m("jpLead"));
+    const css = [
+      "html,body{margin:0;padding:0;background:#fff;color:#18181b;}",
+      "body{padding:24px 28px 48px;}",
+      ".yue-jp-lead{color:#18181b;max-width:920px;margin:0 auto;",
+      "font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;}",
+      ".yue-jp-lead-title{font-size:28px;font-weight:700;margin:0 0 8px;}",
+      ".yue-jp-lead-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin:0 0 16px;",
+      "padding:10px 12px;border:1px solid #e4e4e7;border-radius:10px;font-size:13px;}",
+      ".yue-jp-lead-meta b{font-weight:650;margin-right:6px;opacity:.7;}",
+      ".yue-jp-lead-diags{display:flex;flex-wrap:wrap;gap:14px 18px;margin:0 0 20px;}",
+      ".yue-jp-lead-chord{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:56px;}",
+      ".yue-jp-lead-chord-name{font-size:13px;font-weight:650;}",
+      ".yue-jp-lead-diag{display:block;color:#18181b;}",
+      ".yue-jp-lead-sec{margin:0 0 14px;}",
+      ".yue-jp-lead-sec-h{margin:0 0 10px;padding:6px 12px;border-radius:6px;",
+      "background:#e4e4e7;font-size:14px;font-weight:650;}",
+      ".yue-jp-lead-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:0;margin:0 0 12px;}",
+      ".yue-jp-lead-cell{display:flex;flex-direction:column;align-items:center;",
+      "min-width:1.2em;padding:0 1px;}",
+      ".yue-jp-lead-cell.bar{min-width:.6em;padding:0 4px;opacity:.45;}",
+      ".yue-jp-lead-ch{min-height:1.15em;font-size:13px;font-weight:700;color:#c22525;",
+      "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;line-height:1.15;}",
+      ".yue-jp-lead-ly{min-height:1.35em;white-space:pre;color:#18181b;}",
+    ].join("");
+    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>"
+      + title + "</title><style>" + css + "</style></head><body>"
+      + leadSheetBodyHtml(sheet) + "</body></html>";
+  }
+
+  function openLeadWindow() {
+    const sheet = leadSheet(ui.abc);
+    if (sheet.error) {
+      setStatus(m("jpLeadFail"));
+      return;
+    }
+    const html = leadSheetDocument(sheet);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "yue-jianpu-lead");
+    if (!win) {
+      URL.revokeObjectURL(url);
+      setStatus(m("jpLeadPopup"));
+      return;
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function jianpuSvgParts(abc, diagram) {
+    const buf = [];
+    const renderer = new abc2svg.Abc({
+      img_out: (svg) => buf.push(fitDiagramSvg(svg)),
+      errbld: () => {},
+      errmsg: () => {},
+      read_file: () => "",
+    });
+    if (typeof abc2svg.diag !== "undefined" && abc2svg.diag.set_hooks) {
+      abc2svg.diag.set_hooks(renderer);
+    }
+    renderer.tosvg("jianpu", previewAbc(abc, diagram));
+    return buf.filter(Boolean);
+  }
+
+  // Rasterized SVG blobs ignore the page stylesheet; music + lyric fonts live there.
+  const CJK_PDF = '"Yu Gothic UI","Microsoft YaHei","Malgun Gothic",sans-serif';
+
+  function rewriteCjkFonts(text) {
+    return String(text || "")
+      .replace(/\btext,\s*serif\b/g, CJK_PDF)
+      .replace(/\btext,\s*sans-serif\b/g, CJK_PDF)
+      .replace(/(\bfont:\s*[\d.]+px\s+)sans-serif\b/g, "$1" + CJK_PDF);
+  }
+
+  function pdfFontCss() {
+    const sheet = typeof abc2svg !== "undefined" && abc2svg.sheet;
+    if (!sheet || !sheet.cssRules) return "";
+    const parts = [];
+    for (let i = 0; i < sheet.cssRules.length; i++) {
+      const rule = sheet.cssRules[i];
+      if (rule && rule.cssText) parts.push(rule.cssText);
+    }
+    return rewriteCjkFonts(parts.join("\n"));
+  }
+
+  function embedPdfFonts(svgText) {
+    const css = pdfFontCss();
+    let out = String(svgText || "");
+    if (css) {
+      out = out.replace(/<svg\b([^>]*)>/, (tag, attrs) =>
+        "<svg" + attrs + '><style type="text/css"><![CDATA[\n' + css + "\n]]></style>");
+    }
+    return rewriteCjkFonts(out);
+  }
+
+  function printJianpu() {
+    ensureJianpu().then((ok) => {
+      if (!ok) {
+        setStatus(m("jpModuleMissing"));
+        return;
+      }
+      try {
+        const svgs = jianpuSvgParts(ui.abc, currentDiagram()).map(embedPdfFonts);
+        if (!svgs.length) {
+          setStatus(m("jpEmpty"));
+          return;
+        }
+        const title = escapeHtml(displayTitle(ui.abc, ui.songTitle) || m("jpPdf"));
+        const css = [
+          "@page{size:A4;margin:12mm;}",
+          "html,body{margin:0;padding:0;background:#fff;color:#18181b;}",
+          "body{padding:0;}",
+          ".page{max-width:100%;}",
+          "svg{display:block;width:100%;height:auto;margin:0 0 8mm;break-inside:avoid;page-break-inside:avoid;}",
+        ].join("");
+        const html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>"
+          + title + "</title><style>" + css + "</style></head><body><div class=\"page\">"
+          + svgs.join("") + "</div></body></html>";
+        const frame = document.createElement("iframe");
+        frame.setAttribute("aria-hidden", "true");
+        frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+        document.body.appendChild(frame);
+        const doc = frame.contentDocument;
+        const win = frame.contentWindow;
+        if (!doc || !win) {
+          frame.remove();
+          setStatus(m("jpPdfFail"));
+          return;
+        }
+        doc.open();
+        doc.write(html);
+        doc.close();
+        const cleanup = () => {
+          setTimeout(() => frame.remove(), 1000);
+        };
+        win.addEventListener("afterprint", cleanup, { once: true });
+        setTimeout(() => {
+          try {
+            win.focus();
+            win.print();
+          } catch (err) {
+            cleanup();
+            setStatus(String((err && err.message) || err || m("jpPdfFail")));
+          }
+        }, 50);
+      } catch (err) {
+        setStatus(String((err && err.message) || err || m("jpPdfFail")));
+      }
+    });
   }
 
   function setStatus(text) {
@@ -3791,8 +4230,10 @@
     ui.marks = playMarks(ui.abc);
     ui.playhead = null;
     ui.playKey = "";
+    syncLeadButton();
     const info = inspectScore(ui.abc);
-    ui.meta.textContent = info.error ? "" : info.keyLabel + "  ·  ♩=" + info.bpm;
+    const title = displayTitle(ui.abc, ui.songTitle);
+    ui.meta.textContent = info.error ? "" : (title ? title + "  ·  " : "") + info.keyLabel + "  ·  ♩=" + info.bpm;
     if (typeof abc2svg === "undefined" || !abc2svg.Abc || !abc2svg.jianpu) {
       ui.paper.innerHTML = '<p>' + m('jpModuleMissing') + '</p>';
       ui.scoreSvg = "";
@@ -4653,7 +5094,9 @@
     stopSaveWatch();
     ui.saveButton = options && options.saveButton || null;
     ui.saveNote = options && options.saveNote || null;
+    ui.songTitle = options && options.title ? String(options.title).trim() : "";
     ui.savedNote = false;
+    ui.view = "jianpu";
     attachSource(audioFile);
     ui.transport = playbackTransport(!!ui.audioUrl, "source");
     syncTransport();
@@ -4675,6 +5118,7 @@
       ui.root.hidden = false;
       ui.textVisible = readSavedTextVisible();
       syncTextVisible();
+      syncLeadButton();
       if (ui.textVisible !== false) applyTextWidth(readSavedTextWidth(), false);
       if (ui.diagram) {
         ui.diagram.setAttribute("data-diagram", readSavedDiagram());
@@ -4728,6 +5172,14 @@
     commandOfKey: commandOfKey,
     formatJianpuText: formatJianpuText,
     buildJianpuText: buildJianpuText,
+    leadSheet: leadSheet,
+    leadSheetDocument: leadSheetDocument,
+    embedPdfFonts: embedPdfFonts,
+    rewriteCjkFonts: rewriteCjkFonts,
+    parseTitle: parseTitle,
+    displayTitle: displayTitle,
+    withDisplayTitle: withDisplayTitle,
+    jianpuSvgParts: jianpuSvgParts,
     parseJianpuText: parseJianpuText,
     textMarkFor: textMarkFor,
     textSpanFor: textSpanFor,

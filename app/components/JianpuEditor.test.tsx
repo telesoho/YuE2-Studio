@@ -12,6 +12,27 @@ const require = createRequire(import.meta.url);
 require(path.join(here, '../public/score/piano.js'));
 require(path.join(here, '../public/score/score_edit.js'));
 
+type LeadSheet = {
+  error: string | null;
+  title: string;
+  sections: Array<{
+    label: string;
+    lines: Array<{ kind: string; cells: Array<{ text: string; chord: string; bar?: boolean }> }>;
+  }>;
+  chords: Array<{ symbol: string }>;
+};
+
+const editor = (globalThis as {
+  yueScoreEditor?: {
+    leadSheet: (abc: string, fallbackTitle?: string) => LeadSheet;
+    leadSheetDocument: (sheet: LeadSheet) => string;
+    rewriteCjkFonts: (text: string) => string;
+    embedPdfFonts: (svg: string) => string;
+    displayTitle: (abc: string, fallback?: string) => string;
+    withDisplayTitle: (abc: string, fallback?: string) => string;
+  };
+}).yueScoreEditor!;
+
 const ABC = `X:1
 T:
 M:4/4
@@ -19,6 +40,27 @@ L:1/16
 Q:1/4=120
 K:C
 C4D4E4F4|`;
+
+const LEAD_ABC = `X:1
+T:知了
+M:4/4
+L:1/16
+Q:1/4=72
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+% 前奏
+V: Vocal
+"Am"z4"G"z4"C"z4"F"z4|
+V: Ins
+Z|
+% 主歌
+V: Vocal
+"C"C4D4E4"Em7"F4|
+w: 知 了 夏 天
+V: Ins
+Z|
+`;
 
 describe('JianpuEditor', () => {
   it('opens the score editor under StrictMode', async () => {
@@ -42,15 +84,19 @@ describe('JianpuEditor', () => {
           </StrictMode>,
         );
       });
-      const editor = document.querySelector('.yue-jp-editor');
-      expect(editor).toBeInstanceOf(HTMLElement);
-      expect((editor as HTMLElement).hidden).toBe(false);
+      const rootEl = document.querySelector('.yue-jp-editor');
+      expect(rootEl).toBeInstanceOf(HTMLElement);
+      expect((rootEl as HTMLElement).hidden).toBe(false);
       expect(document.querySelector('.yue-jp-editor h2')?.textContent).toBe('Edit jianpu');
       const cancel = document.querySelector('.yue-jp-editor [data-act="cancel"]');
       expect(cancel).toBeInstanceOf(HTMLButtonElement);
       expect(cancel?.querySelector('svg')).toBeTruthy();
       expect(cancel?.textContent?.trim()).toBe('');
       expect(cancel?.getAttribute('title')).toBe('Cancel');
+      const printBtn = document.querySelector('.yue-jp-editor [data-act="print"]');
+      expect(printBtn).toBeInstanceOf(HTMLButtonElement);
+      expect(printBtn?.getAttribute('title')).toBe('Print the jianpu (A4)');
+      expect(document.querySelector('.yue-jp-editor [data-act="lead"]')?.textContent).toBe('Lead sheet');
       const diagram = document.querySelector('.yue-jp-editor [data-act="diagram"]');
       expect(diagram).toBeInstanceOf(HTMLButtonElement);
       expect(diagram?.getAttribute('data-diagram')).toBe('off');
@@ -71,5 +117,66 @@ describe('JianpuEditor', () => {
       document.querySelector('.yue-jp-editor')?.remove();
       globals.abc2svg = previous;
     }
+  });
+
+  it('puts rest-line chords on beats and lyric chords on syllables', () => {
+    const sheet = editor.leadSheet(LEAD_ABC);
+    expect(sheet.error).toBeFalsy();
+    expect(sheet.chords.map(c => c.symbol)).toEqual(['Am', 'G', 'C', 'F', 'Em7']);
+    expect(sheet.sections.map(s => s.label)).toEqual(['前奏', '主歌']);
+    const intro = sheet.sections[0].lines[0];
+    expect(intro.kind).toBe('beats');
+    const beatCells = intro.cells.filter(c => !c.bar);
+    expect(beatCells.map(c => c.text)).toEqual(['-', '-', '-', '-']);
+    expect(beatCells.map(c => c.chord)).toEqual(['Am', 'G', 'C', 'F']);
+    const verse = sheet.sections[1].lines[0];
+    expect(verse.kind).toBe('lyrics');
+    expect(verse.cells.map(c => c.text)).toEqual(['知', '了', '夏', '天']);
+    expect(verse.cells.map(c => c.chord)).toEqual(['C', '', '', 'Em7']);
+    expect(verse.cells.every(c => c.text)).toBe(true);
+  });
+
+  it('uses the library title when T: is blank, and keeps an existing T:', () => {
+    const blank = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+C4D4E4F4|
+V: Ins
+Z|
+`;
+    expect(blank).toMatch(/^T:\s*$/m);
+    expect(editor.displayTitle(blank, 'さよならの夏')).toBe('さよならの夏');
+    expect(editor.withDisplayTitle(blank, 'さよならの夏')).toMatch(/^T:さよならの夏$/m);
+    expect(editor.withDisplayTitle(blank, 'さよならの夏')).not.toMatch(/^T:\s*$/m);
+    expect(editor.leadSheet(blank, 'さよならの夏').title).toBe('さよならの夏');
+    expect(editor.leadSheetDocument(editor.leadSheet(blank, 'さよならの夏'))).toContain('さよならの夏');
+    expect(editor.displayTitle(LEAD_ABC, 'other')).toBe('知了');
+    expect(editor.withDisplayTitle(LEAD_ABC, 'other')).toMatch(/^T:知了$/m);
+    expect(editor.leadSheet(LEAD_ABC, 'other').title).toBe('知了');
+  });
+
+  it('builds a light lead document with lyric cells', () => {
+    const sheet = editor.leadSheet(LEAD_ABC);
+    const html = editor.leadSheetDocument(sheet);
+    expect(html).toContain('知');
+    expect(html).toContain('夏');
+    expect(html).toContain('.yue-jp-lead-ly{');
+    expect(html).toContain('color:#18181b');
+    expect(html).toContain('background:#fff');
+  });
+
+  it('rewrites CJK font stacks for PDF SVG rasterization', () => {
+    const src = '<svg><style>.f0{font:13px text,serif}.fj{font:15px sans-serif}</style></svg>';
+    const out = editor.rewriteCjkFonts(src);
+    expect(out).toContain('Yu Gothic UI');
+    expect(out).toContain('Microsoft YaHei');
+    expect(out).not.toContain('text,serif');
+    expect(out).not.toMatch(/font:15px sans-serif/);
   });
 });
