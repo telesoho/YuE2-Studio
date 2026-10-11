@@ -45,6 +45,11 @@ describe('JianpuEditor', () => {
       expect(editor).toBeInstanceOf(HTMLElement);
       expect((editor as HTMLElement).hidden).toBe(false);
       expect(document.querySelector('.yue-jp-editor h2')?.textContent).toBe('Edit jianpu');
+      const cancel = document.querySelector('.yue-jp-editor [data-act="cancel"]');
+      expect(cancel).toBeInstanceOf(HTMLButtonElement);
+      expect(cancel?.querySelector('svg')).toBeTruthy();
+      expect(cancel?.textContent?.trim()).toBe('');
+      expect(cancel?.getAttribute('title')).toBe('Cancel');
       expect(closed).toEqual([]);
     } finally {
       await act(async () => {

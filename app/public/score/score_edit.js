@@ -36,6 +36,13 @@
   const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6l8.2-4.8z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h2.6v10H4zm5.4 0H12v10H9.4z"/></svg>';
   const STOP_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4h8v8H4z"/></svg>';
+  const TEXT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h6.2L13 5.3V14.5H3zm6.2 0v3.8H13M5.2 8h5.6M5.2 10.5h5.6M5.2 13h3.5"/></svg>';
+  const DIAGRAM_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v1.2H2.5zm0 4h11v1.2H2.5zm0 4h11v1.2H2.5zM5 2.2v11.6h1.2V2.2zm4.8 0v11.6H11V2.2z"/></svg>';
+  const MIDI_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 1.5v8.1A2.6 2.6 0 1 0 8.6 12V4.8H13V1.5z"/></svg>';
+  const SOURCE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 6h1.8v4H1.8zm3.2-2h1.8v8H5zm3.2-1.5h1.8v11H8.2zm3.2 2.5h1.8v6h-1.8z"/></svg>';
+  const SAVE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8.5L14 5.5V14H2zm2 0v4h6V2M4.5 9.5h7V14h-7z"/></svg>';
+  const DONE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.3 11.6 2.9 8.2l1.4-1.4 2 2 5.5-5.5 1.4 1.4z"/></svg>';
+  const CANCEL_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.1 8 6.7l4.6-4.6 1.3 1.3L9.3 8l4.6 4.6-1.3 1.3L8 9.3l-4.6 4.6-1.3-1.3L6.7 8 2.1 3.4z"/></svg>';
   const STEPS = "CDEFGAB";
   const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const ACC = { "^^": 2, "^": 1, "=": 0, _: -1, __: -2 };
@@ -2559,8 +2566,34 @@
   }
 
   function currentDiagram() {
-    if (ui.diagram) return normalizeDiagram(ui.diagram.value);
+    if (ui.diagram) return normalizeDiagram(ui.diagram.getAttribute("data-diagram"));
     return readSavedDiagram();
+  }
+
+  function diagramChoiceLabel(kind) {
+    if (kind === "guitar") return m("jpDiagramGuitar");
+    if (kind === "ukulele") return m("jpDiagramUkulele");
+    return m("jpDiagramOff");
+  }
+
+  function syncDiagram() {
+    if (!ui.diagram) return;
+    const kind = currentDiagram();
+    ui.diagram.setAttribute("data-diagram", kind);
+    ui.diagram.classList.toggle("on", kind !== DIAGRAM_OFF);
+    const tip = m("jpDiagram") + " · " + diagramChoiceLabel(kind);
+    ui.diagram.title = tip;
+    ui.diagram.setAttribute("aria-label", tip);
+  }
+
+  function cycleDiagram() {
+    const order = [DIAGRAM_OFF, "guitar", "ukulele"];
+    const cur = currentDiagram();
+    const next = order[(Math.max(0, order.indexOf(cur)) + 1) % order.length];
+    if (ui.diagram) ui.diagram.setAttribute("data-diagram", next);
+    writeSavedDiagram(next);
+    syncDiagram();
+    ensureJianpu().then(() => renderScore());
   }
 
   const TEXT_WIDTH_MIN = 220;
@@ -2778,39 +2811,53 @@
     if (ui.root || typeof document === "undefined") return;
     const style = document.createElement("style");
     style.textContent = [
-      ".yue-jp-editor{position:fixed;inset:0;z-index:80;background:rgba(11,13,20,.72);",
-      "display:flex;align-items:stretch;justify-content:center;padding:12px;}",
+      ".yue-jp-editor{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);",
+      "display:flex;align-items:stretch;justify-content:center;padding:12px;",
+      "font-family:Inter,system-ui,Segoe UI,sans-serif;}",
       ".yue-jp-editor[hidden]{display:none;}",
       ".yue-jp-card{width:100%;height:100%;max-height:100%;min-height:0;",
-      "background:#f6e9c8;color:#2a1f12;border-radius:16px;",
+      "background:#fff;color:#18181b;border-radius:16px;",
       "box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;}",
+      "html.dark .yue-jp-card{background:#18181b;color:#fafafa;}",
       ".yue-jp-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;",
-      "background:#1a140e;color:#f6e9c8;}",
+      "background:#fff;color:#18181b;border-bottom:1px solid #e4e4e7;}",
+      "html.dark .yue-jp-bar{background:#18181b;color:#fafafa;border-bottom-color:rgba(255,255,255,.1);}",
       ".yue-jp-bar h2{margin:0 8px 0 0;font-size:16px;font-weight:650;}",
-      ".yue-jp-bar button{font:inherit;cursor:pointer;border:0;border-radius:8px;}",
-      ".yue-jp-bar button{background:#3a2e22;color:#f6e9c8;padding:6px 10px;}",
+      ".yue-jp-bar button,.yue-jp-tools button{",
+      "font:inherit;cursor:pointer;border:1px solid #d4d4d8;border-radius:8px;",
+      "background:transparent;color:inherit;}",
+      "html.dark .yue-jp-bar button,html.dark .yue-jp-tools button{",
+      "border-color:rgba(255,255,255,.15);}",
+      ".yue-jp-bar button{padding:6px 10px;}",
+      ".yue-jp-bar button:hover,.yue-jp-tools button:hover{",
+      "border-color:#f472b6;color:#db2777;}",
+      "html.dark .yue-jp-bar button:hover,html.dark .yue-jp-tools button:hover{color:#f9a8d4;}",
       ".yue-jp-bar button.icon{display:inline-flex;align-items:center;justify-content:center;",
       "width:32px;height:32px;padding:0;}",
       ".yue-jp-bar button.icon svg{width:15px;height:15px;display:block;fill:currentColor;}",
-      ".yue-jp-bar button.on{box-shadow:inset 0 0 0 2px #e85a25;}",
+      ".yue-jp-bar button.on,.yue-jp-tools button.on{",
+      "background:rgba(236,72,153,.15);border-color:#ec4899;color:#db2777;box-shadow:none;}",
+      "html.dark .yue-jp-bar button.on,html.dark .yue-jp-tools button.on{color:#f9a8d4;}",
       ".yue-jp-bar button[hidden]{display:none;}",
-      ".yue-jp-bar button.primary{background:#e85a25;color:#fff;}",
-      ".yue-jp-diagram{display:inline-flex;align-items:center;gap:6px;font-size:13px;}",
-      ".yue-jp-diagram select{font:inherit;border:0;border-radius:8px;background:#3a2e22;",
-      "color:#f6e9c8;padding:6px 8px;cursor:pointer;}",
-      ".yue-jp-meta{opacity:.8;font-size:13px;margin-right:auto;}",
+      ".yue-jp-bar button.primary{border:0;background:linear-gradient(to right,#f97316,#db2777);",
+      "color:#fff;font-weight:700;}",
+      ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
+      ".yue-jp-bar button.primary.on{box-shadow:none;}",
+      ".yue-jp-meta{opacity:.7;font-size:13px;margin-right:auto;}",
       ".yue-jp-tools{display:flex;flex-wrap:wrap;gap:8px 0;align-items:center;",
-      "padding:8px 6px 10px;background:#241910;color:#f6e9c8;border-top:1px solid rgba(246,233,200,.14);}",
+      "padding:8px 6px 10px;background:#fff;color:#18181b;",
+      "border-bottom:1px solid #e4e4e7;}",
+      "html.dark .yue-jp-tools{background:#18181b;color:#fafafa;border-bottom-color:rgba(255,255,255,.1);}",
       ".yue-jp-tools[hidden]{display:none;}",
       ".yue-jp-group{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:0 8px;}",
-      ".yue-jp-group + .yue-jp-group{border-left:1px solid rgba(246,233,200,.22);}",
-      ".yue-jp-tools button{font:inherit;cursor:pointer;border:0;border-radius:8px;",
-      "background:#3a2e22;color:#f6e9c8;padding:4px 8px;min-width:28px;}",
+      ".yue-jp-group + .yue-jp-group{border-left:1px solid #e4e4e7;}",
+      "html.dark .yue-jp-group + .yue-jp-group{border-left-color:rgba(255,255,255,.1);}",
+      ".yue-jp-tools button{padding:4px 8px;min-width:28px;}",
       ".yue-jp-tools button.digit{font-weight:700;min-width:32px;}",
-      ".yue-jp-tools button.on{box-shadow:inset 0 0 0 2px #e03131;color:#fff;}",
-      ".yue-jp-status{min-height:1.4em;padding:8px 14px;color:#8a5a20;font-size:13px;}",
+      ".yue-jp-status{min-height:1.4em;padding:8px 14px;color:#71717a;font-size:13px;}",
       ".yue-jp-body{display:flex;flex:1;min-height:0;min-width:0;}",
-      ".yue-jp-paper{position:relative;overflow:auto;padding:8px 16px 16px;flex:1;min-width:0;min-height:0;}",
+      ".yue-jp-paper{position:relative;overflow:auto;padding:8px 16px 16px;flex:1;min-width:0;min-height:0;",
+      "background:#fff;color:#18181b;}",
       ".yue-jp-text{flex:0 0 420px;width:420px;min-width:0;min-height:0;",
       "display:flex;flex-direction:column;gap:4px;padding:0 12px 12px;",
       "box-sizing:border-box;}",
@@ -2818,25 +2865,30 @@
       ".yue-jp-split{flex:0 0 8px;width:8px;margin:0;padding:0;border:0;cursor:col-resize;",
       "touch-action:none;background:transparent;position:relative;}",
       ".yue-jp-split::before{content:\"\";position:absolute;top:8px;bottom:8px;left:3px;width:2px;",
-      "background:#e0d0b0;border-radius:1px;}",
+      "background:#d4d4d8;border-radius:1px;}",
+      "html.dark .yue-jp-split::before{background:rgba(255,255,255,.15);}",
       ".yue-jp-split:hover::before,.yue-jp-split:focus::before,.yue-jp-split:focus-visible::before,",
-      ".yue-jp-split.dragging::before{background:#e85a25;}",
+      ".yue-jp-split.dragging::before{background:#ec4899;}",
       ".yue-jp-split:focus{outline:none;}",
       ".yue-jp-editor.yue-jp-dragging,.yue-jp-editor.yue-jp-dragging *{cursor:col-resize;user-select:none;}",
       ".yue-jp-text label{font-size:13px;font-weight:650;}",
-      ".yue-jp-check{margin:0;min-height:1.3em;font-size:12px;line-height:1.4;color:#8a5a20;}",
-      ".yue-jp-check.ok{color:#2b6b3a;}",
-      ".yue-jp-check.bad{color:#c22525;}",
+      ".yue-jp-check{margin:0;min-height:1.3em;font-size:12px;line-height:1.4;color:#71717a;}",
+      ".yue-jp-check.ok{color:#059669;}",
+      ".yue-jp-check.bad{color:#e11d48;}",
+      "html.dark .yue-jp-check.ok{color:#34d399;}",
+      "html.dark .yue-jp-check.bad{color:#fb7185;}",
       ".yue-jp-text-frame{position:relative;flex:1;min-width:0;min-height:0;}",
       ".yue-jp-text textarea{box-sizing:border-box;margin:0;width:100%;height:100%;resize:none;",
       "font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;",
-      "padding:8px;border:1px solid #e0d0b0;border-radius:8px;",
+      "padding:8px;border:1px solid #e4e4e7;border-radius:8px;",
       "white-space:pre-wrap;overflow-wrap:break-word;word-wrap:break-word;",
-      "color:#2a1f12;background:#fffaf0;}",
-      ".yue-jp-text textarea::selection{background:rgba(224,49,49,.28);color:#2a1f12;}",
-      ".yue-jp-text textarea:focus{outline:2px solid #e85a25;border-color:transparent;}",
-      ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#8a5a20;}",
-      ".yue-jp-paper svg{max-width:100%;height:auto;user-select:none;-webkit-user-select:none;}",
+      "color:#18181b;background:#fafafa;}",
+      "html.dark .yue-jp-text textarea{border-color:rgba(255,255,255,.1);color:#fafafa;background:#09090b;}",
+      ".yue-jp-text textarea::selection{background:rgba(236,72,153,.28);}",
+      ".yue-jp-text textarea:focus{outline:2px solid #ec4899;border-color:transparent;}",
+      ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#71717a;}",
+      ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
+      "user-select:none;-webkit-user-select:none;}",
       ".yue-jp-paper svg path,.yue-jp-paper svg line{pointer-events:none;}",
       ".yue-sel-box{fill:rgba(224,49,49,.16);stroke:#e03131;pointer-events:none;}",
       "text[data-lyric].yue-sel{fill:#c22525;}",
@@ -2854,21 +2906,16 @@
       '<div class="yue-jp-bar">',
       '<h2 data-i18n="jpTitle"></h2>',
       '<span class="yue-jp-meta"></span>',
-      '<label class="yue-jp-diagram"><span data-i18n="jpDiagram"></span> ',
-      '<select data-act="diagram" data-i18n-aria="jpDiagram">',
-      '<option value="off" data-i18n="jpDiagramOff"></option>',
-      '<option value="guitar" data-i18n="jpDiagramGuitar"></option>',
-      '<option value="ukulele" data-i18n="jpDiagramUkulele"></option>',
-      "</select></label>",
-      '<button type="button" data-act="text" data-i18n="jpTextScore" aria-pressed="true"></button>',
-      '<button type="button" data-act="mode" data-mode="midi" hidden>MIDI</button>',
-      '<button type="button" data-act="mode" data-mode="source" data-i18n="jpSource" hidden></button>',
+      '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_ICON + "</button>",
+      '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
+      '<button type="button" class="icon" data-act="mode" data-mode="midi" title="MIDI" aria-label="MIDI" hidden>' + MIDI_ICON + "</button>",
+      '<button type="button" class="icon" data-act="mode" data-mode="source" data-i18n-aria="jpSource" data-i18n-title="jpSource" hidden>' + SOURCE_ICON + "</button>",
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
       '<button type="button" class="icon" data-act="stop" data-i18n-aria="jpStop" data-i18n-title="jpStop">' + STOP_ICON + "</button>",
       '<span class="yue-jp-clock">0:00</span>',
-      '<button type="button" data-act="save" data-i18n="jpSave"></button>',
-      '<button type="button" data-act="ok" class="primary" data-i18n="jpDone"></button>',
-      '<button type="button" data-act="cancel" data-i18n="jpCancel"></button>',
+      '<button type="button" class="icon" data-act="save" data-i18n-aria="jpSave" data-i18n-title="jpSave">' + SAVE_ICON + "</button>",
+      '<button type="button" class="icon primary" data-act="ok" data-i18n-aria="jpDone" data-i18n-title="jpDone">' + DONE_ICON + "</button>",
+      '<button type="button" class="icon" data-act="cancel" data-i18n-aria="jpCancel" data-i18n-title="jpCancel">' + CANCEL_ICON + "</button>",
       "</div>",
       '<div class="yue-jp-tools" hidden></div>',
       '<div class="yue-jp-status"></div>',
@@ -2904,11 +2951,8 @@
     ui.diagram = root.querySelector("[data-act='diagram']");
     ui.hint.textContent = m('jpHint');
     if (ui.diagram) {
-      ui.diagram.value = readSavedDiagram();
-      ui.diagram.addEventListener("change", () => {
-        writeSavedDiagram(ui.diagram.value);
-        ensureJianpu().then(() => renderScore());
-      });
+      ui.diagram.setAttribute("data-diagram", readSavedDiagram());
+      syncDiagram();
     }
     fillTools(ui.tools);
     ui.text.addEventListener("input", () => {
@@ -2945,6 +2989,7 @@
       const button = ev.target.closest && ev.target.closest("button");
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
+      else if (act === "diagram") cycleDiagram();
       else if (act === "text") setTextVisible(ui.textVisible === false);
       else if (act === "play") togglePlay();
       else if (act === "stop") stopPlayback();
@@ -3014,6 +3059,7 @@
       fillTools(ui.tools);
     }
     setPlayLabel(ui.playing ? "pause" : "play");
+    syncDiagram();
     syncTextVisible();
   }
 
@@ -4570,7 +4616,10 @@
       ui.textVisible = readSavedTextVisible();
       syncTextVisible();
       if (ui.textVisible !== false) applyTextWidth(readSavedTextWidth(), false);
-      if (ui.diagram) ui.diagram.value = readSavedDiagram();
+      if (ui.diagram) {
+        ui.diagram.setAttribute("data-diagram", readSavedDiagram());
+        syncDiagram();
+      }
       ensureJianpu().then((ok) => {
         if (ui.resolve !== resolve) return;
         if (!ok) {
