@@ -2517,6 +2517,7 @@
 
   const TEXT_WIDTH_KEY = "yue-jp-text-width";
   const TEXT_WIDTH_DEFAULT = 420;
+  const TEXT_VISIBLE_KEY = "yue-jp-text-visible";
   const DIAGRAM_KEY = "yue-jp-chord-diagram";
 
   function readSavedDiagram() {
@@ -2532,6 +2533,26 @@
     try {
       if (typeof localStorage === "undefined") return;
       localStorage.setItem(DIAGRAM_KEY, normalizeDiagram(kind));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  function readSavedTextVisible() {
+    try {
+      if (typeof localStorage === "undefined") return true;
+      const raw = localStorage.getItem(TEXT_VISIBLE_KEY);
+      if (raw == null) return true;
+      return raw !== "0" && raw !== "false";
+    } catch (_err) {
+      return true;
+    }
+  }
+
+  function writeSavedTextVisible(show) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(TEXT_VISIBLE_KEY, show ? "1" : "0");
     } catch (_err) {
       /* private mode and file pages can reject storage */
     }
@@ -2629,10 +2650,14 @@
     savePoll: 0,
     saveWatch: 0,
     savedNote: false,
+    textVisible: true,
+    scrollRaf: 0,
+    scrollGoal: null,
   };
 
   function applyTextWidth(px, persist) {
     if (!ui.textPane || !ui.body) return 0;
+    if (ui.textVisible === false) return 0;
     const bodyWidth = ui.body.getBoundingClientRect().width;
     if (bodyWidth < 1) return 0;
     const width = clampTextWidth(bodyWidth, px);
@@ -2723,11 +2748,30 @@
     });
     if (typeof ResizeObserver !== "undefined" && ui.body) {
       const observer = new ResizeObserver(() => {
-        if (!ui.root || ui.root.hidden || !ui.textPane) return;
+        if (!ui.root || ui.root.hidden || !ui.textPane || ui.textVisible === false) return;
         applyTextWidth(ui.textPane.getBoundingClientRect().width, false);
       });
       observer.observe(ui.body);
     }
+  }
+
+  function syncTextVisible() {
+    const show = ui.textVisible !== false;
+    if (ui.textPane) ui.textPane.hidden = !show;
+    if (ui.split) ui.split.hidden = !show;
+    if (!ui.root) return;
+    const button = ui.root.querySelector("[data-act='text']");
+    if (!button) return;
+    button.classList.toggle("on", show);
+    button.setAttribute("aria-pressed", show ? "true" : "false");
+  }
+
+  function setTextVisible(show) {
+    ui.textVisible = !!show;
+    writeSavedTextVisible(ui.textVisible);
+    syncTextVisible();
+    if (ui.textVisible) applyTextWidth(readSavedTextWidth(), false);
+    else scheduleScoreLayout();
   }
 
   function ensureDom() {
@@ -2770,6 +2814,7 @@
       ".yue-jp-text{flex:0 0 420px;width:420px;min-width:0;min-height:0;",
       "display:flex;flex-direction:column;gap:4px;padding:0 12px 12px;",
       "box-sizing:border-box;}",
+      ".yue-jp-text[hidden],.yue-jp-split[hidden]{display:none;}",
       ".yue-jp-split{flex:0 0 8px;width:8px;margin:0;padding:0;border:0;cursor:col-resize;",
       "touch-action:none;background:transparent;position:relative;}",
       ".yue-jp-split::before{content:\"\";position:absolute;top:8px;bottom:8px;left:3px;width:2px;",
@@ -2815,6 +2860,7 @@
       '<option value="guitar" data-i18n="jpDiagramGuitar"></option>',
       '<option value="ukulele" data-i18n="jpDiagramUkulele"></option>',
       "</select></label>",
+      '<button type="button" data-act="text" data-i18n="jpTextScore" aria-pressed="true"></button>',
       '<button type="button" data-act="mode" data-mode="midi" hidden>MIDI</button>',
       '<button type="button" data-act="mode" data-mode="source" data-i18n="jpSource" hidden></button>',
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
@@ -2899,6 +2945,7 @@
       const button = ev.target.closest && ev.target.closest("button");
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
+      else if (act === "text") setTextVisible(ui.textVisible === false);
       else if (act === "play") togglePlay();
       else if (act === "stop") stopPlayback();
       else if (act === "save") saveEdit();
@@ -2967,6 +3014,7 @@
       fillTools(ui.tools);
     }
     setPlayLabel(ui.playing ? "pause" : "play");
+    syncTextVisible();
   }
 
   function setStatus(text) {
@@ -3466,6 +3514,66 @@
     const top = centerScroll(host.scrollTop, frame.top, frame.height, box.top, box.height, slack);
     if (top != null) easeScroll(host, top);
     nudgeAcross(host, box, frame);
+  }
+
+  // Content y of the first vocal glyph on each system, with that glyph's score clock.
+  const SOURCE_ROW_Y_TOL = 18;
+
+  function sourceRowAnchors(paper, marks) {
+    if (!paper || !marks || !marks.length || !paper.getBoundingClientRect) return [];
+    const paperBox = paper.getBoundingClientRect();
+    const scrollTop = paper.scrollTop || 0;
+    const items = [];
+    for (const mark of marks) {
+      if (!mark || (mark.voice && mark.voice !== "Vocal")) continue;
+      const node = headFor(mark);
+      if (!node || !node.getBoundingClientRect) continue;
+      const box = node.getBoundingClientRect();
+      items.push({
+        t: mark.start,
+        y: box.top - paperBox.top + scrollTop,
+      });
+    }
+    items.sort((a, b) => a.t - b.t || a.y - b.y);
+    const rows = [];
+    for (const item of items) {
+      const last = rows[rows.length - 1];
+      if (last && Math.abs(item.y - last.y) < SOURCE_ROW_Y_TOL) continue;
+      rows.push({ t: item.t, y: item.y });
+    }
+    return rows;
+  }
+
+  // Keep the interpolated row y near 35% down the paper. Empty anchors → 0.
+  function sourceScrollTop(anchors, now, viewHeight, maxScroll) {
+    if (!anchors || !anchors.length) return 0;
+    const at = Math.max(0, Number(now) || 0);
+    const view = Math.max(0, Number(viewHeight) || 0);
+    const max = Math.max(0, Number(maxScroll) || 0);
+    let y;
+    if (at <= anchors[0].t) y = anchors[0].y;
+    else if (at >= anchors[anchors.length - 1].t) y = anchors[anchors.length - 1].y;
+    else {
+      let i = 0;
+      while (i + 1 < anchors.length && anchors[i + 1].t <= at) i += 1;
+      const a = anchors[i];
+      const b = anchors[i + 1];
+      const span = b.t - a.t;
+      const p = span > 1e-6 ? (at - a.t) / span : 0;
+      y = a.y + p * (b.y - a.y);
+    }
+    return Math.max(0, Math.min(max, y - view * 0.35));
+  }
+
+  function followSourceScroll(now) {
+    const host = ui.paper;
+    if (!host) return;
+    stopEaseScroll();
+    const marks = ui.marks && ui.marks.length ? ui.marks : playMarks(ui.abc);
+    ui.marks = marks;
+    const anchors = sourceRowAnchors(host, marks);
+    const maxScroll = Math.max(0, (host.scrollHeight || 0) - (host.clientHeight || 0));
+    host.scrollTop = sourceScrollTop(anchors, now, host.clientHeight || 0, maxScroll);
   }
 
   const ABC2SVG_SRC = "/score/abc2svg/abc2svg-1.js";
@@ -4097,17 +4205,13 @@
         ui.playhead.remove();
         ui.playhead = null;
       }
+      if (followsScore(ui.transport)) followSourceScroll(at);
       const vocal = followMark(marks, at);
       if (!vocal) {
-        clearPlayhead();
+        ui.playKey = "";
         return;
       }
-      const vocalKey = vocal.voice + ":" + vocal.index + ":" + vocal.slice;
-      if (vocalKey === ui.playKey) return;
-      const vocalNode = headFor(vocal);
-      if (!vocalNode) return;
-      ui.playKey = vocalKey;
-      if (followsScore(ui.transport)) centerPlayhead(vocalNode);
+      ui.playKey = vocal.voice + ":" + vocal.index + ":" + vocal.slice;
       return;
     }
     const mark = cursorAt(marks, at);
@@ -4463,7 +4567,9 @@
       setStatus(playHint());
       if (ui.clock) ui.clock.textContent = "0:00";
       ui.root.hidden = false;
-      applyTextWidth(readSavedTextWidth(), false);
+      ui.textVisible = readSavedTextVisible();
+      syncTextVisible();
+      if (ui.textVisible !== false) applyTextWidth(readSavedTextWidth(), false);
       if (ui.diagram) ui.diagram.value = readSavedDiagram();
       ensureJianpu().then((ok) => {
         if (ui.resolve !== resolve) return;
@@ -4519,6 +4625,7 @@
     lyricIndexesInSelection: lyricIndexesInSelection,
     textScrollTarget: textScrollTarget,
     centerScroll: centerScroll,
+    sourceScrollTop: sourceScrollTop,
     compareJianpuNotes: compareJianpuNotes,
     clampTextWidth: clampTextWidth,
     open: open,

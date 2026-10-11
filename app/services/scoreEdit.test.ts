@@ -11,6 +11,12 @@ require(path.join(here, '../public/score/score_edit.js'));
 const editor = (globalThis as { yueScoreEditor?: {
   editScore: (abc: string, command: Record<string, unknown>) => { abc: string; error?: string | null };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
+  sourceScrollTop: (
+    anchors: Array<{ t: number; y: number }>,
+    now: number,
+    viewHeight: number,
+    maxScroll: number,
+  ) => number;
   setStrings?: (next: Record<string, string>) => void;
   open?: (abc: string, audio: string | null, options?: { strings?: Record<string, string> }) => Promise<string | null>;
 } }).yueScoreEditor!;
@@ -54,6 +60,20 @@ describe('vendored jianpu editScore', () => {
     expect(short.ok).toBe(false);
     expect(short.message).toContain('28 个 0');
     expect(short.message).toContain('2 个 0');
+  });
+
+  it('interpolates source scroll between row anchors', () => {
+    expect(editor.sourceScrollTop([], 1, 200, 500)).toBe(0);
+    const anchors = [
+      { t: 0, y: 100 },
+      { t: 10, y: 300 },
+    ];
+    expect(editor.sourceScrollTop(anchors, -1, 200, 500)).toBe(Math.max(0, 100 - 200 * 0.35));
+    expect(editor.sourceScrollTop(anchors, 0, 200, 500)).toBe(Math.max(0, 100 - 200 * 0.35));
+    expect(editor.sourceScrollTop(anchors, 5, 200, 500)).toBe(Math.max(0, 200 - 200 * 0.35));
+    expect(editor.sourceScrollTop(anchors, 10, 200, 500)).toBe(Math.max(0, 300 - 200 * 0.35));
+    expect(editor.sourceScrollTop(anchors, 99, 200, 500)).toBe(Math.max(0, 300 - 200 * 0.35));
+    expect(editor.sourceScrollTop(anchors, 5, 200, 40)).toBe(40);
   });
 
   it('opens with English chrome', async () => {
