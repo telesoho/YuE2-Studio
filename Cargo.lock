@@ -1806,6 +1806,7 @@ dependencies = [
  "unicode-normalization-alignments",
  "uuid",
  "windows 0.58.0",
+ "windows-core 0.58.0",
  "zip",
 ]
 

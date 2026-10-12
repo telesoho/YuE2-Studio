@@ -1,7 +1,6 @@
 //! Windows window capture for 识谱: list sounding windows, record a mix to
 //! PCM16 WAV. Ported from YuE-studio's `capture.py` (silence / listing rules);
-//! recording uses WASAPI loopback of the default render device (play only the
-//! chosen app while capturing).
+//! recording uses WASAPI process loopback of the chosen window's process tree.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -222,7 +221,7 @@ impl Recorder {
             let handle = std::thread::Builder::new()
                 .name("yue-capture".into())
                 .spawn(move || {
-                    match win::record_loopback(&path, &stop_thread, &ready_flag) {
+                    match win::record_loopback(pid, &path, &stop_thread, &ready_flag) {
                         Ok((duration, silent)) => Ok(Recording {
                             path,
                             pid,
@@ -314,25 +313,43 @@ pub fn keep_each_window(targets: Vec<CaptureTarget>) -> Vec<CaptureTarget> {
     targets.into_iter().filter(|target| seen.insert(target.value.clone())).collect()
 }
 
+/// Fields for `AUDIOCLIENT_ACTIVATION_PARAMS` process loopback (Win32 layout).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProcessLoopbackActivation {
+    pub activation_type: i32,
+    pub target_process_id: u32,
+    pub process_loopback_mode: i32,
+}
+
+pub fn process_loopback_activation(pid: u32) -> ProcessLoopbackActivation {
+    ProcessLoopbackActivation {
+        activation_type: 1, // AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK
+        target_process_id: pid,
+        process_loopback_mode: 0, // INCLUDE_TARGET_PROCESS_TREE
+    }
+}
+
 #[cfg(windows)]
 mod win {
     use super::*;
-    use windows::core::GUID;
+    use std::sync::Condvar;
+    use windows::core::{implement, Interface, PROPVARIANT};
     use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM};
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, AUDCLNT_SHAREMODE_SHARED,
+        IActivateAudioInterfaceAsyncOperation, IActivateAudioInterfaceCompletionHandler,
+        IActivateAudioInterfaceCompletionHandler_Impl, IAudioCaptureClient, IAudioClient,
+        WAVEFORMATEX, AUDIOCLIENT_ACTIVATION_PARAMS, AUDIOCLIENT_ACTIVATION_PARAMS_0,
+        AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK, AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS,
+        AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
         AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK,
+        PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE, VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
+        ActivateAudioInterfaceAsync,
     };
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
-    };
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
     };
-
-    // MMDeviceEnumerator — not always re-exported as CLSID_MMDeviceEnumerator.
-    const CLSID_MMDEVICE_ENUMERATOR: GUID = GUID::from_u128(0xbcde0395_e52f_467c_8e3d_c4579291692e);
 
     pub fn list_playing_windows() -> Result<Vec<CaptureTarget>, CaptureError> {
         struct State {
@@ -389,12 +406,149 @@ mod win {
         Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned())
     }
 
-    pub fn record_loopback(path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
-        unsafe { record_loopback_inner(path, stop, ready) }.map_err(|e| CaptureError(e.to_string()))
+    pub fn record_loopback(pid: u32, path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
+        unsafe { record_loopback_inner(pid, path, stop, ready) }
     }
 
-    unsafe fn record_loopback_inner(path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
-        // edition 2024: unsafe ops need an unsafe block even inside unsafe fn
+    struct ActivateState {
+        done: bool,
+        client: Option<IAudioClient>,
+        error: Option<String>,
+    }
+
+    #[implement(IActivateAudioInterfaceCompletionHandler)]
+    struct ActivateHandler {
+        shared: Arc<(Mutex<ActivateState>, Condvar)>,
+    }
+
+    impl IActivateAudioInterfaceCompletionHandler_Impl for ActivateHandler_Impl {
+        fn ActivateCompleted(
+            &self,
+            activateoperation: Option<&IActivateAudioInterfaceAsyncOperation>,
+        ) -> windows::core::Result<()> {
+            let (lock, signal) = &*self.shared;
+            let mut guard = lock.lock().expect("activate");
+            let finish = |guard: &mut ActivateState, client: Option<IAudioClient>, error: Option<String>| {
+                guard.client = client;
+                guard.error = error;
+                guard.done = true;
+            };
+            let Some(op) = activateoperation else {
+                finish(&mut guard, None, Some(r#"{"code":"captureClientFail","detail":"no operation"}"#.into()));
+                signal.notify_all();
+                return Ok(());
+            };
+            let mut hr = windows::core::HRESULT(0);
+            let mut unknown = None;
+            if let Err(err) = unsafe { op.GetActivateResult(&mut hr, &mut unknown) } {
+                finish(&mut guard, None, Some(serde_json::json!({"code":"captureClientFail","detail": err.to_string()}).to_string()));
+                signal.notify_all();
+                return Ok(());
+            }
+            if hr.is_err() {
+                finish(
+                    &mut guard,
+                    None,
+                    Some(serde_json::json!({"code":"captureLoopFail","detail": format!("{hr:?}")}).to_string()),
+                );
+                signal.notify_all();
+                return Ok(());
+            }
+            let Some(unknown) = unknown else {
+                finish(&mut guard, None, Some(r#"{"code":"captureClientFail","detail":"no audio client"}"#.into()));
+                signal.notify_all();
+                return Ok(());
+            };
+            match unknown.cast::<IAudioClient>() {
+                Ok(client) => finish(&mut guard, Some(client), None),
+                Err(err) => finish(
+                    &mut guard,
+                    None,
+                    Some(serde_json::json!({"code":"captureClientFail","detail": err.to_string()}).to_string()),
+                ),
+            }
+            signal.notify_all();
+            Ok(())
+        }
+    }
+
+    unsafe fn open_process_loopback(pid: u32) -> Result<IAudioClient, CaptureError> {
+        unsafe {
+            let fields = process_loopback_activation(pid);
+            let mut activation = AUDIOCLIENT_ACTIVATION_PARAMS {
+                ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
+                Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
+                    ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
+                        TargetProcessId: fields.target_process_id,
+                        ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+                    },
+                },
+            };
+            debug_assert_eq!(fields.activation_type, AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK.0);
+            debug_assert_eq!(fields.process_loopback_mode, PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE.0);
+
+            let mut prop = PROPVARIANT::new();
+            // VT_BLOB pointing at stack activation params — clear vt before Drop.
+            {
+                let inner = &mut *(&mut prop as *mut PROPVARIANT as *mut windows::core::imp::PROPVARIANT);
+                inner.Anonymous.Anonymous.vt = 65; // VT_BLOB
+                inner.Anonymous.Anonymous.Anonymous.blob = windows::core::imp::BLOB {
+                    cbSize: std::mem::size_of_val(&activation) as u32,
+                    pBlobData: (&mut activation as *mut AUDIOCLIENT_ACTIVATION_PARAMS).cast(),
+                };
+            }
+
+            let shared = Arc::new((
+                Mutex::new(ActivateState {
+                    done: false,
+                    client: None,
+                    error: None,
+                }),
+                Condvar::new(),
+            ));
+            let iface: IActivateAudioInterfaceCompletionHandler = ActivateHandler {
+                shared: shared.clone(),
+            }
+            .into();
+            let _op = ActivateAudioInterfaceAsync(
+                VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
+                &IAudioClient::IID,
+                Some(&prop as *const PROPVARIANT),
+                &iface,
+            )
+            .map_err(|e| CaptureError(serde_json::json!({"code":"captureLoopFail","detail": e.to_string()}).to_string()))?;
+
+            // Activation copies the blob; stop PropVariantClear from freeing stack memory.
+            {
+                let inner = &mut *(&mut prop as *mut PROPVARIANT as *mut windows::core::imp::PROPVARIANT);
+                inner.Anonymous.Anonymous.vt = 0;
+            }
+
+            let (lock, signal) = &*shared;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            let mut guard = lock.lock().expect("activate");
+            while !guard.done {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(CaptureError(r#"{"code":"captureDeviceTimeout"}"#.into()));
+                }
+                let (next, timeout) = signal.wait_timeout(guard, remaining).expect("activate wait");
+                guard = next;
+                if timeout.timed_out() && !guard.done {
+                    return Err(CaptureError(r#"{"code":"captureDeviceTimeout"}"#.into()));
+                }
+            }
+            if let Some(error) = guard.error.take() {
+                return Err(CaptureError(error));
+            }
+            guard
+                .client
+                .take()
+                .ok_or_else(|| CaptureError(r#"{"code":"captureClientFail","detail":"empty"}"#.into()))
+        }
+    }
+
+    unsafe fn record_loopback_inner(pid: u32, path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
         unsafe {
             let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
             if hr.is_err() && hr.0 as u32 != 0x80010106 {
@@ -408,26 +562,40 @@ mod win {
             }
             let _com = ComGuard;
 
-            let enumerator: IMMDeviceEnumerator = CoCreateInstance(&CLSID_MMDEVICE_ENUMERATOR, None, CLSCTX_ALL)
-                .map_err(|e| CaptureError(serde_json::json!({"code":"captureEnumFail","detail": e.to_string()}).to_string()))?;
-            let device = enumerator
-                .GetDefaultAudioEndpoint(eRender, eConsole)
-                .map_err(|e| CaptureError(serde_json::json!({"code":"captureDeviceFail","detail": e.to_string()}).to_string()))?;
-            let client: IAudioClient = device
-                .Activate(CLSCTX_ALL, None)
-                .map_err(|e| CaptureError(serde_json::json!({"code":"captureClientFail","detail": e.to_string()}).to_string()))?;
+            let client = open_process_loopback(pid)?;
 
-            let mix = client.GetMixFormat().map_err(|e| CaptureError(serde_json::json!({"code":"captureMixFail","detail": e.to_string()}).to_string()))?;
-            let mix = &*mix;
-            let channels = mix.nChannels;
-            let rate = mix.nSamplesPerSec;
-            let bits = mix.wBitsPerSample;
-            let block = mix.nBlockAlign as usize;
+            // Process loopback has no GetMixFormat; ask for PCM16 like Application Loopback.
+            let mut format = WAVEFORMATEX {
+                wFormatTag: 1, // WAVE_FORMAT_PCM
+                nChannels: 2,
+                nSamplesPerSec: 48000,
+                nAvgBytesPerSec: 48000 * 4,
+                nBlockAlign: 4,
+                wBitsPerSample: 16,
+                cbSize: 0,
+            };
+            let flags = AUDCLNT_STREAMFLAGS_LOOPBACK
+                | AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM;
+            let init = |fmt: &WAVEFORMATEX| client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 0, 0, fmt, None);
+            if let Err(first) = init(&format) {
+                format.nSamplesPerSec = 44100;
+                format.nAvgBytesPerSec = 44100 * 4;
+                init(&format).map_err(|e| {
+                    CaptureError(
+                        serde_json::json!({
+                            "code": "captureLoopFail",
+                            "detail": format!("{first}; fallback: {e}")
+                        })
+                        .to_string(),
+                    )
+                })?;
+            }
 
-            let flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-            client
-                .Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 10_000_000, 0, mix, None)
-                .map_err(|e| CaptureError(serde_json::json!({"code":"captureLoopFail","detail": e.to_string()}).to_string()))?;
+            let channels = format.nChannels;
+            let rate = format.nSamplesPerSec;
+            let bits = format.wBitsPerSample;
+            let block = format.nBlockAlign as usize;
 
             let event = CreateEventW(None, false, false, None).map_err(|e| CaptureError(e.to_string()))?;
             client.SetEventHandle(event).map_err(|e| CaptureError(e.to_string()))?;
@@ -481,7 +649,6 @@ mod win {
         match bits {
             16 => out.extend_from_slice(raw),
             32 => {
-                // float32 mix format is common
                 for chunk in raw.chunks_exact(4) {
                     let sample = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
                     let clamped = sample.clamp(-1.0, 1.0);
@@ -491,13 +658,11 @@ mod win {
                 let _ = channels;
             }
             _ => {
-                // treat as silence of matching frame count
                 let frames = raw.len() / ((bits as usize / 8) * channels as usize).max(1);
                 out.extend(std::iter::repeat_n(0u8, frames * channels as usize * 2));
             }
         }
     }
-
 }
 
 #[cfg(test)]
@@ -533,5 +698,17 @@ mod tests {
             target(2, "2:20", "Cursor"),
         ]);
         assert_eq!(rows.iter().map(|row| row.label.as_str()).collect::<Vec<_>>(), ["YuE2 Studio", "YouTube", "Cursor"]);
+    }
+
+    #[test]
+    fn process_loopback_activation_targets_the_pid_tree() {
+        assert_eq!(
+            process_loopback_activation(4242),
+            ProcessLoopbackActivation {
+                activation_type: 1,
+                target_process_id: 4242,
+                process_loopback_mode: 0,
+            }
+        );
     }
 }
