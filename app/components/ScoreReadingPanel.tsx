@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Mic, Square, Upload, X } from 'lucide-react';
+import { Loader2, Mic, Pause, Play, Square, Upload, X } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import {
   listCaptureWindows,
@@ -23,6 +23,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const tt = t as unknown as (key: string) => string;
   const say = useCallback((raw: string) => localizeCode(raw, t), [t]);
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [language, setLanguage] = useState('zh');
   const [running, setRunning] = useState(false);
   const [stage, setStage] = useState('');
@@ -33,8 +34,10 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const [chosen, setChosen] = useState<string>('');
   const [capturing, setCapturing] = useState(false);
   const [captureNote, setCaptureNote] = useState('');
+  const [previewPlaying, setPreviewPlaying] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const preview = useRef<HTMLAudioElement | null>(null);
 
   const refreshWindows = useCallback(() => {
     void listCaptureWindows()
@@ -50,6 +53,18 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   useEffect(() => {
     refreshWindows();
   }, [refreshWindows]);
+
+  useEffect(() => {
+    setPreviewPlaying(false);
+    preview.current?.pause();
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const stageLabel = (name: string | undefined) => {
     switch (name) {
@@ -195,20 +210,47 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
             {captureNote && <p className="mt-2 whitespace-pre-wrap text-xs text-zinc-500">{captureNote}</p>}
 
             <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-black/30">
-              {file ? (
+              {file && previewUrl ? (
                 <>
+                  <audio
+                    key={previewUrl}
+                    ref={preview}
+                    src={previewUrl}
+                    preload="metadata"
+                    className="hidden"
+                    onPlay={() => setPreviewPlaying(true)}
+                    onPause={() => setPreviewPlaying(false)}
+                    onEnded={() => setPreviewPlaying(false)}
+                  />
                   <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-zinc-100">{file.name}</span>
-                  <button
-                    type="button"
-                    disabled={running || capturing}
-                    onClick={() => {
-                      setFile(null);
-                      if (fileInput.current) fileInput.current.value = '';
-                    }}
-                    className="inline-flex shrink-0 items-center gap-1 text-zinc-500 hover:text-zinc-800 dark:hover:text-white"
-                  >
-                    <X size={12} /> {tt('scoreClearAudio')}
-                  </button>
+                  <div className="inline-flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={running || capturing}
+                      title={previewPlaying ? tt('scorePause') : tt('scoreListen')}
+                      aria-label={previewPlaying ? tt('scorePause') : tt('scoreListen')}
+                      onClick={() => {
+                        const player = preview.current;
+                        if (!player) return;
+                        void (player.paused ? player.play() : player.pause());
+                      }}
+                      className="inline-flex items-center text-zinc-500 hover:text-zinc-800 disabled:opacity-50 dark:hover:text-white"
+                    >
+                      {previewPlaying ? <Pause size={12} /> : <Play size={12} className="ml-0.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={running || capturing}
+                      onClick={() => {
+                        preview.current?.pause();
+                        setFile(null);
+                        if (fileInput.current) fileInput.current.value = '';
+                      }}
+                      className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-800 disabled:opacity-50 dark:hover:text-white"
+                    >
+                      <X size={12} /> {tt('scoreClearAudio')}
+                    </button>
+                  </div>
                 </>
               ) : (
                 <span className="text-zinc-500">{tt('scoreNoAudio')}</span>
