@@ -4240,6 +4240,25 @@ fn lost_job_reason(log: &str) -> String {
     }
 }
 
+/// The last FATAL line of an engine run, without the stage tag.
+fn fatal_from_log(log: &str) -> Option<String> {
+    log.lines()
+        .rev()
+        .find_map(|line| line.split_once("FATAL:").map(|(_, why)| why.trim().to_string()))
+        .filter(|why| !why.is_empty())
+}
+
+/// Why a score reading lost its engine job: a 404 after a restart means the
+/// process that had the job is gone, and the log of that run holds the cause.
+fn lost_score_job_reason(error: &anyhow::Error) -> String {
+    let text = error.to_string();
+    if !text.contains("404") {
+        return text;
+    }
+    let log = previous_run_log();
+    fatal_from_log(&log).unwrap_or_else(|| lost_job_reason(&log))
+}
+
 /// Whether the engine ended without a word about why. Its own failures -
 /// an assertion, an error, running out of memory - are written before it
 /// goes; a device lost under the driver takes the process with nothing said.
@@ -8222,7 +8241,7 @@ async fn run_score_reading(
         let remote = match state.music_server.job(&engine_job).await {
             Ok(remote) => remote,
             Err(error) => {
-                fail(state, id, error.to_string()).await;
+                fail(state, id, lost_score_job_reason(&error)).await;
                 return;
             }
         };
@@ -8231,7 +8250,7 @@ async fn run_score_reading(
                 let result = match state.music_server.result(&engine_job).await {
                     Ok(result) => result,
                     Err(error) => {
-                        fail(state, id, error.to_string()).await;
+                        fail(state, id, lost_score_job_reason(&error)).await;
                         return;
                     }
                 };
@@ -9178,6 +9197,18 @@ mod tests {
         assert!(lost_job_reason("ggml_backend_cuda_buffer_type_alloc_buffer: allocating 2048 MB on device 0: cudaMalloc failed: out of memory").contains("ran out of memory"));
         assert!(lost_job_reason("CUDA error: an illegal memory access was encountered").contains("CUDA or driver error"));
         assert!(lost_job_reason("[Server] listening").contains("stopped during this song"));
+    }
+
+    #[test]
+    fn a_lost_score_job_prefers_the_fatal_line() {
+        assert_eq!(
+            fatal_from_log("[SheetSage] FATAL: tensor encoder.feature_extractor.spectrogram.window missing\n[studio] restarting"),
+            Some("tensor encoder.feature_extractor.spectrogram.window missing".into())
+        );
+        assert!(fatal_from_log("[Server] Listening").is_none());
+        assert!(lost_score_job_reason(&anyhow::anyhow!("connection reset")).contains("connection reset"));
+        let forgotten = lost_score_job_reason(&anyhow::anyhow!("yue-server returned 404 Not Found: job not found"));
+        assert!(!forgotten.contains("404"), "a 404 becomes the FATAL line or lost_job_reason, not the raw HTTP text");
     }
 
     #[test]
