@@ -63,6 +63,68 @@ Z|
 `;
 
 describe('JianpuEditor', () => {
+  it('keeps a Save when Cancel closes the editor', async () => {
+    localStorage.setItem('language', 'en');
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const closed: Array<string | null> = [];
+    let root: Root | undefined;
+    try {
+      await act(async () => {
+        root = createRoot(host);
+        root.render(
+          <StrictMode>
+            <I18nProvider>
+              <JianpuEditor abc={ABC} onClose={value => closed.push(value)} />
+            </I18nProvider>
+          </StrictMode>,
+        );
+      });
+      const rootEl = document.querySelector('.yue-jp-editor');
+      expect(rootEl).toBeInstanceOf(HTMLElement);
+      const save = document.querySelector('.yue-jp-editor [data-act="save"]') as HTMLButtonElement;
+      await act(async () => {
+        save.click();
+      });
+      const status = document.querySelector('.yue-jp-status');
+      expect(status?.textContent).toBe('Updated (form)');
+      expect(status?.classList.contains('ok')).toBe(true);
+      const textBefore = (document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement).value;
+      status!.textContent = '';
+      status!.classList.remove('ok');
+      await act(async () => {
+        save.click();
+      });
+      expect(status?.textContent).toBe('Updated (form)');
+      expect(status?.classList.contains('ok')).toBe(true);
+      await act(async () => {
+        root!.render(
+          <StrictMode>
+            <I18nProvider>
+              <JianpuEditor abc={`${ABC}\nC4D4E4F4|`} onClose={value => closed.push(value)} />
+            </I18nProvider>
+          </StrictMode>,
+        );
+      });
+      expect(document.querySelector('.yue-jp-status')?.textContent).toBe('Updated (form)');
+      expect((document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement).value).toBe(textBefore);
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement).click();
+      });
+      expect(closed.length).toBeGreaterThan(0);
+      expect(closed[closed.length - 1]?.replace(/\s+/g, '')).toBe(ABC.replace(/\s+/g, ''));
+    } finally {
+      await act(async () => {
+        root?.unmount();
+      });
+      host.remove();
+      globals.abc2svg = previous;
+    }
+  });
+
   it('opens the score editor under StrictMode', async () => {
     localStorage.setItem('language', 'en');
     localStorage.setItem('yue-jp-chord-diagram', 'off');

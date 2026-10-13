@@ -9,6 +9,8 @@ const require = createRequire(import.meta.url);
 require(path.join(here, '../public/score/score_edit.js'));
 
 const editor = (globalThis as { yueScoreEditor?: {
+  buildJianpuText: (abc: string) => { text: string; error?: string | null };
+  parseJianpuText: (text: string, baseAbc: string) => { abc: string | null; warning: string | null; error: string | null };
   editScore: (abc: string, command: Record<string, unknown>) => { abc: string; error?: string | null };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
   sourceScrollTop: (
@@ -48,6 +50,42 @@ function zeros(voice: string, count: number): string {
 }
 
 describe('vendored jianpu editScore', () => {
+  it('keeps a mid-score meter when only the lyric text changes', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+C4D4E4F4|
+w: 春 天
+V: Ins
+z16|
+% outro
+V: Vocal
+M:2/4
+C4D4|
+w: 夏
+V: Ins
+M:2/4
+z8|
+`;
+    const built = editor.buildJianpuText(score);
+    expect(built.error).toBeFalsy();
+    expect(built.text).toContain('\n2/4\n');
+    const lyric = built.text.replace('夏', '秋');
+    const parsed = editor.parseJianpuText(lyric, score);
+    expect(parsed.error).toBeFalsy();
+    expect(parsed.warning).toBeFalsy();
+    expect(parsed.abc).toContain('M:2/4');
+    expect(parsed.abc).toContain('w: 秋');
+    expect(parsed.abc).toMatch(/^M:4\/4$/m);
+  });
+
   it('changes the first vocal degree', () => {
     const edited = editor.editScore(ABC, { voice: 'Vocal', op: 'degree', index: 0, degree: 5 });
     expect(edited.error).toBeFalsy();

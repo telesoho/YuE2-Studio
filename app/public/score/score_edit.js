@@ -1410,14 +1410,18 @@
     const kIdx = lines.findIndex((line) => /^K:\s*/.test(line));
     if (kIdx < 0) return { error: m('jpErrBadHeader'), header: header, lines: lines, items: [] };
     let key = header.key;
-    let perBar = perBarUnits(header.meter, header.lDen);
+    let meter = header.meter.slice();
+    let perBar = perBarUnits(meter, header.lDen);
     const items = [];
     let i = 0;
     while (i < lines.length) {
       const line = lines[i];
       if (/^M:\s*\d/.test(line)) {
         const meterMatch = /^M:\s*(\d+)\s*\/\s*(\d+)/.exec(line);
-        if (meterMatch) perBar = perBarUnits([Number(meterMatch[1]), Number(meterMatch[2])], header.lDen);
+        if (meterMatch) {
+          meter = [Number(meterMatch[1]), Number(meterMatch[2])];
+          perBar = perBarUnits(meter, header.lDen);
+        }
         i += 1;
         continue;
       }
@@ -1441,7 +1445,10 @@
       while (i < lines.length && /^(M:|K:)/.test(lines[i])) {
         if (lines[i].startsWith("M:")) {
           const meterMatch = /^M:\s*(\d+)\s*\/\s*(\d+)/.exec(lines[i]);
-          if (meterMatch) perBar = perBarUnits([Number(meterMatch[1]), Number(meterMatch[2])], header.lDen);
+          if (meterMatch) {
+            meter = [Number(meterMatch[1]), Number(meterMatch[2])];
+            perBar = perBarUnits(meter, header.lDen);
+          }
         } else {
           key = keyFromName(lines[i].slice(2));
         }
@@ -1468,7 +1475,7 @@
         ev.index = count;
         count += 1;
       }
-      items.push({ type: "music", voice: voice, events: scanned.events, startKey: startKey });
+      items.push({ type: "music", voice: voice, events: scanned.events, startKey: startKey, meter: meter.slice() });
     }
     return { error: null, header: header, lines: lines, kIdx: kIdx, items: items };
   }
@@ -1604,10 +1611,15 @@
     const header = walked.header;
     let text = jianpuKeyLabel(header.key) + "  " + header.meter[0] + "/" + header.meter[1] + "  ♩=" + header.bpm;
     const marks = [];
+    let shownMeter = header.meter;
     for (const item of walked.items) {
       if (item.type === "comment") {
         text += "\n" + item.text;
         continue;
+      }
+      if (item.meter && (item.meter[0] !== shownMeter[0] || item.meter[1] !== shownMeter[1])) {
+        text += "\n" + item.meter[0] + "/" + item.meter[1];
+        shownMeter = item.meter;
       }
       text += "\n" + (item.voice === "Ins" ? "伴" : "唱");
       const tokened = tokensForBars(layoutBars(item.events), beat, item.startKey);
@@ -2092,7 +2104,7 @@
     return events;
   }
 
-  function textWarnings(items, perBar) {
+  function textWarnings(items, lDen) {
     const warnings = [];
     function push(message) {
       if (warnings.indexOf(message) < 0) warnings.push(message);
@@ -2106,6 +2118,7 @@
     }
     function checkLine(item) {
       if (!item) return;
+      const barUnits = perBarUnits(item.meter || [4, 4], lDen);
       if (item.bars.length < 1 || item.bars.length > 4) push(m('jpErrMaxBars'));
       for (const bar of item.bars) {
         if (!bar.length) {
@@ -2118,7 +2131,7 @@
           if (!DURATIONS.has(ev.units)) push(m('jpErrDuration'));
           if (item.voice === "Ins" && ev.chord) push(m('jpErrChordOnIns'));
         }
-        if (units !== perBar) push(m('jpErrVoiceBarBeats', { voice: item.voice === 'Ins' ? '伴' : '唱' }));
+        if (units !== barUnits) push(m('jpErrVoiceBarBeats', { voice: item.voice === 'Ins' ? '伴' : '唱' }));
       }
     }
     function checkTies(events) {
@@ -2173,16 +2186,23 @@
     return tokens.length ? "w: " + tokens.join(" ") : "";
   }
 
-  function bodyFromText(items, keyName) {
+  function bodyFromText(items, keyName, headerMeter) {
     const lines = [];
+    const running = { meter: headerMeter.slice() };
+    function changed(item) {
+      const next = item && item.meter;
+      return !!(next && (next[0] !== running.meter[0] || next[1] !== running.meter[1]));
+    }
     for (const group of groupMusic(items)) {
       if (group.comment) {
         lines.push(group.comment);
         continue;
       }
+      const shift = changed(group.vocal) || changed(group.ins);
       if (group.vocal) {
         const state = { key: keyName };
         lines.push("V: Vocal");
+        if (shift) lines.push("M:" + group.vocal.meter[0] + "/" + group.vocal.meter[1]);
         lines.push(group.vocal.bars.map((bar) => bar.map((ev) => abcPiece(ev, state)).join(" ")).join(" | ") + "|");
         const lyric = lyricAbc(group.vocal);
         if (lyric) lines.push(lyric);
@@ -2190,8 +2210,11 @@
       if (group.ins) {
         const state = { key: keyName };
         lines.push("V: Ins");
+        if (shift) lines.push("M:" + group.ins.meter[0] + "/" + group.ins.meter[1]);
         lines.push(group.ins.bars.map((bar) => bar.map((ev) => abcPiece(ev, state)).join(" ")).join(" | ") + "|");
       }
+      const sample = group.vocal || group.ins;
+      if (shift && sample.meter) running.meter = sample.meter.slice();
     }
     return lines;
   }
@@ -2223,6 +2246,7 @@
     const beat = quarterUnits(baseHeader.lDen);
     if (!beat) return { abc: null, error: m('jpErrBadUnit'), warning: null, note: null, marks: [] };
     let meter = baseHeader.meter.slice();
+    let headerMeter = meter.slice();
     let bpm = baseHeader.bpm;
     let key = cloneKey(baseHeader.key);
     const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -2255,6 +2279,7 @@
         const tempo = Number(match[5]);
         if (!tempo) return { abc: null, error: m('jpErrTempoInt'), warning: null, note: null, marks: [] };
         meter = nextMeter;
+        headerMeter = meter.slice();
         bpm = tempo;
         key = labeled;
         sawContent = true;
@@ -2264,6 +2289,17 @@
       if (/^%/.test(trim)) {
         voice = null;
         items.push({ type: "comment", text: trim });
+        continue;
+      }
+      const meterOnly = /^(\d+)\s*\/\s*(\d+)$/.exec(trim);
+      if (meterOnly) {
+        const nextMeter = [Number(meterOnly[1]), Number(meterOnly[2])];
+        const per = perBarUnits(nextMeter, baseHeader.lDen);
+        if (!nextMeter[0] || !nextMeter[1] || !Number.isInteger(per) || per <= 0 || (nextMeter[1] & (nextMeter[1] - 1)) !== 0) {
+          return { abc: null, error: m('jpErrBadMeter'), warning: null, note: null, marks: [] };
+        }
+        meter = nextMeter;
+        sawContent = true;
         continue;
       }
       if (trim === "唱" || trim === "伴") {
@@ -2308,10 +2344,9 @@
       if (parsed.error) {
         return { abc: null, error: m('jpErrLine', { line: li + 1, detail: parsed.error }), warning: null, note: null, marks: [] };
       }
-      items.push({ type: "music", voice: voice, bars: parsed.bars, lyricSet: false });
+      items.push({ type: "music", voice: voice, bars: parsed.bars, lyricSet: false, meter: meter.slice() });
     }
-    const perBar = perBarUnits(meter, baseHeader.lDen);
-    const warnings = textWarnings(items, perBar);
+    const warnings = textWarnings(items, baseHeader.lDen);
     const counters = { Vocal: 0, Ins: 0 };
     const marks = [];
     for (const item of items) {
@@ -2341,8 +2376,8 @@
         }
       }
     }
-    const header = applyTextHeader(baseLines, headerEnd, meter, bpm, key.name);
-    let abc = header.concat(bodyFromText(items, key.name)).join("\n");
+    const header = applyTextHeader(baseLines, headerEnd, headerMeter, bpm, key.name);
+    let abc = header.concat(bodyFromText(items, key.name, headerMeter)).join("\n");
     if (base.endsWith("\n")) abc += "\n";
     return { abc: abc, error: null, warning: warnings[0] || null, note: note, marks: marks };
   }
@@ -3065,6 +3100,8 @@
       ".yue-jp-tools button{padding:4px 8px;min-width:28px;}",
       ".yue-jp-tools button.digit{font-weight:700;min-width:32px;}",
       ".yue-jp-status{min-height:1.4em;padding:8px 14px;color:#71717a;font-size:13px;}",
+      ".yue-jp-status.ok{color:#059669;font-weight:650;}",
+      "html.dark .yue-jp-status.ok{color:#34d399;}",
       ".yue-jp-body{display:flex;flex:1;min-height:0;min-width:0;}",
       ".yue-jp-paper{position:relative;overflow:auto;padding:8px 16px 16px;flex:1;min-width:0;min-height:0;",
       "background:#fff;color:#18181b;}",
@@ -3156,7 +3193,7 @@
       '<button type="button" class="icon" data-act="cancel" data-i18n-aria="jpCancel" data-i18n-title="jpCancel">' + CANCEL_ICON + "</button>",
       "</div>",
       '<div class="yue-jp-tools" hidden></div>',
-      '<div class="yue-jp-status"></div>',
+      '<div class="yue-jp-status" aria-live="polite"></div>',
       '<div class="yue-jp-body">',
       '<div class="yue-jp-text">',
       '<label for="yue-jp-score-text" data-i18n="jpTextScore"></label>',
@@ -3515,7 +3552,18 @@
   }
 
   function setStatus(text) {
-    if (ui.status) ui.status.textContent = text || "";
+    if (!ui.status) return;
+    ui.status.textContent = text || "";
+    ui.status.classList.remove("ok");
+  }
+
+  function reportSaved(text) {
+    stopSaveWatch();
+    ui.savedNote = true;
+    ui.savedSticky = true;
+    if (!ui.status) return;
+    ui.status.textContent = text || "";
+    ui.status.classList.add("ok");
   }
 
   function clearSavedNote() {
@@ -5096,6 +5144,7 @@
     ui.saveNote = options && options.saveNote || null;
     ui.songTitle = options && options.title ? String(options.title).trim() : "";
     ui.savedNote = false;
+    ui.savedSticky = false;
     ui.view = "jianpu";
     attachSource(audioFile);
     ui.transport = playbackTransport(!!ui.audioUrl, "source");
@@ -5194,5 +5243,6 @@
     setStrings: setStrings,
     applyChrome: applyChrome,
     currentAbc: currentAbc,
+    saved: reportSaved,
   };
 });

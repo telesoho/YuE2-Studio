@@ -3,6 +3,9 @@
  * jianpu editor save and share package.
  */
 
+import { mapNativeLibrarySong } from './nativeLibrary';
+import type { NativeLibrarySong, Song } from '../types';
+
 export interface ScoreReading {
   id: string;
   status: 'running' | 'done' | 'failed' | 'cancelled' | string;
@@ -92,7 +95,7 @@ export async function readScore(
   return awaitReading(job.id, signal, onUpdate);
 }
 
-export async function saveSongScore(songId: string, abc: string): Promise<void> {
+export async function saveSongScore(songId: string, abc: string): Promise<Song> {
   const response = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/score`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -102,6 +105,8 @@ export async function saveSongScore(songId: string, abc: string): Promise<void> 
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(payload.error || `save failed (${response.status})`);
   }
+  const body = (await response.json()) as NativeLibrarySong;
+  return mapNativeLibrarySong(body);
 }
 
 export async function downloadScoreShare(songId: string, lang?: string): Promise<Blob> {

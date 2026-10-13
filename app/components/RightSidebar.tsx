@@ -820,6 +820,9 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
     const [jianpuOpen, setJianpuOpen] = useState(false);
     const [abcLive, setAbcLive] = useState<string | null>(null);
     const [sharing, setSharing] = useState(false);
+    useEffect(() => {
+        setAbcLive(null);
+    }, [song.id]);
     const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
         : '';

@@ -3,6 +3,7 @@ import { useI18n } from '../context/I18nContext';
 import { jianpuStrings } from '../i18n/jianpu';
 import type { Language } from '../i18n/translations';
 import { saveSongScore } from '../services/scoreReading';
+import { updateLibrarySongs } from '../services/studioQueries';
 
 declare global {
   interface Window {
@@ -19,6 +20,7 @@ declare global {
         },
       ) => Promise<string | null>;
       currentAbc: () => string;
+      saved?: (text: string) => void;
       setStrings?: (next: Record<string, string>) => void;
       applyChrome?: () => void;
       leadSheet?: (abc: string, fallbackTitle?: string) => unknown;
@@ -59,6 +61,7 @@ function catalog(language: Language): Record<string, string> {
 /**
  * Opens the vendored jianpu editor over the page. Save writes through the
  * studio service when a library song id is given; closing returns the ABC.
+ * A successful Save is kept even if the user then Cancel/X-closes.
  */
 export const JianpuEditor: React.FC<{
   abc: string;
@@ -75,15 +78,23 @@ export const JianpuEditor: React.FC<{
   const saveNote = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const committed = useRef<string | null>(null);
 
   const stringsRef = useRef(strings);
   stringsRef.current = strings;
   const titleRef = useRef(title);
   titleRef.current = title;
+  const abcRef = useRef(abc);
+  abcRef.current = abc;
+  const audioRef = useRef(audioUrl);
+  audioRef.current = audioUrl;
 
   useEffect(() => {
     let alive = true;
     let showed = false;
+    committed.current = null;
+    const abcNow = abcRef.current;
+    const audioNow = audioRef.current;
     void (async () => {
       try {
         await loadEditor();
@@ -94,15 +105,15 @@ export const JianpuEditor: React.FC<{
           return;
         }
         showed = true;
-        const edited = await open(abc, audioUrl || null, {
+        const edited = await open(abcNow, audioNow || null, {
           saveButton: saveButton.current,
           saveNote: saveNote.current,
           strings: stringsRef.current,
           title: titleRef.current,
         });
-        if (alive) onCloseRef.current(edited);
+        if (alive) onCloseRef.current(edited ?? committed.current);
       } catch {
-        if (alive) onCloseRef.current(null);
+        if (alive) onCloseRef.current(committed.current);
       }
     })();
     return () => {
@@ -111,22 +122,31 @@ export const JianpuEditor: React.FC<{
       const root = document.querySelector('.yue-jp-editor');
       if (root instanceof HTMLElement) root.hidden = true;
     };
-  }, [abc, audioUrl, title]);
+    // ponytail: one open per mount; remount the editor if a live score swap while open is required
+  }, []);
 
   useEffect(() => {
     window.yueScoreEditor?.setStrings?.(strings);
   }, [strings]);
 
+  const note = (text: string) => {
+    window.yueScoreEditor?.saved?.(text);
+    if (saveNote.current) saveNote.current.textContent = text;
+  };
+
   const persist = async () => {
     const current = window.yueScoreEditor?.currentAbc?.() || abc;
     if (!songId) {
-      if (saveNote.current) saveNote.current.textContent = t('jpUpdatedForm');
+      committed.current = current;
+      note(t('jpUpdatedForm'));
       onSaved?.();
       return;
     }
     try {
-      await saveSongScore(songId, current);
-      if (saveNote.current) saveNote.current.textContent = t('jpSaved');
+      const song = await saveSongScore(songId, current);
+      committed.current = current;
+      note(t('jpSaved'));
+      updateLibrarySongs(songs => songs.map(entry => (entry.id === song.id ? song : entry)));
       onSaved?.();
     } catch (error) {
       if (saveNote.current) saveNote.current.textContent = error instanceof Error ? error.message : String(error);
