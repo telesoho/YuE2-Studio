@@ -149,6 +149,9 @@ pub struct SaveScoreRequest {
 #[derive(Debug, Deserialize)]
 pub struct AlignScoreLyricsRequest {
     pub lyrics: String,
+    /// When true, recogniser times are scaled/offset to note onsets. Default off.
+    #[serde(default)]
+    pub fit_timing: bool,
 }
 
 /// Metadata settings a score reading stores on the library track.

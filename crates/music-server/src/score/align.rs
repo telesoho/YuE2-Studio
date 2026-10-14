@@ -145,7 +145,7 @@ pub fn syllables_from_provided(heard: &[(f64, String)], lyrics: &str) -> Vec<Tim
 /// Align written lyrics onto the Vocal melody using recogniser times only.
 pub fn align_provided_lyrics(abc: &str, heard: &[(f64, String)], lyrics: &str) -> LyricAlignment {
     let syllables = syllables_from_provided(heard, lyrics);
-    let mut aligned = align_lyrics(abc, &syllables);
+    let mut aligned = align_lyrics(abc, &syllables, true);
     // Keep the written words: lyrics_text rebuilds from note slots and would
     // replace the user's line breaks with whatever landed on the staff.
     if crate::auto_title::has_sung_lines(lyrics) {
@@ -174,7 +174,7 @@ pub fn align_written_lyrics(abc: &str, lyrics: &str) -> LyricAlignment {
             end: end.max(start + 0.05),
         })
         .collect();
-    let mut aligned = align_lyrics(abc, &words);
+    let mut aligned = align_lyrics(abc, &words, true);
     if crate::auto_title::has_sung_lines(lyrics) {
         aligned.lyrics = sectioned_lyrics_kept(lyrics);
     }
@@ -272,7 +272,10 @@ fn stem_piece(word: &str) -> String {
 }
 
 /// Align recogniser words onto the Vocal melody of a native ABC score.
-pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
+///
+/// When `fit` is true, a global scale/offset is searched so recogniser times
+/// land on note onsets. Off leaves times as heard (identity transform).
+pub fn align_lyrics(abc: &str, words: &[TimedWord], fit: bool) -> LyricAlignment {
     let Ok(score) = abc::parse(abc) else {
         let syllables = syllables_from_words(words);
         let lyrics = join_syllables(syllables.iter().map(|s| s.text.as_str()));
@@ -294,7 +297,7 @@ pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
     let spans = section_spans(&groups, &score.voices[VOCAL].bars, bpm);
     tag_notes(&mut notes, &spans);
     let timing = lyric_groups(words);
-    let (scale, offset) = fit_lyric_timing(&notes, &timing);
+    let (scale, offset) = if fit { fit_lyric_timing(&notes, &timing) } else { (1.0, 0.0) };
     let (slots, unassigned) = place_lyric_groups(&notes, &timing, scale, offset);
     for (note, slot) in notes.iter_mut().zip(slots.iter()) {
         note.syllable = slot.clone();
@@ -521,9 +524,33 @@ fn place_lyric_groups(notes: &[AlignedNote], groups: &[LyricGroup], scale: f64, 
         let end = scale * group.end + offset;
         let texts = group.texts.clone();
         let candidates = overlap_candidates(notes, cursor, start, end);
-        if candidates.is_empty() || texts.is_empty() {
-            for text in &texts {
-                unassigned.push(Unassigned { text: text.clone(), start: group.start });
+        if texts.is_empty() {
+            continue;
+        }
+        // Syllables that end before the next free note (plus a small window)
+        // would otherwise be dropped when they sit slightly early of the melody.
+        // Place them one-per-note from that note instead of parking them as
+        // unassigned (which appends them at the end of the lyric block).
+        if candidates.is_empty() {
+            let early = notes.get(cursor).is_some_and(|note| end <= note.start + ONSET_WINDOW);
+            if early {
+                let mut index = cursor;
+                for text in &texts {
+                    while index < notes.len() && !slots[index].is_empty() {
+                        index += 1;
+                    }
+                    if index >= notes.len() {
+                        unassigned.push(Unassigned { text: text.clone(), start: group.start });
+                    } else {
+                        slots[index] = text.clone();
+                        index += 1;
+                    }
+                }
+                cursor = index;
+            } else {
+                for text in &texts {
+                    unassigned.push(Unassigned { text: text.clone(), start: group.start });
+                }
             }
             continue;
         }
@@ -970,13 +997,34 @@ mod tests {
             start: 0.0,
             end: 4.0,
         }];
-        let aligned = align_lyrics(ABC, &words);
+        let aligned = align_lyrics(ABC, &words, true);
         assert!(aligned.bpm == Some(120));
         assert!(aligned.display_abc.contains("w:"));
         assert!(!strip_w_lines(&aligned.display_abc).contains("w:"));
         assert!(abc::parse(&strip_w_lines(&aligned.display_abc)).is_ok());
         assert!(!aligned.lyrics.is_empty());
         assert!(aligned.notes.iter().any(|n| !n.syllable.is_empty() && n.syllable != "-"));
+    }
+
+    #[test]
+    fn early_leading_syllables_land_on_the_first_notes() {
+        // "春眠" ends before the first note; without early placement they were
+        // unassigned and the staff opened on 不 instead of 春.
+        let words = vec![
+            TimedWord { text: "春".into(), start: -0.3, end: -0.15 },
+            TimedWord { text: "眠".into(), start: -0.15, end: -0.01 },
+            TimedWord { text: "不".into(), start: 0.0, end: 0.5 },
+            TimedWord { text: "觉".into(), start: 0.5, end: 1.0 },
+            TimedWord { text: "晓".into(), start: 1.0, end: 1.5 },
+            TimedWord { text: "处".into(), start: 1.5, end: 2.0 },
+            TimedWord { text: "处".into(), start: 2.0, end: 2.5 },
+            TimedWord { text: "闻".into(), start: 2.5, end: 3.0 },
+        ];
+        let aligned = align_lyrics(ABC, &words, false);
+        let staff = aligned.display_abc.lines().find(|line| line.trim_start().starts_with("w:")).expect("w line");
+        assert!(staff.contains("春") && staff.contains("眠"), "{staff}");
+        let tokens: Vec<&str> = staff.trim_start_matches("w:").split_whitespace().filter(|t| *t != "*" && *t != "-").collect();
+        assert_eq!(tokens.first().copied(), Some("春"), "{staff}");
     }
 
     #[test]
@@ -995,13 +1043,15 @@ mod tests {
             start: 100.0,
             end: 101.0,
         }];
-        let aligned = align_lyrics(ABC, &words);
+        let aligned = align_lyrics(ABC, &words, true);
         assert!(!aligned.warnings.is_empty() || !aligned.unassigned.is_empty());
     }
 
     #[test]
     fn provided_chinese_lyrics_follow_written_text_not_asr() {
         // Recogniser mangles the line and invents 天; the written lyrics still land on the notes.
+        // Ten written syllables need ten vocal notes.
+        let score = "X:1\nT:\nM:4/4\nL:1/16\nQ:1/4=120\nV: Vocal clef=treble name=\"Vocal Melody\" snm=\"Vocal\"\nV: Ins clef=treble name=\"Ins Melody\" snm=\"Inst.\"\nK:C\n% verse\nV: Vocal\n\"C\"C2D2E2F2G2A2B2c2|d2e2z12|\nV: Ins\nZ2|\n";
         let heard = vec![
             (0.0, "春".into()),
             (0.4, "眠".into()),
@@ -1020,7 +1070,7 @@ mod tests {
         assert!(joined.contains("春眠不觉晓"));
         assert!(joined.contains("啼鸟"), "written characters the recogniser never said still appear: {joined}");
         assert!(!joined.contains('天'), "ASR-only character must not become a syllable: {joined}");
-        let aligned = align_provided_lyrics(ABC, &heard, lyrics);
+        let aligned = align_provided_lyrics(score, &heard, lyrics);
         assert_eq!(aligned.lyrics, lyrics);
         assert!(aligned.display_abc.contains("啼"), "written 啼 must reach the staff: {}", aligned.display_abc);
         assert!(!aligned.display_abc.contains('天'), "ASR-only 天 must not reach the staff: {}", aligned.display_abc);

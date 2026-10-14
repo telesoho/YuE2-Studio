@@ -6,6 +6,25 @@
 import { mapNativeLibrarySong } from './nativeLibrary';
 import type { NativeLibrarySong, Song } from '../types';
 
+const FIT_TIMING_KEY = 'studio.scoreFitTiming';
+
+/** Whether auto-recognised lyric times are scaled/offset onto note onsets. Default off. */
+export function scoreFitTiming(): boolean {
+  try {
+    return window.localStorage.getItem(FIT_TIMING_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setScoreFitTiming(on: boolean): void {
+  try {
+    window.localStorage.setItem(FIT_TIMING_KEY, on ? '1' : '0');
+  } catch {
+    /* kept until a reload */
+  }
+}
+
 export interface ScoreReading {
   id: string;
   status: 'running' | 'done' | 'failed' | 'cancelled' | string;
@@ -78,7 +97,7 @@ async function awaitReading(
 }
 
 export async function readScore(
-  source: { file?: File; songId?: string; lyrics?: string },
+  source: { file?: File; songId?: string; lyrics?: string; fitTiming?: boolean },
   language: string,
   signal?: AbortSignal,
   onUpdate?: (state: ScoreReading) => void,
@@ -90,6 +109,7 @@ export async function readScore(
   form.append('language', language || 'zh');
   const lyrics = source.lyrics?.trim();
   if (lyrics) form.append('lyrics', lyrics);
+  if (source.fitTiming ?? scoreFitTiming()) form.append('fit_timing', '1');
   const submitted = await fetch('/v1/score-readings', { method: 'POST', body: form, signal });
   const job = (await submitted.json().catch(() => ({}))) as Partial<ScoreReading>;
   if (!submitted.ok || !job.id) throw new Error(job.error || `the engine refused the job (${submitted.status})`);
@@ -97,11 +117,11 @@ export async function readScore(
   return awaitReading(job.id, signal, onUpdate);
 }
 
-export async function alignSongScoreLyrics(songId: string, lyrics: string): Promise<Song> {
+export async function alignSongScoreLyrics(songId: string, lyrics: string, fitTiming?: boolean): Promise<Song> {
   const response = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/score-align`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lyrics }),
+    body: JSON.stringify({ lyrics, fit_timing: fitTiming ?? scoreFitTiming() }),
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };

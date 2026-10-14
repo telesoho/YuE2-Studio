@@ -8145,6 +8145,7 @@ async fn create_score_reading(
     let mut language = "zh".to_string();
     let mut lyrics = String::new();
     let mut song_lyrics = String::new();
+    let mut fit_timing = false;
     while let Some(field) = multipart.next_field().await.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))? {
         match field.name().unwrap_or_default() {
             "audio" => {
@@ -8171,6 +8172,10 @@ async fn create_score_reading(
             "lyrics" => {
                 lyrics = field.text().await.unwrap_or_default();
             }
+            "fit_timing" => {
+                let value = field.text().await.unwrap_or_default();
+                fit_timing = matches!(value.trim(), "1" | "true" | "on" | "yes");
+            }
             _ => {}
         }
     }
@@ -8194,7 +8199,7 @@ async fn create_score_reading(
     let language = language.trim().to_owned();
     let job_id = id.clone();
     tokio::spawn(async move {
-        run_score_reading(background, job_id, bytes, name, language, provided, cancel).await;
+        run_score_reading(background, job_id, bytes, name, language, provided, fit_timing, cancel).await;
     });
     let reading = state.score_readings.read().await.get(&id).cloned().unwrap_or_else(|| score::reading::Reading::running(id));
     Ok((StatusCode::ACCEPTED, Json(reading)))
@@ -8319,6 +8324,7 @@ async fn run_score_reading(
     name: String,
     language: String,
     provided_lyrics: String,
+    fit_timing: bool,
     cancel: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let fail = |state: AppState, id: String, message: String| async move {
@@ -8446,7 +8452,7 @@ async fn run_score_reading(
             score::align::align_provided_lyrics(&abc, &heard, &provided_lyrics)
         }
     } else {
-        score::align::align_lyrics(&abc, &timed_words)
+        score::align::align_lyrics(&abc, &timed_words, fit_timing)
     };
     warnings.extend(aligned.warnings.iter().cloned());
     let title = score::reading::reading_title(&name);
@@ -8586,7 +8592,7 @@ async fn align_song_score_lyrics(
                 .unwrap_or_else(|| score::reading::warn_code("scoreWarnLyricsOff"));
             return Err(api_error(StatusCode::BAD_REQUEST, reason));
         }
-        (score::align::align_lyrics(&abc, &words), heard_warnings)
+        (score::align::align_lyrics(&abc, &words, request.fit_timing), heard_warnings)
     };
     warnings.extend(aligned.warnings.iter().cloned());
     let lyrics_out = if written { kept } else { aligned.lyrics.clone() };

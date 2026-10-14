@@ -4,6 +4,8 @@ import { useI18n } from '../context/I18nContext';
 import {
   listCaptureWindows,
   readScore,
+  scoreFitTiming,
+  setScoreFitTiming,
   startCapture,
   stopCapture,
   type CaptureWindow,
@@ -25,6 +27,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [language, setLanguage] = useState('zh');
+  const [fitTiming, setFitTiming] = useState(() => scoreFitTiming());
   const [lyrics, setLyrics] = useState('');
   const [running, setRunning] = useState(false);
   const [stage, setStage] = useState('');
@@ -91,7 +94,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
     setProgress(0);
     setStage(tt('scoreStageTranscribe'));
     try {
-      const reading = await readScore({ file: source, lyrics }, language, controller.signal, state => {
+      const reading = await readScore({ file: source, lyrics, fitTiming }, language, controller.signal, state => {
         setStage(stageLabel(state.stage));
         if (typeof state.progress === 'number') setProgress(Math.max(0, Math.min(1, state.progress)));
       });
@@ -278,6 +281,23 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
                 </option>
               ))}
             </select>
+            <label className="mt-3 flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-pink-500"
+                checked={fitTiming}
+                disabled={running}
+                onChange={event => {
+                  const on = event.target.checked;
+                  setFitTiming(on);
+                  setScoreFitTiming(on);
+                }}
+              />
+              <span>
+                <span className="font-medium text-zinc-800 dark:text-zinc-100">{tt('scoreFitTiming')}</span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-zinc-500">{tt('scoreFitTimingHint')}</span>
+              </span>
+            </label>
             <label className="mt-3 block text-xs font-medium text-zinc-500" htmlFor="score-lyrics">
               {tt('scoreProvidedLyrics')}
             </label>

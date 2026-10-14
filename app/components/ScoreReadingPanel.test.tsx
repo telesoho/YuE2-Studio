@@ -3,10 +3,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../context/I18nContext';
 import { ScoreReadingPanel } from './ScoreReadingPanel';
+import { scoreFitTiming, setScoreFitTiming } from '../services/scoreReading';
 
 vi.mock('../services/scoreReading', () => ({
   listCaptureWindows: vi.fn(async () => []),
   readScore: vi.fn(),
+  scoreFitTiming: vi.fn(() => false),
+  setScoreFitTiming: vi.fn(),
   startCapture: vi.fn(),
   stopCapture: vi.fn(),
 }));
@@ -66,5 +69,15 @@ describe('ScoreReadingPanel preview', () => {
     expect(pause).toHaveBeenCalled();
     expect(host.textContent).toContain('No audio yet');
     expect(host.querySelector('button[aria-label="Listen"]')).toBeNull();
+
+    expect(host.textContent).toContain('Fit by scale and offset');
+    const fit = host.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(fit).toBeTruthy();
+    expect(fit.checked).toBe(false);
+    await act(async () => {
+      fit.click();
+    });
+    expect(setScoreFitTiming).toHaveBeenCalledWith(true);
+    expect(scoreFitTiming).toHaveBeenCalled();
   });
 });

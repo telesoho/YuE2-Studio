@@ -17,7 +17,7 @@ import { localized, useAdapterLibrary, usesFromSettings } from '../services/adap
 import { useSongActions } from '../context/SongActionsContext';
 import { downloadSongAudio } from '../services/songDownload';
 import { saveFile } from '../services/saveFile';
-import { alignSongScoreLyrics, downloadScoreShare } from '../services/scoreReading';
+import { alignSongScoreLyrics, downloadScoreShare, scoreFitTiming, setScoreFitTiming } from '../services/scoreReading';
 import { karaokeReason } from '../services/karaoke';
 import { localizeCode } from '../services/localizeCode';
 import { stemOf } from '../services/songStems';
@@ -822,12 +822,14 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
     const [abcLive, setAbcLive] = useState<string | null>(null);
     const [sharing, setSharing] = useState(false);
     const [alignLyrics, setAlignLyrics] = useState(song.lyrics || '');
+    const [fitTiming, setFitTiming] = useState(() => scoreFitTiming());
     const [aligning, setAligning] = useState(false);
     const [alignError, setAlignError] = useState<string | null>(null);
     useEffect(() => {
         setAbcLive(null);
         setAlignLyrics(song.lyrics || '');
         setAlignError(null);
+        setFitTiming(scoreFitTiming());
     }, [song.id, song.lyrics]);
     const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
@@ -863,7 +865,7 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
         setAlignError(null);
         try {
             const submitted = alignLyrics;
-            const next = await alignSongScoreLyrics(song.id, submitted);
+            const next = await alignSongScoreLyrics(song.id, submitted, fitTiming);
             const lyrics = submitted.trim() ? submitted : (next.lyrics || '');
             setAbcLive(typeof next.derived?.settings?.display_abc === 'string'
                 ? String(next.derived.settings.display_abc)
@@ -955,6 +957,23 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
                                 disabled={aligning}
                             />
                             <p className="text-[11px] leading-4 text-zinc-500">{tt('scoreRealignHint')}</p>
+                            <label className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                                <input
+                                    type="checkbox"
+                                    className="mt-0.5 h-4 w-4 accent-pink-500"
+                                    checked={fitTiming}
+                                    disabled={aligning}
+                                    onChange={event => {
+                                        const on = event.target.checked;
+                                        setFitTiming(on);
+                                        setScoreFitTiming(on);
+                                    }}
+                                />
+                                <span>
+                                    <span className="font-medium text-zinc-800 dark:text-zinc-100">{tt('scoreFitTiming')}</span>
+                                    <span className="mt-0.5 block text-[11px] leading-4 text-zinc-500">{tt('scoreFitTimingHint')}</span>
+                                </span>
+                            </label>
                             <button
                                 type="button"
                                 disabled={aligning}
