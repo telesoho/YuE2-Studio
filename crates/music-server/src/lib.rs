@@ -1126,6 +1126,7 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/score-readings", post(create_score_reading))
         .route("/v1/score-readings/{job_id}", get(score_reading_status).post(cancel_score_reading))
         .route("/v1/library/songs/{id}/score", axum::routing::put(save_song_score))
+        .route("/v1/library/songs/{id}/score-align", post(align_song_score_lyrics))
         .route("/v1/library/songs/{id}/score-share", post(share_song_score))
         .route("/v1/capture/windows", get(capture_windows))
         .route("/v1/capture/start", post(capture_start))
@@ -8142,6 +8143,8 @@ async fn create_score_reading(
     }
     let mut audio: Option<(Vec<u8>, String)> = None;
     let mut language = "zh".to_string();
+    let mut lyrics = String::new();
+    let mut song_lyrics = String::new();
     while let Some(field) = multipart.next_field().await.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))? {
         match field.name().unwrap_or_default() {
             "audio" => {
@@ -8156,6 +8159,7 @@ async fn create_score_reading(
                 let path = state.library.media_path_for_song(&song).ok_or_else(|| api_error(StatusCode::NOT_FOUND, "The track's audio is not in the library.".into()))?;
                 let bytes = tokio::fs::read(&path).await.map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("read {}: {error}", path.display())))?;
                 let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| "input.audio".into());
+                song_lyrics = song.lyrics.clone();
                 audio = Some((bytes, name));
             }
             "language" => {
@@ -8164,6 +8168,9 @@ async fn create_score_reading(
                     language = "zh".into();
                 }
             }
+            "lyrics" => {
+                lyrics = field.text().await.unwrap_or_default();
+            }
             _ => {}
         }
     }
@@ -8171,6 +8178,14 @@ async fn create_score_reading(
     if bytes.is_empty() {
         return Err(api_error(StatusCode::BAD_REQUEST, "The audio is empty.".into()));
     }
+    // Form lyrics win; a library song supplies them only when the form left them blank.
+    let provided = if auto_title::has_sung_lines(&lyrics) {
+        lyrics
+    } else if auto_title::has_sung_lines(&song_lyrics) {
+        song_lyrics
+    } else {
+        String::new()
+    };
     let id = uuid::Uuid::now_v7().to_string();
     let reading = score::reading::Reading::running(id.clone());
     let cancel = reading.cancel.clone();
@@ -8179,7 +8194,7 @@ async fn create_score_reading(
     let language = language.trim().to_owned();
     let job_id = id.clone();
     tokio::spawn(async move {
-        run_score_reading(background, job_id, bytes, name, language, cancel).await;
+        run_score_reading(background, job_id, bytes, name, language, provided, cancel).await;
     });
     let reading = state.score_readings.read().await.get(&id).cloned().unwrap_or_else(|| score::reading::Reading::running(id));
     Ok((StatusCode::ACCEPTED, Json(reading)))
@@ -8198,12 +8213,112 @@ async fn set_score_reading_stage(state: &AppState, id: &str, stage: score::readi
     }
 }
 
+/// Vocals when the separator is installed, then the configured recogniser.
+/// Empty words come back with a warning. `Err` is only cancellation.
+async fn hear_score_words(
+    state: &AppState,
+    source: &std::path::Path,
+    work: &std::path::Path,
+    language: Option<&str>,
+    cancel: &Arc<std::sync::atomic::AtomicBool>,
+    on_fraction: Option<Arc<dyn Fn(f64) + Send + Sync>>,
+    activity_id: &str,
+    reading_id: Option<&str>,
+) -> anyhow::Result<(Vec<score::align::TimedWord>, Vec<String>)> {
+    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        anyhow::bail!("cancelled");
+    }
+    let mut warnings = Vec::new();
+    let vocals_path = work.join("vocals.wav");
+    let hear_path = match vocal_separator_with(state, Some(cancel.clone()), on_fraction).await {
+        Some(separator) => {
+            let outcome = tokio::task::spawn_blocking({
+                let source_path = source.to_path_buf();
+                let vocals_path = vocals_path.clone();
+                move || separator.separate(&source_path, &vocals_path)
+            })
+            .await;
+            match outcome {
+                Ok(Ok(())) => vocals_path,
+                Ok(Err(error)) if cancel.load(std::sync::atomic::Ordering::Relaxed) || error.to_string().contains("cancelled") => {
+                    anyhow::bail!("cancelled");
+                }
+                Ok(Err(error)) => {
+                    warnings.push(score::reading::warn_fields("scoreWarnVocalsFailed", &[("error", format!("{error:#}"))]));
+                    source.to_path_buf()
+                }
+                Err(error) => {
+                    warnings.push(score::reading::warn_fields("scoreWarnVocalsFailed", &[("error", error.to_string())]));
+                    source.to_path_buf()
+                }
+            }
+        }
+        None => {
+            warnings.push(score::reading::warn_code("scoreWarnVocalsMissing"));
+            source.to_path_buf()
+        }
+    };
+    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        anyhow::bail!("cancelled");
+    }
+    if let Some(id) = reading_id {
+        set_score_reading_stage(state, id, score::reading::Stage::Lyrics, 0.90).await;
+    }
+    let config = state.lyrics_sync_config.read().await.clone();
+    let timed_words = if !config.available() || matches!(config.provider, lyrics_sync::AsrProvider::None) {
+        warnings.push(score::reading::warn_code("scoreWarnLyricsOff"));
+        Vec::new()
+    } else if !ensure_local_recogniser(state, &config, activity_id).await {
+        warnings.push(score::reading::warn_code("scoreWarnLyricsModel"));
+        Vec::new()
+    } else if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        anyhow::bail!("cancelled");
+    } else {
+        let words = match config.provider {
+            lyrics_sync::AsrProvider::Whisper => {
+                let sync = state.lyrics_sync.clone();
+                let config = config.clone();
+                let path = hear_path.clone();
+                let language = language.map(str::to_owned);
+                let cancel = cancel.clone();
+                tokio::task::spawn_blocking(move || sync.whisper_words_cancellable(&config, &path, language.as_deref(), "", &cancel))
+                    .await
+                    .unwrap_or_else(|error| Err(anyhow::anyhow!(error.to_string())))
+            }
+            lyrics_sync::AsrProvider::Parakeet => {
+                // ponytail: Parakeet has no mid-run cancel; check before/after only.
+                let sync = state.lyrics_sync.clone();
+                let runtime = config.runtime;
+                let variant = config.whisper_model.clone();
+                let path = hear_path.clone();
+                tokio::task::spawn_blocking(move || sync.parakeet_words(runtime, variant.as_deref(), &path))
+                    .await
+                    .unwrap_or_else(|error| Err(anyhow::anyhow!(error.to_string())))
+            }
+            lyrics_sync::AsrProvider::OpenRouter => karaoke_words_from_openrouter(state, &config, &hear_path.to_string_lossy(), language).await,
+            lyrics_sync::AsrProvider::None => Ok(Vec::new()),
+        };
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) || words.as_ref().err().is_some_and(|error| error.to_string().contains("cancelled")) {
+            anyhow::bail!("cancelled");
+        }
+        match words {
+            Ok(words) => score::reading::words_with_ends(&words),
+            Err(error) => {
+                warnings.push(score::reading::warn_fields("scoreWarnLyricsFailed", &[("error", format!("{error:#}"))]));
+                Vec::new()
+            }
+        }
+    };
+    Ok((timed_words, warnings))
+}
+
 async fn run_score_reading(
     state: AppState,
     id: String,
     bytes: Vec<u8>,
     name: String,
     language: String,
+    provided_lyrics: String,
     cancel: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let fail = |state: AppState, id: String, message: String| async move {
@@ -8292,119 +8407,47 @@ async fn run_score_reading(
         return;
     }
     let mut warnings = Vec::new();
-    let vocals_path = work.join("vocals.wav");
     let on_fraction: Option<Arc<dyn Fn(f64) + Send + Sync>> = progress_slot.clone().map(|slot| {
         Arc::new(move |fraction: f64| {
             slot.store((0.75 + fraction * 0.15).min(0.90).to_bits(), std::sync::atomic::Ordering::Relaxed);
         }) as Arc<dyn Fn(f64) + Send + Sync>
     });
-    let hear_path = match vocal_separator_with(&state, Some(cancel.clone()), on_fraction).await {
-        Some(separator) => {
-            let outcome = tokio::task::spawn_blocking({
-                let source_path = source_path.clone();
-                let vocals_path = vocals_path.clone();
-                move || separator.separate(&source_path, &vocals_path)
-            })
-            .await;
-            match outcome {
-                Ok(Ok(())) => vocals_path.clone(),
-                Ok(Err(error)) if cancel.load(std::sync::atomic::Ordering::Relaxed) || error.to_string().contains("cancelled") => {
-                    mark_score_reading_cancelled(&state, &id).await;
-                    let _ = tokio::fs::remove_dir_all(&work).await;
-                    return;
-                }
-                Ok(Err(error)) => {
-                    warnings.push(score::reading::warn_fields(
-                        "scoreWarnVocalsFailed",
-                        &[("error", format!("{error:#}"))],
-                    ));
-                    source_path.clone()
-                }
-                Err(error) => {
-                    warnings.push(score::reading::warn_fields(
-                        "scoreWarnVocalsFailed",
-                        &[("error", error.to_string())],
-                    ));
-                    source_path.clone()
-                }
-            }
-        }
-        None => {
-            warnings.push(score::reading::warn_code("scoreWarnVocalsMissing"));
-            source_path.clone()
-        }
-    };
-    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-        mark_score_reading_cancelled(&state, &id).await;
-        let _ = tokio::fs::remove_dir_all(&work).await;
-        return;
-    }
-    set_score_reading_stage(&state, &id, score::reading::Stage::Lyrics, 0.90).await;
-    let config = state.lyrics_sync_config.read().await.clone();
     let lang = match language.as_str() {
         "auto" | "" => None,
         other => Some(other.to_owned()),
     };
-    let timed_words = if !config.available() || matches!(config.provider, lyrics_sync::AsrProvider::None) {
-        warnings.push(score::reading::warn_code("scoreWarnLyricsOff"));
-        Vec::new()
-    } else if !ensure_local_recogniser(&state, &config, &id).await {
-        warnings.push(score::reading::warn_code("scoreWarnLyricsModel"));
-        Vec::new()
-    } else if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-        mark_score_reading_cancelled(&state, &id).await;
-        let _ = tokio::fs::remove_dir_all(&work).await;
-        return;
-    } else {
-        let words = match config.provider {
-            lyrics_sync::AsrProvider::Whisper => {
-                let sync = state.lyrics_sync.clone();
-                let config = config.clone();
-                let path = hear_path.clone();
-                let language = lang.clone();
-                let cancel = cancel.clone();
-                tokio::task::spawn_blocking(move || sync.whisper_words_cancellable(&config, &path, language.as_deref(), "", &cancel))
-                    .await
-                    .unwrap_or_else(|error| Err(anyhow::anyhow!(error.to_string())))
-            }
-            lyrics_sync::AsrProvider::Parakeet => {
-                // ponytail: Parakeet has no mid-run cancel; check before/after only.
-                let sync = state.lyrics_sync.clone();
-                let runtime = config.runtime;
-                let variant = config.whisper_model.clone();
-                let path = hear_path.clone();
-                tokio::task::spawn_blocking(move || sync.parakeet_words(runtime, variant.as_deref(), &path))
-                    .await
-                    .unwrap_or_else(|error| Err(anyhow::anyhow!(error.to_string())))
-            }
-            lyrics_sync::AsrProvider::OpenRouter => {
-                karaoke_words_from_openrouter(&state, &config, &hear_path.to_string_lossy(), lang.as_deref()).await
-            }
-            lyrics_sync::AsrProvider::None => Ok(Vec::new()),
-        };
-        if cancel.load(std::sync::atomic::Ordering::Relaxed) || words.as_ref().err().is_some_and(|error| error.to_string().contains("cancelled")) {
+    let timed_words = match hear_score_words(&state, &source_path, &work, lang.as_deref(), &cancel, on_fraction, &id, Some(&id)).await {
+        Ok((words, heard)) => {
+            warnings.extend(heard);
+            words
+        }
+        Err(_) => {
             mark_score_reading_cancelled(&state, &id).await;
             let _ = tokio::fs::remove_dir_all(&work).await;
             return;
         }
-        match words {
-            Ok(words) => score::reading::words_with_ends(&words),
-            Err(error) => {
-                warnings.push(score::reading::warn_fields(
-                    "scoreWarnLyricsFailed",
-                    &[("error", format!("{error:#}"))],
-                ));
-                Vec::new()
-            }
-        }
     };
-    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-        mark_score_reading_cancelled(&state, &id).await;
-        let _ = tokio::fs::remove_dir_all(&work).await;
-        return;
-    }
     set_score_reading_stage(&state, &id, score::reading::Stage::Align, 0.95).await;
-    let aligned = score::align::align_lyrics(&abc, &timed_words);
+    let use_provided = auto_title::has_sung_lines(&provided_lyrics);
+    let aligned = if use_provided {
+        if timed_words.is_empty() {
+            // No clock from the recogniser: keep the written lyrics, leave the
+            // staff without w: syllables rather than inventing placements.
+            score::align::LyricAlignment {
+                lyrics: provided_lyrics.replace("\r\n", "\n").replace('\r', "\n").trim().to_string(),
+                display_abc: abc.clone(),
+                notes: Vec::new(),
+                unassigned: Vec::new(),
+                warnings: Vec::new(),
+                bpm: score::abc::parse(&abc).ok().map(|score| score.bpm),
+            }
+        } else {
+            let heard: Vec<(f64, String)> = timed_words.iter().map(|word| (word.start, word.text.clone())).collect();
+            score::align::align_provided_lyrics(&abc, &heard, &provided_lyrics)
+        }
+    } else {
+        score::align::align_lyrics(&abc, &timed_words)
+    };
     warnings.extend(aligned.warnings.iter().cloned());
     let title = score::reading::reading_title(&name);
     let settings = score::reading::score_settings(&abc, &aligned.display_abc, &language, &warnings);
@@ -8484,6 +8527,113 @@ async fn cancel_score_reading(
         reading.status = "cancelled".into();
     }
     Ok(Json(reading.clone()))
+}
+
+/// Put written lyrics on an existing score. An empty sheet hears the track again.
+async fn align_song_score_lyrics(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<score::reading::AlignScoreLyricsRequest>,
+) -> Result<Json<library::Song>, (StatusCode, Json<ApiError>)> {
+    let song = state
+        .library
+        .get_song(&id)
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Song not found.".into()))?;
+    let tool = song.metadata.pointer("/derived/tool").and_then(Value::as_str);
+    if tool != Some("score") {
+        return Err(api_error(StatusCode::BAD_REQUEST, "Only a score reading can realign lyrics.".into()));
+    }
+    let abc = song
+        .metadata
+        .pointer("/derived/settings/abc")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| song.replay_request.as_ref().and_then(|value| value.get("abc")).and_then(Value::as_str))
+        .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "This score reading has no ABC.".into()))?
+        .to_owned();
+    let language = song
+        .metadata
+        .pointer("/derived/settings/language")
+        .and_then(Value::as_str)
+        .unwrap_or("auto")
+        .to_owned();
+    let kept = request.lyrics.replace("\r\n", "\n").replace('\r', "\n").trim().to_string();
+    let written = auto_title::has_sung_lines(&kept);
+    let (aligned, mut warnings) = if written {
+        (score::align::align_written_lyrics(&abc, &kept), Vec::new())
+    } else {
+        let audio = state
+            .library
+            .media_path_for_song(&song)
+            .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "This score reading has no audio.".into()))?;
+        let work = state.library.media_dir().join("_score-reading").join(format!("realign-{id}"));
+        tokio::fs::create_dir_all(&work)
+            .await
+            .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("write work dir: {error}")))?;
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let lang = match language.as_str() {
+            "auto" | "" => None,
+            other => Some(other),
+        };
+        let heard = hear_score_words(&state, &audio, &work, lang, &cancel, None, &id, None).await;
+        let _ = tokio::fs::remove_dir_all(&work).await;
+        let (words, heard_warnings) = heard.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+        if words.is_empty() {
+            let reason = heard_warnings
+                .into_iter()
+                .next_back()
+                .unwrap_or_else(|| score::reading::warn_code("scoreWarnLyricsOff"));
+            return Err(api_error(StatusCode::BAD_REQUEST, reason));
+        }
+        (score::align::align_lyrics(&abc, &words), heard_warnings)
+    };
+    warnings.extend(aligned.warnings.iter().cloned());
+    let lyrics_out = if written { kept } else { aligned.lyrics.clone() };
+    if !auto_title::has_sung_lines(&lyrics_out) {
+        let reason = warnings
+            .into_iter()
+            .next_back()
+            .unwrap_or_else(|| score::reading::warn_code("scoreWarnLyricsNoMatch"));
+        return Err(api_error(StatusCode::BAD_REQUEST, reason));
+    }
+    let settings = score::reading::score_settings(&abc, &aligned.display_abc, &language, &warnings);
+
+    let mut song = song;
+    song.lyrics = lyrics_out;
+    if song.metadata.is_null() {
+        song.metadata = serde_json::json!({});
+    }
+    if let Some(fields) = song.metadata.as_object_mut() {
+        let derived = serde_json::json!({
+            "tool": "score",
+            "from": fields.get("derived").and_then(|value| value.get("from")).cloned(),
+            "from_title": fields.get("derived").and_then(|value| value.get("from_title")).cloned(),
+            "settings": settings,
+        });
+        fields.insert("derived".into(), derived);
+    }
+    state
+        .library
+        .update_song(
+            &id,
+            library::SongInput {
+                title: song.title.clone(),
+                audio_path: song.audio_path.clone(),
+                caption: song.caption.clone(),
+                lyrics: song.lyrics.clone(),
+                metadata: song.metadata.clone(),
+                generation_settings: song.generation_settings.clone(),
+                engine_id: song.engine_id.clone(),
+                profile_id: song.profile_id.clone(),
+                replay_request: song.replay_request.clone(),
+                audio_codes: song.audio_codes.clone(),
+                source: song.source.clone(),
+            },
+        )
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Song not found.".into()))
+        .map(Json)
 }
 
 async fn save_song_score(

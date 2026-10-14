@@ -17,7 +17,8 @@ import { localized, useAdapterLibrary, usesFromSettings } from '../services/adap
 import { useSongActions } from '../context/SongActionsContext';
 import { downloadSongAudio } from '../services/songDownload';
 import { saveFile } from '../services/saveFile';
-import { downloadScoreShare } from '../services/scoreReading';
+import { alignSongScoreLyrics, downloadScoreShare } from '../services/scoreReading';
+import { karaokeReason } from '../services/karaoke';
 import { localizeCode } from '../services/localizeCode';
 import { stemOf } from '../services/songStems';
 import { named } from '../services/accessibleName';
@@ -793,7 +794,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                     </div>
 
                     {/* The score the model planned: engraved, and one click away from the form. */}
-                    <SongScore song={song} />
+                    <SongScore song={song} onSongUpdate={onSongUpdate} />
 
                 </div>
             </div>
@@ -812,7 +813,7 @@ const ActionButton: React.FC<{ icon: React.ReactNode; label?: string; active?: b
 );
 
 /** The ABC score a track was performed from, engraved, with the way back into the form. */
-const SongScore: React.FC<{ song: Song }> = ({ song }) => {
+const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> = ({ song, onSongUpdate }) => {
     const { t, language: uiLanguage } = useI18n();
     const tt = t as unknown as (key: string) => string;
     const say = (raw: string) => localizeCode(raw, t);
@@ -820,9 +821,14 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
     const [jianpuOpen, setJianpuOpen] = useState(false);
     const [abcLive, setAbcLive] = useState<string | null>(null);
     const [sharing, setSharing] = useState(false);
+    const [alignLyrics, setAlignLyrics] = useState(song.lyrics || '');
+    const [aligning, setAligning] = useState(false);
+    const [alignError, setAlignError] = useState<string | null>(null);
     useEffect(() => {
         setAbcLive(null);
-    }, [song.id]);
+        setAlignLyrics(song.lyrics || '');
+        setAlignError(null);
+    }, [song.id, song.lyrics]);
     const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
         : '';
@@ -851,6 +857,28 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
             setSharing(false);
         }
     };
+    const realign = async () => {
+        if (!isScoreReading || aligning) return;
+        setAligning(true);
+        setAlignError(null);
+        try {
+            const submitted = alignLyrics;
+            const next = await alignSongScoreLyrics(song.id, submitted);
+            const lyrics = submitted.trim() ? submitted : (next.lyrics || '');
+            setAbcLive(typeof next.derived?.settings?.display_abc === 'string'
+                ? String(next.derived.settings.display_abc)
+                : null);
+            setAlignLyrics(lyrics);
+            onSongUpdate?.({ ...next, lyrics });
+            window.dispatchEvent(new CustomEvent('yue:library-changed'));
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : String(error);
+            setAlignError(karaokeReason(t, raw) || say(raw));
+        } finally {
+            setAligning(false);
+        }
+    };
+
     if (!abc) return null;
     return (
         <div className="bg-white dark:bg-black/20 rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden">
@@ -914,6 +942,31 @@ const SongScore: React.FC<{ song: Song }> = ({ song }) => {
                             }))}
                         />
                     </div>
+                    {isScoreReading && (
+                        <div className="space-y-2 border-t border-zinc-100 px-4 py-3 dark:border-white/5">
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500" htmlFor={`score-realign-${song.id}`}>
+                                {tt('scoreProvidedLyrics')}
+                            </label>
+                            <textarea
+                                id={`score-realign-${song.id}`}
+                                className="w-full min-h-[6rem] resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-zinc-900 outline-none focus:border-pink-500 dark:border-white/10 dark:bg-zinc-900 dark:text-white"
+                                value={alignLyrics}
+                                onChange={event => setAlignLyrics(event.target.value)}
+                                disabled={aligning}
+                            />
+                            <p className="text-[11px] leading-4 text-zinc-500">{tt('scoreRealignHint')}</p>
+                            <button
+                                type="button"
+                                disabled={aligning}
+                                onClick={() => void realign()}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-200 disabled:opacity-50 dark:bg-white/5 dark:text-zinc-300 dark:hover:bg-white/10"
+                            >
+                                {aligning ? <Loader2 size={14} className="animate-spin" /> : <Mic2 size={14} />}
+                                {aligning ? (alignLyrics.trim() ? tt('scoreRealigning') : tt('scoreStageLyrics')) : tt('scoreRealign')}
+                            </button>
+                            {alignError && <p className="text-[11px] text-rose-500">{alignError}</p>}
+                        </div>
+                    )}
                 </>
             )}
             {jianpuOpen && (

@@ -78,7 +78,7 @@ async function awaitReading(
 }
 
 export async function readScore(
-  source: { file?: File; songId?: string },
+  source: { file?: File; songId?: string; lyrics?: string },
   language: string,
   signal?: AbortSignal,
   onUpdate?: (state: ScoreReading) => void,
@@ -88,11 +88,27 @@ export async function readScore(
   else if (source.songId) form.append('song_id', source.songId);
   else throw new Error('no audio to read');
   form.append('language', language || 'zh');
+  const lyrics = source.lyrics?.trim();
+  if (lyrics) form.append('lyrics', lyrics);
   const submitted = await fetch('/v1/score-readings', { method: 'POST', body: form, signal });
   const job = (await submitted.json().catch(() => ({}))) as Partial<ScoreReading>;
   if (!submitted.ok || !job.id) throw new Error(job.error || `the engine refused the job (${submitted.status})`);
   onUpdate?.(job as ScoreReading);
   return awaitReading(job.id, signal, onUpdate);
+}
+
+export async function alignSongScoreLyrics(songId: string, lyrics: string): Promise<Song> {
+  const response = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/score-align`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lyrics }),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error || `align failed (${response.status})`);
+  }
+  const body = (await response.json()) as NativeLibrarySong;
+  return mapNativeLibrarySong(body);
 }
 
 export async function saveSongScore(songId: string, abc: string): Promise<Song> {

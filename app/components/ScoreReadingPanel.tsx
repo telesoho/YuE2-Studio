@@ -25,6 +25,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [language, setLanguage] = useState('zh');
+  const [lyrics, setLyrics] = useState('');
   const [running, setRunning] = useState(false);
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(0);
@@ -90,7 +91,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
     setProgress(0);
     setStage(tt('scoreStageTranscribe'));
     try {
-      const reading = await readScore({ file: source }, language, controller.signal, state => {
+      const reading = await readScore({ file: source, lyrics }, language, controller.signal, state => {
         setStage(stageLabel(state.stage));
         if (typeof state.progress === 'number') setProgress(Math.max(0, Math.min(1, state.progress)));
       });
@@ -277,6 +278,19 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
                 </option>
               ))}
             </select>
+            <label className="mt-3 block text-xs font-medium text-zinc-500" htmlFor="score-lyrics">
+              {tt('scoreProvidedLyrics')}
+            </label>
+            <textarea
+              id="score-lyrics"
+              className={`${CONTROL} mt-1 min-h-[7rem] resize-y font-mono text-xs leading-relaxed`}
+              value={lyrics}
+              onChange={event => setLyrics(event.target.value)}
+              disabled={running}
+              placeholder={tt('scoreProvidedLyricsHint')}
+              aria-label={tt('scoreProvidedLyrics')}
+            />
+            <p className="mt-1 text-[11px] leading-4 text-zinc-500">{tt('scoreProvidedLyricsHint')}</p>
             <button
               type="button"
               disabled={!file || running}

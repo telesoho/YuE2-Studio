@@ -146,6 +146,11 @@ pub struct SaveScoreRequest {
     pub abc: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AlignScoreLyricsRequest {
+    pub lyrics: String,
+}
+
 /// Metadata settings a score reading stores on the library track.
 pub fn score_settings(abc: &str, display_abc: &str, language: &str, warnings: &[String]) -> serde_json::Value {
     serde_json::json!({

@@ -69,6 +69,208 @@ struct SectionSpan {
     end: f64,
 }
 
+/// Timed syllables from written lyrics on the recogniser's clock.
+///
+/// The recogniser text is discarded; only its times are used. Empty when no
+/// sung line was heard clearly enough to place - the caller keeps the written
+/// lyrics and reports no-match rather than spreading them evenly over the song.
+pub fn syllables_from_provided(heard: &[(f64, String)], lyrics: &str) -> Vec<TimedWord> {
+    if heard.is_empty() {
+        return Vec::new();
+    }
+    let line_hits = crate::lyrics_sync::heard_line_starts(heard, lyrics);
+    if line_hits.iter().all(|(_, at)| at.is_none()) {
+        return Vec::new();
+    }
+    let lined = crate::lyrics_sync::align_lyrics(heard, lyrics);
+    if lined.is_empty() {
+        return Vec::new();
+    }
+
+    let heard_pieces = expand_heard_pieces(heard);
+    let mut timed: Vec<TimedWord> = Vec::new();
+    for (index, (start, text)) in lined.iter().enumerate() {
+        let end = lined
+            .get(index + 1)
+            .map(|(next, _)| *next)
+            .unwrap_or_else(|| heard.last().map(|(at, _)| *at + 2.0).unwrap_or(start + 4.0));
+        let written: Vec<String> = text
+            .split_whitespace()
+            .flat_map(split_word)
+            .filter(|piece| !piece.is_empty())
+            .collect();
+        if written.is_empty() {
+            continue;
+        }
+        let inside: Vec<&(f64, String)> = heard_pieces
+            .iter()
+            .filter(|(at, _)| *at >= *start - 0.01 && *at < end)
+            .collect();
+        let mut placed: Vec<Option<f64>> = vec![None; written.len()];
+        let mut cursor = 0usize;
+        for (position, syllable) in written.iter().enumerate() {
+            let expected = normalise_piece(syllable);
+            if expected.is_empty() {
+                continue;
+            }
+            if let Some(found) = inside[cursor..].iter().position(|(_, heard_word)| {
+                heard_word == &expected
+                    || (expected.chars().count() > 3 && heard_word.starts_with(&stem_piece(&expected)))
+            }) {
+                placed[position] = Some(inside[cursor + found].0);
+                cursor += found + 1;
+            }
+        }
+        fill_gaps(&written, &mut placed, *start, end);
+        for (syllable, at) in written.iter().zip(placed.iter()) {
+            let start_at = at.unwrap_or(*start);
+            timed.push(TimedWord {
+                text: syllable.clone(),
+                start: start_at,
+                end: start_at + 0.05,
+            });
+        }
+    }
+    // Give each syllable an end at the next start so note placement has a span.
+    for index in 0..timed.len() {
+        let end = timed
+            .get(index + 1)
+            .map(|next| next.start)
+            .unwrap_or(timed[index].start + 0.4);
+        timed[index].end = end.max(timed[index].start + 0.05);
+    }
+    timed
+}
+
+/// Align written lyrics onto the Vocal melody using recogniser times only.
+pub fn align_provided_lyrics(abc: &str, heard: &[(f64, String)], lyrics: &str) -> LyricAlignment {
+    let syllables = syllables_from_provided(heard, lyrics);
+    let mut aligned = align_lyrics(abc, &syllables);
+    // Keep the written words: lyrics_text rebuilds from note slots and would
+    // replace the user's line breaks with whatever landed on the staff.
+    if crate::auto_title::has_sung_lines(lyrics) {
+        aligned.lyrics = sectioned_lyrics_kept(lyrics);
+        if syllables.is_empty() {
+            aligned.warnings.push(crate::score::reading::warn_code("scoreWarnLyricsNoMatch"));
+        }
+    }
+    aligned
+}
+
+/// Put written lyrics on Vocal notes in order. No recogniser: its text is not
+/// a lyric sheet, and realign must not replace the page with a new transcript.
+///
+/// ponytail: one syllable per note. Melisma (one word held across notes) is
+/// not inferred; add it when a score needs held syllables marked `-`.
+pub fn align_written_lyrics(abc: &str, lyrics: &str) -> LyricAlignment {
+    let syllables = written_syllables(lyrics);
+    let times = vocal_note_spans(abc);
+    let words: Vec<TimedWord> = syllables
+        .iter()
+        .zip(times.iter())
+        .map(|(text, (start, end))| TimedWord {
+            text: text.clone(),
+            start: *start,
+            end: end.max(start + 0.05),
+        })
+        .collect();
+    let mut aligned = align_lyrics(abc, &words);
+    if crate::auto_title::has_sung_lines(lyrics) {
+        aligned.lyrics = sectioned_lyrics_kept(lyrics);
+    }
+    let dropped = syllables.len().saturating_sub(times.len());
+    if dropped > 0 && !times.is_empty() {
+        aligned.warnings.push(crate::score::reading::warn_fields(
+            "scoreWarnUnassigned",
+            &[("count", dropped.to_string())],
+        ));
+    }
+    aligned
+}
+
+fn written_syllables(lyrics: &str) -> Vec<String> {
+    lyrics
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !(line.starts_with('[') && line.ends_with(']')))
+        .flat_map(split_word)
+        .filter(|piece| !piece.is_empty())
+        .collect()
+}
+
+fn vocal_note_spans(abc: &str) -> Vec<(f64, f64)> {
+    let Ok(score) = abc::parse(abc) else {
+        return Vec::new();
+    };
+    sounding_notes(&score, score.bpm)
+        .into_iter()
+        .map(|note| (note.start, note.end))
+        .collect()
+}
+
+fn sectioned_lyrics_kept(lyrics: &str) -> String {
+    lyrics.replace("\r\n", "\n").replace('\r', "\n").trim().to_string()
+}
+
+fn expand_heard_pieces(heard: &[(f64, String)]) -> Vec<(f64, String)> {
+    let mut pieces = Vec::new();
+    for (index, (start, text)) in heard.iter().enumerate() {
+        let end = heard
+            .get(index + 1)
+            .map(|(next, _)| *next)
+            .unwrap_or_else(|| start + (0.4_f64).max(text.chars().count() as f64 * 0.25));
+        let parts = split_word(text);
+        if parts.is_empty() {
+            continue;
+        }
+        let span = (end - start).max(0.05) / parts.len() as f64;
+        for (offset, part) in parts.into_iter().enumerate() {
+            let normalised = normalise_piece(&part);
+            if normalised.is_empty() {
+                continue;
+            }
+            pieces.push((start + offset as f64 * span, normalised));
+        }
+    }
+    pieces
+}
+
+fn fill_gaps(written: &[String], placed: &mut [Option<f64>], start: f64, end: f64) {
+    let mut previous_time = start;
+    let mut position = 0usize;
+    while position < written.len() {
+        if let Some(at) = placed[position] {
+            previous_time = at;
+            position += 1;
+            continue;
+        }
+        let gap_start = position;
+        while position < written.len() && placed[position].is_none() {
+            position += 1;
+        }
+        let next_time = placed.get(position).copied().flatten().unwrap_or(end);
+        let span = (next_time - previous_time).max(0.05);
+        let weight: usize = written[gap_start..position].iter().map(|word| word.chars().count().max(1)).sum();
+        let mut used = 0usize;
+        for offset in gap_start..position {
+            let length = written[offset].chars().count().max(1);
+            let share = (used as f64 + length as f64 / 2.0) / weight as f64;
+            placed[offset] = Some(previous_time + span * share);
+            used += length;
+        }
+        previous_time = next_time;
+    }
+}
+
+fn normalise_piece(word: &str) -> String {
+    word.chars().filter(|character| character.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+}
+
+fn stem_piece(word: &str) -> String {
+    let count = word.chars().count();
+    word.chars().take(count.saturating_sub(1)).collect()
+}
+
 /// Align recogniser words onto the Vocal melody of a native ABC score.
 pub fn align_lyrics(abc: &str, words: &[TimedWord]) -> LyricAlignment {
     let Ok(score) = abc::parse(abc) else {
@@ -795,5 +997,76 @@ mod tests {
         }];
         let aligned = align_lyrics(ABC, &words);
         assert!(!aligned.warnings.is_empty() || !aligned.unassigned.is_empty());
+    }
+
+    #[test]
+    fn provided_chinese_lyrics_follow_written_text_not_asr() {
+        // Recogniser mangles the line and invents 天; the written lyrics still land on the notes.
+        let heard = vec![
+            (0.0, "春".into()),
+            (0.4, "眠".into()),
+            (0.8, "不".into()),
+            (1.2, "觉".into()),
+            (1.6, "晓".into()),
+            (2.0, "处".into()),
+            (2.4, "处".into()),
+            (2.8, "闻".into()),
+            (3.2, "天".into()),
+        ];
+        let lyrics = "[Verse]\n春眠不觉晓\n处处闻啼鸟";
+        let syllables = syllables_from_provided(&heard, lyrics);
+        assert!(!syllables.is_empty());
+        let joined: String = syllables.iter().map(|s| s.text.as_str()).collect();
+        assert!(joined.contains("春眠不觉晓"));
+        assert!(joined.contains("啼鸟"), "written characters the recogniser never said still appear: {joined}");
+        assert!(!joined.contains('天'), "ASR-only character must not become a syllable: {joined}");
+        let aligned = align_provided_lyrics(ABC, &heard, lyrics);
+        assert_eq!(aligned.lyrics, lyrics);
+        assert!(aligned.display_abc.contains("啼"), "written 啼 must reach the staff: {}", aligned.display_abc);
+        assert!(!aligned.display_abc.contains('天'), "ASR-only 天 must not reach the staff: {}", aligned.display_abc);
+    }
+
+    #[test]
+    fn provided_repeated_chorus_consumes_occurrences_in_order() {
+        let heard = vec![
+            (0.0, "la".into()),
+            (0.3, "la".into()),
+            (0.6, "hey".into()),
+            (2.0, "la".into()),
+            (2.3, "la".into()),
+            (2.6, "hey".into()),
+        ];
+        let lyrics = "[Chorus]\nla la hey\n\n[Verse]\nmiddle bit\n\n[Chorus]\nla la hey";
+        let syllables = syllables_from_provided(&heard, lyrics);
+        assert!(syllables.len() >= 6);
+        let chorus_starts: Vec<f64> = syllables
+            .iter()
+            .filter(|s| s.text == "la" || s.text == "hey")
+            .map(|s| s.start)
+            .collect();
+        assert!(chorus_starts.len() >= 6);
+        // First chorus cluster before the second.
+        assert!(chorus_starts[0] < 1.5);
+        assert!(chorus_starts[chorus_starts.len() - 1] >= 2.0);
+    }
+
+    #[test]
+    fn written_lyrics_stay_on_the_page_and_on_the_notes() {
+        let lyrics = "[Verse]\n春眠不觉晓\n处处闻啼鸟";
+        let aligned = align_written_lyrics(ABC, lyrics);
+        assert_eq!(aligned.lyrics, lyrics);
+        let staff = aligned.display_abc.lines().find(|line| line.trim_start().starts_with("w:")).expect("w line");
+        assert!(staff.contains("春") && staff.contains("眠") && staff.contains("晓"), "{staff}");
+        assert!(!staff.contains('天'), "nothing the page did not say: {staff}");
+    }
+
+    #[test]
+    fn provided_lyrics_with_no_match_stay_empty_for_caller() {
+        let heard = vec![(0.0, "zzzz".into()), (0.5, "yyyy".into())];
+        let lyrics = "[Verse]\n春眠不觉晓";
+        assert!(syllables_from_provided(&heard, lyrics).is_empty());
+        let aligned = align_provided_lyrics(ABC, &heard, lyrics);
+        assert!(aligned.warnings.iter().any(|w| w.contains("scoreWarnLyricsNoMatch")));
+        assert!(aligned.lyrics.contains("春眠不觉晓"));
     }
 }

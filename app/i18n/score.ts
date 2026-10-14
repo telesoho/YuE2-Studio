@@ -98,6 +98,11 @@ const en = {
   scoreStageVocals: 'Separating vocals…',
   scoreStageLyrics: 'Recognising lyrics…',
   scoreStageAlign: 'Aligning lyrics…',
+  scoreProvidedLyrics: 'Lyrics (optional)',
+  scoreProvidedLyricsHint: 'When filled in, these words go on the score. The recogniser only supplies timings; its own text is not used.',
+  scoreRealign: 'Realign lyrics',
+  scoreRealigning: 'Aligning…',
+  scoreRealignHint: 'Filled-in words are placed on the vocal notes in order. Leave this empty to recognise the singing again and align those words.',
 };
 
 export type ScoreStrings = { readonly [K in keyof typeof en]: string };
@@ -196,6 +201,11 @@ const ru: ScoreStrings = {
   scoreStageVocals: 'Отделяю вокал…',
   scoreStageLyrics: 'Распознаю слова…',
   scoreStageAlign: 'Кладу слова на ноты…',
+  scoreProvidedLyrics: 'Текст (необязательно)',
+  scoreProvidedLyricsHint: 'Если заполнить, на партитуру пойдут эти слова. Распознаватель даёт только тайминги; его текст не используется.',
+  scoreRealign: 'Выровнять текст',
+  scoreRealigning: 'Выравниваю…',
+  scoreRealignHint: 'Заполненный текст ложится на ноты вокала по порядку. Пустое поле — распознать пение заново и выровнять.',
 };
 
 const zh: ScoreStrings = {
@@ -292,6 +302,11 @@ const zh: ScoreStrings = {
   scoreStageVocals: '正在分离人声…',
   scoreStageLyrics: '正在识别歌词…',
   scoreStageAlign: '正在对齐歌词…',
+  scoreProvidedLyrics: '歌词（可选）',
+  scoreProvidedLyricsHint: '填写后采用这份歌词上谱。识别器只提供时刻，不采用听写文字。',
+  scoreRealign: '重新对齐歌词',
+  scoreRealigning: '对齐中…',
+  scoreRealignHint: '填写后按顺序贴到人声音符上，不再重新识别。留空则重新听写歌词并对齐。',
 };
 
 const ja: ScoreStrings = {
@@ -388,6 +403,11 @@ const ja: ScoreStrings = {
   scoreStageVocals: 'ボーカル分離中…',
   scoreStageLyrics: '歌詞認識中…',
   scoreStageAlign: '歌詞を合わせています…',
+  scoreProvidedLyrics: '歌詞（任意）',
+  scoreProvidedLyricsHint: '記入するとこの歌詞を譜面に載せます。認識器はタイミングだけ使い、書き起こし文は使いません。',
+  scoreRealign: '歌詞を再合わせ',
+  scoreRealigning: '合わせています…',
+  scoreRealignHint: '歌詞を書くとその順で人声音符に載せます。空のまま押すと歌を聞き直して合わせます。',
 };
 
 const ko: ScoreStrings = {
@@ -484,6 +504,11 @@ const ko: ScoreStrings = {
   scoreStageVocals: '보컬 분리 중…',
   scoreStageLyrics: '가사 인식 중…',
   scoreStageAlign: '가사 정렬 중…',
+  scoreProvidedLyrics: '가사(선택)',
+  scoreProvidedLyricsHint: '입력하면 이 가사를 악보에 올립니다. 인식기는 타이밍만 쓰고 받아쓴 글은 쓰지 않습니다.',
+  scoreRealign: '가사 다시 맞추기',
+  scoreRealigning: '맞추는 중…',
+  scoreRealignHint: '가사를 적으면 그 순서대로 보컬 음표에 올립니다. 비워 두면 노래를 다시 받아쓰고 맞춥니다.',
 };
 
 export const scoreStrings = { en, ru, zh, ja, ko };
