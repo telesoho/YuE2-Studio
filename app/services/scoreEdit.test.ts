@@ -28,6 +28,7 @@ const editor = (globalThis as { yueScoreEditor?: {
     abc: string;
     error?: string | null;
     beats?: number | null;
+    index?: number | null;
   };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
   sourceScrollTop: (
