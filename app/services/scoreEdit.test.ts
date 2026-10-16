@@ -221,6 +221,85 @@ z8|
     }
   });
 
+  it('switches toolbars between lyric and score caret', async () => {
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C4D4E4F4|
+w: 春 天 啊 来
+V: Ins
+z16|
+`;
+    try {
+      const pending = editor.open?.(score, null, { strings: jianpuStrings.zh as unknown as Record<string, string> });
+      await Promise.resolve();
+      const text = document.querySelector('.yue-jp-editor textarea') as HTMLTextAreaElement | null;
+      expect(text).toBeTruthy();
+      const tools = document.querySelector('.yue-jp-editor .yue-jp-tools') as HTMLElement | null;
+      expect(tools).toBeTruthy();
+
+      const spring = text!.value.indexOf('春');
+      expect(spring).toBeGreaterThan(-1);
+      text!.focus();
+      text!.setSelectionRange(spring, spring + 1);
+      text!.dispatchEvent(new Event('select'));
+
+      expect(tools!.hidden).toBe(false);
+      const lyricGroup = tools!.querySelector('.yue-jp-group[data-for="lyrics"]') as HTMLElement | null;
+      expect(lyricGroup?.hidden).toBe(false);
+      const lyricEmpty = lyricGroup?.querySelector('[data-act="lyric-empty"]') as HTMLButtonElement | null;
+      expect(lyricEmpty?.textContent).toBe('·');
+      const lyricSustain = lyricGroup?.querySelector('[data-act="lyric-sustain"]') as HTMLButtonElement | null;
+      expect(lyricSustain).toBeTruthy();
+      expect(lyricGroup?.querySelector('[data-act="align-lyrics"]')).toBeTruthy();
+      tools!.querySelectorAll('.yue-jp-group[data-for="score"]').forEach((group) => {
+        expect((group as HTMLElement).hidden).toBe(true);
+      });
+
+      const before = text!.value;
+      lyricEmpty!.click();
+      expect(text!.value).toMatch(/词[^\n]*·/);
+      lyricSustain!.click();
+      expect(text!.value).not.toBe(before);
+      expect(text!.value).toMatch(/词[^\n]*-/);
+
+      const lines = text!.value.split('\n');
+      let musicAt = -1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== '唱') continue;
+        const body = lines[i + 1] || '';
+        const digit = body.search(/[1-7]/);
+        if (digit < 0) continue;
+        musicAt = lines.slice(0, i + 1).join('\n').length + 1 + digit;
+        break;
+      }
+      expect(musicAt).toBeGreaterThan(-1);
+      text!.setSelectionRange(musicAt, musicAt + 1);
+      text!.dispatchEvent(new Event('select'));
+
+      expect(tools!.hidden).toBe(false);
+      expect(lyricGroup?.hidden).toBe(true);
+      const degree = tools!.querySelector('[data-degree="1"]') as HTMLElement | null;
+      expect(degree).toBeTruthy();
+      expect((degree!.closest('.yue-jp-group') as HTMLElement).hidden).toBe(false);
+
+      (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
+      await pending;
+    } finally {
+      document.querySelector('.yue-jp-editor')?.remove();
+      globals.abc2svg = previous;
+    }
+  });
+
   it('flows lyrics after the caret across vocal lines', () => {
     editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
     const score = `X:1

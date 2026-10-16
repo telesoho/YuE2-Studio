@@ -3555,7 +3555,9 @@
   }
 
   function ensureDom() {
-    if (ui.root || typeof document === "undefined") return;
+    if (typeof document === "undefined") return;
+    if (ui.root && ui.root.isConnected) return;
+    ui.root = null;
     const style = document.createElement("style");
     style.textContent = [
       ".yue-jp-editor{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);",
@@ -3597,8 +3599,9 @@
       "html.dark .yue-jp-tools{background:#18181b;color:#fafafa;border-bottom-color:rgba(255,255,255,.1);}",
       ".yue-jp-tools[hidden]{display:none;}",
       ".yue-jp-group{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:0 8px;}",
-      ".yue-jp-group + .yue-jp-group{border-left:1px solid #e4e4e7;}",
-      "html.dark .yue-jp-group + .yue-jp-group{border-left-color:rgba(255,255,255,.1);}",
+      ".yue-jp-group[hidden]{display:none;}",
+      ".yue-jp-group:not([hidden]) + .yue-jp-group:not([hidden]){border-left:1px solid #e4e4e7;}",
+      "html.dark .yue-jp-group:not([hidden]) + .yue-jp-group:not([hidden]){border-left-color:rgba(255,255,255,.1);}",
       ".yue-jp-tools button{padding:4px 8px;min-width:28px;}",
       ".yue-jp-tools button.digit{font-weight:700;min-width:32px;}",
       ".yue-jp-tools button.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px;}",
@@ -3746,6 +3749,7 @@
       syncDiagram();
     }
     fillTools(ui.tools);
+    syncTools();
     ui.text.addEventListener("input", () => {
       if (!ui.textSilent) ui.textErrorLine = 0;
       paintLineNumbers();
@@ -3793,6 +3797,8 @@
       else if (act === "ok") acceptText();
       else if (act === "cancel") finish(null);
       else if (act === "align-lyrics") alignLyricsFromCaret();
+      else if (act === "lyric-sustain") insertLyricMark("-");
+      else if (act === "lyric-empty") insertLyricMark("·");
       else if (button && ui.tools.contains(button)) {
         const command = commandFrom(button);
         if (!command) return;
@@ -3854,6 +3860,7 @@
     if (ui.tools) {
       ui.tools.innerHTML = "";
       fillTools(ui.tools);
+      syncTools();
     }
     setPlayLabel(ui.playing ? "pause" : "play");
     syncDiagram();
@@ -4142,7 +4149,7 @@
   }
 
   function fillTools(root) {
-    const groups = [
+    const scoreGroups = [
       ["1", "2", "3", "4", "5", "6", "7", "0"].map((digit) => ({
         label: digit,
         title: digit === "0" ? m("jpRest0") : m("jpDegree", { digit: digit }),
@@ -4167,7 +4174,20 @@
         { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
         { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
       ],
+    ];
+    const lyricGroups = [
       [
+        {
+          label: "·",
+          title: m("jpLyricEmptyTitle"),
+          aria: m("jpLyricEmptyTitle"),
+          attrs: { act: "lyric-empty" },
+        },
+        {
+          label: m("jpSustain"),
+          title: m("jpLyricSustainTitle"),
+          attrs: { act: "lyric-sustain" },
+        },
         {
           html: ALIGN_LYRICS_ICON,
           title: m("jpAlignLyricsTitle"),
@@ -4177,22 +4197,80 @@
         },
       ],
     ];
-    groups.forEach((specs) => {
-      const group = document.createElement("div");
-      group.className = "yue-jp-group";
-      specs.forEach((spec) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        if (spec.className) button.className = spec.className;
-        if (spec.html) button.innerHTML = spec.html;
-        else button.textContent = spec.label;
-        button.title = spec.title;
-        if (spec.aria) button.setAttribute("aria-label", spec.aria);
-        Object.keys(spec.attrs).forEach((key) => button.setAttribute("data-" + key, spec.attrs[key]));
-        group.appendChild(button);
+    const append = (groups, kind) => {
+      groups.forEach((specs) => {
+        const group = document.createElement("div");
+        group.className = "yue-jp-group";
+        group.setAttribute("data-for", kind);
+        specs.forEach((spec) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          if (spec.className) button.className = spec.className;
+          if (spec.html) button.innerHTML = spec.html;
+          else button.textContent = spec.label;
+          button.title = spec.title;
+          if (spec.aria) button.setAttribute("aria-label", spec.aria);
+          Object.keys(spec.attrs).forEach((key) => button.setAttribute("data-" + key, spec.attrs[key]));
+          group.appendChild(button);
+        });
+        root.appendChild(group);
       });
-      root.appendChild(group);
-    });
+    };
+    append(scoreGroups, "score");
+    append(lyricGroups, "lyrics");
+  }
+
+  // Insert a lyric token ("-" hold, "·" empty syllable) into the 词 line at the caret.
+  function insertLyricMark(token) {
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+      applyText();
+    }
+    if (!ui.text) return;
+    if (ui.textBlocked) {
+      setStatus(ui.textError || m("jpFixTextFirst"));
+      return;
+    }
+    clearSavedNote();
+    const value = ui.text.value;
+    let start = ui.text.selectionStart || 0;
+    let end = ui.text.selectionEnd == null ? start : ui.text.selectionEnd;
+    if (Array.isArray(ui.lyricSelection) && ui.lyricSelection.length && ui.textMarks.length) {
+      const want = new Set(ui.lyricSelection);
+      let last = null;
+      for (const mark of ui.textMarks) {
+        if (!mark || mark.kind !== "lyric" || !want.has(mark.index)) continue;
+        if (!last || mark.end >= last.end) last = mark;
+      }
+      if (last) {
+        start = last.end;
+        end = last.end;
+      }
+    }
+    if (!caretOnLyricLine(value, start)) {
+      if (token === "-") run({ op: "sustain" });
+      return;
+    }
+    const left = value.slice(0, start);
+    const right = value.slice(end);
+    const padL = left.length && !/\s$/.test(left) ? " " : "";
+    const padR = right.length && !/^\s/.test(right) ? " " : "";
+    const chunk = padL + token + padR;
+    const next = left + chunk + right;
+    const caret = left.length + padL.length + token.length;
+    ui.textSilent = true;
+    ui.text.value = next;
+    ui.textSilent = false;
+    ui.textDirty = true;
+    try {
+      if (ui.text.focus) ui.text.focus({ preventScroll: true });
+      ui.text.setSelectionRange(caret, caret);
+    } catch (_err) {
+      /* textarea may be detached */
+    }
+    applyText();
+    syncCaret();
   }
 
   function alignLyricsFromCaret() {
@@ -4259,7 +4337,7 @@
     if (lyric && lyric.dataset.idx != null && lyric.dataset.idx !== "") {
       const lyricIndex = Number(lyric.dataset.idx);
       if (Number.isInteger(lyricIndex)) {
-        return { voice: "Vocal", index: lyricIndex, slice: 0 };
+        return { voice: "Vocal", index: lyricIndex, slice: 0, lyric: true };
       }
     }
     const node = target && target.closest && target.closest("text.fj");
@@ -4332,7 +4410,37 @@
 
   function applyPicked(picked) {
     if (!picked) return;
+    if (picked.lyric) {
+      selectLyric(picked.index);
+      return;
+    }
     selectNote(picked.voice, picked.index, picked.slice);
+  }
+
+  // Keep the text caret on the syllable so syncCaret stays in lyric mode.
+  function selectLyric(index) {
+    if (!Number.isInteger(index)) return;
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+      applyText();
+    }
+    setStatus("");
+    markLyricSelection([index]);
+    if (ui.text && ui.textMarks && ui.textMarks.length) {
+      const mark = ui.textMarks.find((item) => item && item.kind === "lyric" && item.index === index);
+      if (mark) {
+        try {
+          if (document.activeElement !== ui.text && ui.text.focus) {
+            ui.text.focus({ preventScroll: true });
+          }
+          ui.text.setSelectionRange(mark.start, mark.end);
+        } catch (_err) {
+          /* textarea may be detached */
+        }
+      }
+    }
+    followSelection();
   }
 
   function sameHead(el) {
@@ -4394,9 +4502,14 @@
 
   function syncTools() {
     if (!ui.tools) return;
+    const lyricMode = Array.isArray(ui.lyricSelection);
     const ev = ui.index >= 0 ? eventsFor(ui.abc, ui.voice)[ui.index] : null;
-    ui.tools.hidden = !ev;
-    if (!ev) return;
+    ui.tools.hidden = !(lyricMode || ev);
+    ui.tools.querySelectorAll(".yue-jp-group").forEach((group) => {
+      const kind = group.getAttribute("data-for");
+      group.hidden = lyricMode ? kind !== "lyrics" : kind !== "score";
+    });
+    if (!ev || lyricMode) return;
     ui.tools.querySelectorAll("[data-degree]").forEach((btn) => {
       const on = ev.digit === btn.getAttribute("data-degree");
       btn.classList.toggle("on", on);
@@ -4451,13 +4564,11 @@
   function markLyricSelection(indexes) {
     const picked = (indexes || []).filter((index) => Number.isInteger(index));
     ui.lyricSelection = picked.slice();
-    if (!picked.length) {
-      markSelection();
-      return;
+    if (picked.length) {
+      ui.voice = "Vocal";
+      ui.index = picked[0];
+      ui.slice = 0;
     }
-    ui.voice = "Vocal";
-    ui.index = picked[0];
-    ui.slice = 0;
     const want = new Set(picked);
     if (ui.paper) ui.paper.querySelectorAll(".yue-sel-box").forEach((el) => el.remove());
     const covered = new Set();
@@ -4484,8 +4595,18 @@
       if (on && index === picked[0]) fallback = el;
     });
     syncTools();
-    reveal(first || fallback);
+    if (picked.length) reveal(first || fallback);
     followSelection();
+  }
+
+  // True when the caret sits on a 词 line (prefix alone counts).
+  function caretOnLyricLine(text, caret) {
+    const value = String(text || "");
+    const at = Math.max(0, Math.min(Number(caret) || 0, value.length));
+    const lineStart = value.lastIndexOf("\n", Math.max(0, at - 1)) + 1;
+    const lineEnd = value.indexOf("\n", at);
+    const line = value.slice(lineStart, lineEnd < 0 ? value.length : lineEnd);
+    return /^\s*词/.test(line);
   }
 
   function reveal(node) {
@@ -5126,18 +5247,28 @@
   }
 
   function syncCaret() {
-    if (!ui.text || ui.textBlocked || !ui.textMarks.length) {
+    if (!ui.text || ui.textBlocked) {
       if (ui.lyricSelection) markSelection();
       return;
     }
     const start = ui.text.selectionStart || 0;
     const end = ui.text.selectionEnd == null ? start : ui.text.selectionEnd;
-    const lyrics = lyricIndexesInSelection(ui.textMarks, start, end);
-    if (lyrics.length) {
-      markLyricSelection(lyrics);
+    if (ui.textMarks.length) {
+      const lyrics = lyricIndexesInSelection(ui.textMarks, start, end);
+      if (lyrics.length) {
+        markLyricSelection(lyrics);
+        return;
+      }
+    }
+    if (caretOnLyricLine(ui.text.value, start) || (end !== start && caretOnLyricLine(ui.text.value, end - 1))) {
+      markLyricSelection([]);
       return;
     }
-    const hadLyrics = !!ui.lyricSelection;
+    if (!ui.textMarks.length) {
+      if (ui.lyricSelection) markSelection();
+      return;
+    }
+    const hadLyrics = Array.isArray(ui.lyricSelection);
     let found = null;
     for (const mark of ui.textMarks) {
       if (!mark || mark.kind === "lyric") continue;
