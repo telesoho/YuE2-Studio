@@ -24,7 +24,11 @@ const editor = (globalThis as { yueScoreEditor?: {
     caret: number;
     leftover: number;
   };
-  editScore: (abc: string, command: Record<string, unknown>) => { abc: string; error?: string | null };
+  editScore: (abc: string, command: Record<string, unknown>) => {
+    abc: string;
+    error?: string | null;
+    beats?: number | null;
+  };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
   sourceScrollTop: (
     anchors: Array<{ t: number; y: number }>,
@@ -828,5 +832,100 @@ ${Array.from({ length: count }, () => `V: Vocal\n${bar}\nV: Ins\n${bar}`).join('
       document.querySelector('.yue-jp-editor')?.remove();
       globals.abc2svg = previous;
     }
+  });
+
+  it('joins this bar with the next on the same line', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|G A B c|d e f g|
+w: do re mi fa so la ti do re mi fa so
+V: Ins
+C D E F|G A B c|d e f g|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 1, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalCDEFGABc|defg|');
+    expect(body).toContain('V:InsCDEFGABc|defg|');
+    expect(body).toContain('w:doremifasolatidoremifaso');
+    expect(joined.beats).toBe(8);
+  });
+
+  it('joins the last bar of a line with the first bar of the next', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+w: do re mi fa
+V: Ins
+C D E F|
+V: Vocal
+G A B c|d e f g|
+w: so la ti do re mi fa so
+V: Ins
+G A B c|d e f g|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDEFGABc|defg|');
+    expect(body).toContain('w:doremifasolatidoremifaso');
+    expect(joined.beats).toBe(8);
+  });
+
+  it('joins two short bars and leaves the following bar short', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D|E F|G|
+w: do re mi fa so
+V: Ins
+C D|E F|G|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalCDEF|G|');
+    expect(body).toContain('V:InsCDEF|G|');
+    expect(body).toContain('w:doremifaso');
+    expect(joined.beats).toBeNull();
+  });
+
+  it('refuses to join the last bar of a section', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D|E F|G|
+V: Ins
+C D|E F|G|
+`;
+    const stayed = editor.editScore(score, { op: 'join', index: 4, voice: 'Vocal' });
+    expect(stayed.error).toBeTruthy();
+    expect(stayed.abc).toBe(score);
   });
 });

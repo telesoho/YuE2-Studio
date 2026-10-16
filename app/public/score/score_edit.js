@@ -1430,9 +1430,174 @@
     return { abc: joinAbc(lines, abc), error: null };
   }
 
+  // A multi-bar Z expands into consecutive rests whose later slices have no sourceIndex.
+  function barOrdinal(flat, index, slice) {
+    const at = slice > 0 ? slice : 0;
+    for (let i = 0; i < flat.length; i++) {
+      if (flat[i].sourceIndex !== index) continue;
+      let span = 1;
+      while (i + span < flat.length && flat[i + span].sourceIndex < 0
+          && flat[i + span].originalBar === flat[i].originalBar + span) {
+        span += 1;
+      }
+      if (span > 1) {
+        if (at >= span) return -1;
+        return flat[i + at].originalBar;
+      }
+      return flat[i].originalBar;
+    }
+    return -1;
+  }
+
+  function quarterBeats(units, lDen) {
+    if (!lDen) return 0;
+    return Math.round(units * 4 / lDen * 10) / 10;
+  }
+
+  // The bar containing the note, and the next bar in the same meter region.
+  function joinLocate(abc, voice, index, slice) {
+    const walked = walkBody(abc);
+    if (walked.error) return { error: walked.error };
+    const items = walked.items;
+    let at = -1;
+    for (let i = 0; i < items.length && at < 0; i++) {
+      const item = items[i];
+      if (item.type !== "music" || item.voice !== voice) continue;
+      for (const ev of item.events) {
+        if (ev.index === index) {
+          at = i;
+          break;
+        }
+      }
+    }
+    if (at < 0) return { error: m("jpErrNoSuchNote") };
+    const meter = items[at].meter;
+    let start = at;
+    while (start > 0) {
+      const prev = items[start - 1];
+      if (prev.type !== "music" || !sameMeter(prev.meter, meter)) break;
+      start -= 1;
+    }
+    let end = at + 1;
+    while (end < items.length) {
+      const next = items[end];
+      if (next.type !== "music" || !sameMeter(next.meter, meter)) break;
+      end += 1;
+    }
+    const vocalFlat = flattenVoice(items, start, end, "Vocal");
+    const insFlat = flattenVoice(items, start, end, "Ins");
+    const vocalBars = barsOf(vocalFlat.map((ev) => ({ ev: ev, bar: ev.originalBar })));
+    const insBars = barsOf(insFlat.map((ev) => ({ ev: ev, bar: ev.originalBar })));
+    if (!vocalBars || !insBars || !vocalBars.length || vocalBars.length !== insBars.length) {
+      return { error: m("jpErrVoicesBars") };
+    }
+    const bar = barOrdinal(voice === "Ins" ? insFlat : vocalFlat, index, slice);
+    if (bar < 0) return { error: m("jpErrNoSuchNote") };
+    if (bar + 1 >= vocalBars.length) return { error: m("jpErrJoinLast") };
+    const heads = [];
+    function take(bars, which) {
+      const events = bars[bar].concat(bars[bar + 1]);
+      for (const ev of events) {
+        if (ev.index == null || ev.index < 0) continue;
+        heads.push({ voice: which, index: ev.index });
+      }
+    }
+    take(vocalBars, "Vocal");
+    take(insBars, "Ins");
+    return {
+      error: null,
+      walked: walked,
+      items: items,
+      start: start,
+      end: end,
+      meter: meter,
+      vocalBars: vocalBars,
+      insBars: insBars,
+      bar: bar,
+      heads: heads,
+    };
+  }
+
+  // Drop the barline between this bar and the next. Other bars stay.
+  // Line breaks are repacked; the meter is not.
+  function joinBars(abc, voice, index, slice, command) {
+    const found = joinLocate(abc, voice, index, slice);
+    if (found.error) return { abc: abc, error: found.error };
+    const vocalBars = found.vocalBars.slice();
+    const insBars = found.insBars.slice();
+    vocalBars[found.bar] = found.vocalBars[found.bar].concat(found.vocalBars[found.bar + 1]);
+    insBars[found.bar] = found.insBars[found.bar].concat(found.insBars[found.bar + 1]);
+    vocalBars.splice(found.bar + 1, 1);
+    insBars.splice(found.bar + 1, 1);
+    const diagram = normalizeDiagram(command && command.diagram);
+    const widths = [];
+    for (let b = 0; b < vocalBars.length; b++) {
+      widths.push(Math.max(
+        barNaturalWidth(vocalBars[b], diagram),
+        barNaturalWidth(insBars[b], diagram),
+      ));
+    }
+    const range = lineBarRange(command);
+    const chunks = packBarChunks(widths, range.min, range.max);
+    const items = found.items;
+    let vocalKey = null;
+    let insKey = null;
+    for (let j = found.start; j < found.end; j++) {
+      if (items[j].type !== "music") continue;
+      if (items[j].voice === "Vocal" && vocalKey == null) vocalKey = items[j].startKey;
+      if (items[j].voice === "Ins" && insKey == null) insKey = items[j].startKey;
+    }
+    const walked = found.walked;
+    let beforeMeter = walked.header.meter;
+    for (let j = found.start - 1; j >= 0; j--) {
+      if (items[j].type === "music") {
+        beforeMeter = items[j].meter;
+        break;
+      }
+    }
+    const meterLine = sameMeter(found.meter, beforeMeter)
+      ? ""
+      : "M:" + found.meter[0] + "/" + found.meter[1];
+    const stateV = { key: vocalKey || walked.header.key.name };
+    const stateI = { key: insKey || walked.header.key.name };
+    const out = [];
+    for (let g = 0; g < chunks.length; g++) {
+      const chunkV = vocalBars.slice(chunks[g].from, chunks[g].to);
+      const chunkI = insBars.slice(chunks[g].from, chunks[g].to);
+      out.push("V: Vocal");
+      if (g === 0 && meterLine) out.push(meterLine);
+      out.push(renderBars(chunkV, stateV));
+      const lyric = lyricAbc({ bars: chunkV });
+      if (lyric) out.push(lyric);
+      out.push("V: Ins");
+      if (g === 0 && meterLine) out.push(meterLine);
+      out.push(renderBars(chunkI, stateI));
+    }
+    let from = items[found.start].vLine;
+    let to = items[found.start].musicLine;
+    for (let j = found.start; j < found.end; j++) {
+      if (items[j].type !== "music") continue;
+      if (items[j].vLine < from) from = items[j].vLine;
+      const last = items[j].lyricLine >= 0 ? items[j].lyricLine : items[j].musicLine;
+      if (last > to) to = last;
+    }
+    const lines = walked.lines.slice();
+    lines.splice(from, to - from + 1, ...out);
+    const chosen = voice === "Ins" ? insBars[found.bar] : vocalBars[found.bar];
+    let units = 0;
+    for (const ev of chosen) units += ev.units;
+    const count = quarterBeats(units, walked.header.lDen);
+    const meterCount = quarterBeats(perBarUnits(found.meter, walked.header.lDen), walked.header.lDen);
+    const beats = Math.abs(count - meterCount) > 0.05 ? count : null;
+    return { abc: joinAbc(lines, abc), error: null, beats: beats };
+  }
+
   function editScore(abc, command) {
     if (command.op === "reflow") return reflowScore(abc, command);
     const voice = command.voice === "Ins" ? "Ins" : "Vocal";
+    if (command.op === "join") {
+      return joinBars(abc, voice, command.index | 0, command.slice | 0, command);
+    }
     if (command.slice != null) {
       const expanded = expandSlicedRest(abc, voice, command.index | 0, command.slice | 0);
       if (expanded.error) return { abc: abc, error: expanded.error };
@@ -4229,6 +4394,7 @@
       "user-select:none;-webkit-user-select:none;}",
       ".yue-jp-paper svg path,.yue-jp-paper svg line{pointer-events:none;}",
       ".yue-sel-box{fill:rgba(224,49,49,.16);stroke:#e03131;pointer-events:none;}",
+      ".yue-join-box{fill:rgba(224,49,49,.1);stroke:#e03131;pointer-events:none;}",
       "text[data-lyric].yue-sel{fill:#c22525;}",
       "text.fj.yue-sel{fill:#c22525;}",
       "text.fj.yue-jp-mismatch{fill:#d9480f;}",
@@ -4748,6 +4914,7 @@
       [
         { label: m("jpTie"), title: m("jpTieTitle"), attrs: { act: "tie" } },
         { label: m("jpDownbeat"), title: m("jpDownbeatTitle"), attrs: { act: "downbeat" } },
+        { label: m("jpJoin"), title: m("jpJoinTitle"), attrs: { act: "join" } },
         { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
         { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
         { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
@@ -4789,6 +4956,12 @@
           button.title = spec.title;
           if (spec.aria) button.setAttribute("aria-label", spec.aria);
           Object.keys(spec.attrs).forEach((key) => button.setAttribute("data-" + key, spec.attrs[key]));
+          if (spec.attrs.act === "join") {
+            button.addEventListener("pointerenter", previewJoin);
+            button.addEventListener("pointerleave", clearJoinPreview);
+            button.addEventListener("focus", previewJoin);
+            button.addEventListener("blur", clearJoinPreview);
+          }
           group.appendChild(button);
           if (spec.attrs.act === "reflow") {
             group.appendChild(barCountField("min"));
@@ -4900,7 +5073,7 @@
     if (act === "accidental") return { op: "accidental", kind: button.getAttribute("data-kind") };
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
     if (act === "tie" || act === "sustain" || act === "insert" || act === "delete"
-        || act === "downbeat" || act === "reflow") return { op: act };
+        || act === "downbeat" || act === "reflow" || act === "join") return { op: act };
     return null;
   }
 
@@ -5124,10 +5297,99 @@
     followSelection();
   }
 
+  function clearJoinPreview() {
+    if (!ui.paper) return;
+    ui.paper.querySelectorAll(".yue-join-box").forEach((el) => el.remove());
+  }
+
+  function joinButtonHot() {
+    const button = ui.tools && ui.tools.querySelector("[data-act='join']");
+    return !!(button && (button.matches(":hover") || document.activeElement === button));
+  }
+
+  // ponytail: staff rows within 4 digit-heights share a box; a larger gap is the next system
+  function drawJoinBoxes(nodes) {
+    const placed = [];
+    for (const node of nodes) {
+      const box = boxInSvg(node);
+      if (box) placed.push(box);
+    }
+    if (!placed.length) return;
+    placed.sort((a, b) => a.y - b.y || a.x - b.x);
+    const rows = [];
+    for (const box of placed) {
+      const mid = box.y + box.h / 2;
+      let row = null;
+      for (const candidate of rows) {
+        if (candidate.svg === box.svg && Math.abs(candidate.mid - mid) <= Math.max(candidate.h, box.h) * 0.75) {
+          row = candidate;
+          break;
+        }
+      }
+      if (!row) {
+        rows.push({ mid: mid, h: box.h, svg: box.svg, boxes: [box] });
+        continue;
+      }
+      row.boxes.push(box);
+      row.h = Math.max(row.h, box.h);
+      let sum = 0;
+      for (const item of row.boxes) sum += item.y + item.h / 2;
+      row.mid = sum / row.boxes.length;
+    }
+    rows.sort((a, b) => a.mid - b.mid);
+    const systems = [];
+    for (const row of rows) {
+      const prev = systems[systems.length - 1];
+      const gap = prev ? row.mid - prev.mid : 0;
+      if (!prev || row.svg !== prev.svg || gap > prev.h * 4) {
+        systems.push({ h: row.h, svg: row.svg, mid: row.mid, boxes: row.boxes.slice() });
+      } else {
+        prev.boxes.push.apply(prev.boxes, row.boxes);
+        prev.h = Math.max(prev.h, row.h);
+        prev.mid = row.mid;
+      }
+    }
+    for (const system of systems) {
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (const box of system.boxes) {
+        x0 = Math.min(x0, box.x);
+        y0 = Math.min(y0, box.y);
+        x1 = Math.max(x1, box.x + box.w);
+        y1 = Math.max(y1, box.y + box.h);
+      }
+      const pad = Math.max(3, system.h * 0.22);
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("class", "yue-join-box");
+      rect.setAttribute("x", String(x0 - pad));
+      rect.setAttribute("y", String(y0 - pad));
+      rect.setAttribute("width", String(Math.max(1, x1 - x0 + pad * 2)));
+      rect.setAttribute("height", String(Math.max(1, y1 - y0 + pad * 2)));
+      rect.setAttribute("rx", String(Math.max(2, pad * 0.45)));
+      rect.setAttribute("fill", "rgba(224,49,49,0.1)");
+      rect.setAttribute("stroke", "#e03131");
+      rect.setAttribute("stroke-width", String(Math.max(1.6, system.h * 0.08)));
+      rect.setAttribute("pointer-events", "none");
+      system.svg.appendChild(rect);
+    }
+  }
+
+  function previewJoin() {
+    clearJoinPreview();
+    if (!ui || ui.index < 0 || !ui.abc) return;
+    const found = joinLocate(ui.abc, ui.voice === "Ins" ? "Ins" : "Vocal", ui.index, ui.slice || 0);
+    if (found.error || !found.heads) return;
+    const want = new Set(found.heads.map((head) => head.voice + ":" + head.index));
+    const nodes = heads().filter((el) => want.has((el.dataset.voice || "Vocal") + ":" + el.dataset.idx));
+    drawJoinBoxes(nodes);
+  }
+
   function markSelection(locate) {
     ui.lyricSelection = null;
     const nodes = heads();
-    if (ui.paper) ui.paper.querySelectorAll(".yue-sel-box").forEach((el) => el.remove());
+    if (ui.paper) ui.paper.querySelectorAll(".yue-sel-box,.yue-join-box").forEach((el) => el.remove());
     nodes.forEach((el) => {
       const on = sameHead(el);
       el.classList.toggle("yue-sel", on);
@@ -5142,6 +5404,7 @@
     reveal(nodes.find(sameHead));
     syncTools();
     showTextMark(locate === true);
+    if (joinButtonHot()) previewJoin();
   }
 
   function markLyricSelection(indexes) {
@@ -5153,7 +5416,7 @@
       ui.slice = 0;
     }
     const want = new Set(picked);
-    if (ui.paper) ui.paper.querySelectorAll(".yue-sel-box").forEach((el) => el.remove());
+    if (ui.paper) ui.paper.querySelectorAll(".yue-sel-box,.yue-join-box").forEach((el) => el.remove());
     const covered = new Set();
     let first = null;
     if (ui.paper) {
@@ -5955,12 +6218,14 @@
       if (next.index != null) ui.index = next.index;
       ui.slice = 0;
     }
-    if (next.leftover) setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
+    if (next.beats != null) setStatus(m("jpJoinBeats", { count: next.beats }));
+    else if (next.leftover) setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
     else setStatus("");
     refreshTextFromAbc();
     renderScore();
     followSelection();
-    if (next.leftover && ui.status && !ui.status.textContent) {
+    if (next.beats != null) setStatus(m("jpJoinBeats", { count: next.beats }));
+    else if (next.leftover && ui.status && !ui.status.textContent) {
       setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
     }
     if (command.op === "degree" || command.op === "octave" || command.op === "accidental") {
