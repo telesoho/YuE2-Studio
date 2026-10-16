@@ -4333,7 +4333,6 @@
   function applyPicked(picked) {
     if (!picked) return;
     selectNote(picked.voice, picked.index, picked.slice);
-    if (ui.transport === "source") seekSource(picked);
   }
 
   function sameHead(el) {
@@ -4426,6 +4425,7 @@
     }
     setStatus("");
     markSelection(true);
+    followSelection();
   }
 
   function markSelection(locate) {
@@ -4485,6 +4485,7 @@
     });
     syncTools();
     reveal(first || fallback);
+    followSelection();
   }
 
   function reveal(node) {
@@ -5090,6 +5091,7 @@
     if (changed) {
       stopPlayback();
       renderScore();
+      followSelection();
     } else refreshNoteCheck();
     if (parsed.warning || parsed.note) setStatus(parsed.warning || parsed.note);
     else if (!ui.statusSticky) setStatus("");
@@ -5156,6 +5158,7 @@
     ui.index = found.index;
     ui.slice = 0;
     markSelection();
+    followSelection();
   }
 
   function pendingAbc() {
@@ -5237,6 +5240,7 @@
     else setStatus("");
     refreshTextFromAbc();
     renderScore();
+    followSelection();
     if (next.leftover && ui.status && !ui.status.textContent) {
       setStatus(m('jpLeftoverSyllables', { count: next.leftover }));
     }
@@ -5449,24 +5453,50 @@
     if (ui.audioUrl) ensureAudio();
   }
 
-  function seekSource(picked) {
-    if (!ui.audioUrl) return;
-    const audio = ui.audio || ensureAudio();
-    if (!audio || !picked) return;
+  // Selection is the score clock: toolbar time and play-from-here both follow it.
+  function followSelection() {
+    if (ui.index < 0) return;
     const marks = ui.marks && ui.marks.length ? ui.marks : playMarks(ui.abc);
     ui.marks = marks;
-    const time = markTime(marks, picked.voice, picked.index, picked.slice);
+    const time = markTime(marks, ui.voice || "Vocal", ui.index, ui.slice || 0);
     if (time == null) return;
-    const apply = () => {
-      if (ui.audio !== audio) return;
-      try { audio.currentTime = time; } catch (err) { return; }
-      ui.sourceTouched = true;
-      paintPlayhead(time);
-      const total = Number.isFinite(audio.duration) ? audio.duration : 0;
-      setPlayClock(time, total);
-    };
-    if (audio.readyState >= 1) apply();
-    else audio.addEventListener("loadedmetadata", apply, { once: true });
+    const score = timeline(ui.abc);
+    const midiTotal = score.error || !score.notes.length
+      ? (ui.midiTotal || 0)
+      : score.notes.reduce((max, note) => Math.max(max, note.start + note.duration), 0);
+    ui.midiOffset = time;
+    ui.midiTotal = midiTotal;
+    const midiLive = ui.midiPlaying || ui.arming;
+    const sourceLive = !!(ui.audio && !ui.audio.paused && !ui.audio.ended);
+    let total = midiTotal;
+    if (ui.transport === "source" && ui.audio && Number.isFinite(ui.audio.duration) && ui.audio.duration > 0) {
+      total = ui.audio.duration;
+    }
+    setPlayClock(time, total);
+    if (ui.audioUrl) {
+      const audio = ui.audio || ensureAudio();
+      if (audio) {
+        const apply = () => {
+          if (ui.audio !== audio) return;
+          try { audio.currentTime = time; } catch (err) { return; }
+          ui.sourceTouched = true;
+          if (!midiLive) {
+            paintPlayhead(time);
+            const audioTotal = Number.isFinite(audio.duration) && audio.duration > 0
+              ? audio.duration
+              : total;
+            setPlayClock(time, audioTotal);
+          }
+        };
+        if (audio.readyState >= 1) apply();
+        else audio.addEventListener("loadedmetadata", apply, { once: true });
+      }
+    }
+    if (midiLive) {
+      playMidiFrom(time);
+      return;
+    }
+    if (!sourceLive) paintPlayhead(time);
   }
 
   function tickSource(audio, generation) {
@@ -5609,6 +5639,9 @@
     const total = score.notes.reduce((max, note) => Math.max(max, note.start + note.duration), 0);
     let offset = Math.max(0, position || 0);
     if (offset >= Math.max(0.02, total - 0.02)) offset = 0;
+    silenceMidi();
+    if (ui.raf) cancelAnimationFrame(ui.raf);
+    ui.raf = 0;
     ui.ctx = ui.ctx || new AudioCtx();
     if (ui.ctx.state === "suspended" && ui.ctx.resume) ui.ctx.resume();
     ui.arming = true;

@@ -39,6 +39,13 @@ const editor = (globalThis as { yueScoreEditor?: {
     tau: number,
     snap: number,
   ) => number;
+  playMarks: (abc: string) => Array<{ voice: string; index: number; slice: number; start: number }>;
+  markTime: (
+    marks: Array<{ voice: string; index: number; slice: number; start: number }>,
+    voice: string,
+    index: number,
+    slice: number,
+  ) => number | null;
   setStrings?: (next: Record<string, string>) => void;
   open?: (abc: string, audio: string | null, options?: { strings?: Record<string, string> }) => Promise<string | null>;
 } }).yueScoreEditor!;
@@ -308,6 +315,13 @@ z8|
     expect(aligned.error).toBeFalsy();
     expect(aligned.leftover).toBe(2);
     expect(aligned.abc).toMatch(/w:\s*春 天/);
+  });
+
+  it('maps the second quarter at 120bpm to 0.5s', () => {
+    // L:1/16 so C4 is one quarter; Q:1/4=120 → 0.5s per quarter.
+    const marks = editor.playMarks(ABC);
+    expect(editor.markTime(marks, 'Vocal', 0, 0)).toBe(0);
+    expect(editor.markTime(marks, 'Vocal', 1, 0)).toBe(0.5);
   });
 
   it('reports the text-score line of a bad token', () => {
