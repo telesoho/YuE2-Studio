@@ -52,6 +52,7 @@
   const CANCEL_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.4 2.1 8 6.7l4.6-4.6 1.3 1.3L9.3 8l4.6 4.6-1.3 1.3L8 9.3l-4.6 4.6-1.3-1.3L6.7 8 2.1 3.4z"/></svg>';
   const PRINT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h8v3.2H4zm-1.5 4.2h11A1.5 1.5 0 0 1 15 7.2v4.3h-2.5V9.2H3.5v2.3H1V7.2A1.5 1.5 0 0 1 2.5 5.7zm1.8 5.3h7.4V14.5H4.3z"/></svg>';
   const LEAD_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h12v1.2H2zm0 3.2h7v1.2H2zm0 3.2h12v1.2H2zm0 3.2h7v1.2H2zM11 6.2l3 2.2-3 2.2z"/></svg>';
+  const ALIGN_LYRICS_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.2h2.4v6.2H2zm4.8 0h2.4v6.2H6.8zm4.8 0H14v6.2h-2.4zM1.5 10.8h3.4v1.6H1.5zm4.8 0h3.4v1.6H6.3zm4.8 0H14.5v1.6h-3.4z"/></svg>';
   const STEPS = "CDEFGAB";
   const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const ACC = { "^^": 2, "^": 1, "=": 0, _: -1, __: -2 };
@@ -1999,7 +2000,7 @@
     };
   }
 
-  function parseMusicLine(raw, lineStart, beat, startKey) {
+  function parseMusicLine(raw, lineStart, beat, startKey, lineNo) {
     const scanned = scanTextTokens(raw);
     if (scanned.error) return scanned;
     let key = cloneKey(startKey);
@@ -2046,6 +2047,7 @@
       closeNote();
       const built = buildTextNote(item, key, beat, pendingChord);
       if (built.error) return built;
+      built.event.token = raw.slice(item.start, item.end);
       built.event.markStart = lineStart + (pendingStart == null ? item.start : pendingStart);
       built.event.markEnd = lineStart + item.end;
       current = built.event;
@@ -2056,6 +2058,12 @@
     while (bars.length && !bars[0].length) bars.shift();
     while (bars.length && !bars[bars.length - 1].length) bars.pop();
     if (!bars.length) return { error: m('jpErrNoNotes') };
+    for (let b = 0; b < bars.length; b++) {
+      for (const ev of bars[b]) {
+        ev.lineNo = lineNo;
+        ev.barNo = b + 1;
+      }
+    }
     return { bars: bars };
   }
 
@@ -2134,10 +2142,20 @@
         if (units !== barUnits) push(m('jpErrVoiceBarBeats', { voice: item.voice === 'Ins' ? '伴' : '唱' }));
       }
     }
-    function checkTies(events) {
+    function checkTies(events, voice) {
       for (let i = 0; i < events.length; i++) {
         if (!events[i].tie) continue;
-        if (!sameWritten(events[i], events[i + 1])) push(m('jpErrTieSame'));
+        const next = events[i + 1];
+        if (sameWritten(events[i], next)) continue;
+        const place = {
+          line: events[i].lineNo,
+          voice: voice,
+          bar: events[i].barNo,
+          note: events[i].token || "",
+        };
+        push(next
+          ? m('jpErrTieSameAt', Object.assign({ next: next.token || "" }, place))
+          : m('jpErrTieSameEnd', place));
       }
     }
     const vocalEvents = [];
@@ -2160,8 +2178,8 @@
       for (const ev of flattenBars(group.ins)) insEvents.push(ev);
     }
     if (!music) push(m('jpErrNeedVoices'));
-    checkTies(vocalEvents);
-    checkTies(insEvents);
+    checkTies(vocalEvents, "唱");
+    checkTies(insEvents, "伴");
     return warnings;
   }
 
@@ -2237,6 +2255,10 @@
     return out;
   }
 
+  function textFail(detail, line) {
+    return { abc: null, error: detail, warning: null, note: null, marks: [], line: line || 0 };
+  }
+
   function parseJianpuText(text, baseAbc) {
     const base = String(baseAbc || "");
     const baseLines = base.split(/\r?\n/);
@@ -2269,15 +2291,15 @@
         const match = TEXT_HEADER.exec(trim);
         const labeled = match && keyFromJianpuLabel(match[1], match[2]);
         if (!match || !labeled) {
-          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrBadKey') }), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrBadKey') }), li + 1);
         }
         const nextMeter = [Number(match[3]), Number(match[4])];
         const per = perBarUnits(nextMeter, baseHeader.lDen);
         if (!nextMeter[0] || !nextMeter[1] || !Number.isInteger(per) || per <= 0 || (nextMeter[1] & (nextMeter[1] - 1)) !== 0) {
-          return { abc: null, error: m('jpErrBadMeter'), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrBadMeter') }), li + 1);
         }
         const tempo = Number(match[5]);
-        if (!tempo) return { abc: null, error: m('jpErrTempoInt'), warning: null, note: null, marks: [] };
+        if (!tempo) return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrTempoInt') }), li + 1);
         meter = nextMeter;
         headerMeter = meter.slice();
         bpm = tempo;
@@ -2296,7 +2318,7 @@
         const nextMeter = [Number(meterOnly[1]), Number(meterOnly[2])];
         const per = perBarUnits(nextMeter, baseHeader.lDen);
         if (!nextMeter[0] || !nextMeter[1] || !Number.isInteger(per) || per <= 0 || (nextMeter[1] & (nextMeter[1] - 1)) !== 0) {
-          return { abc: null, error: m('jpErrBadMeter'), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrBadMeter') }), li + 1);
         }
         meter = nextMeter;
         sawContent = true;
@@ -2308,7 +2330,7 @@
       }
       if (trim.startsWith("词")) {
         if (voice === "Ins") {
-          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineInsLyrics') }), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrLineInsLyrics') }), li + 1);
         }
         let vocalItem = null;
         for (let prev = items.length - 1; prev >= 0; prev--) {
@@ -2318,10 +2340,10 @@
           }
         }
         if (!vocalItem) {
-          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineLyricNoVocal') }), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrLineLyricNoVocal') }), li + 1);
         }
         if (vocalItem.lyricSet) {
-          return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrLineHasLyric') }), warning: null, note: null, marks: [] };
+          return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrLineHasLyric') }), li + 1);
         }
         const spans = lyricLineSpans(raw);
         const notes = flattenBars(vocalItem).filter((ev) => ev.kind === "note");
@@ -2338,11 +2360,11 @@
         continue;
       }
       if (!voice) {
-        return { abc: null, error: m('jpErrLine', { line: li + 1, detail: m('jpErrUnderVoice') }), warning: null, note: null, marks: [] };
+        return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrUnderVoice') }), li + 1);
       }
-      const parsed = parseMusicLine(raw, starts[li], beat, key);
+      const parsed = parseMusicLine(raw, starts[li], beat, key, li + 1);
       if (parsed.error) {
-        return { abc: null, error: m('jpErrLine', { line: li + 1, detail: parsed.error }), warning: null, note: null, marks: [] };
+        return textFail(m('jpErrLine', { line: li + 1, detail: parsed.error }), li + 1);
       }
       items.push({ type: "music", voice: voice, bars: parsed.bars, lyricSet: false, meter: meter.slice() });
     }
@@ -2382,6 +2404,395 @@
     return { abc: abc, error: null, warning: warnings[0] || null, note: note, marks: marks };
   }
 
+  // Syllables that fill a note when realigning. Empty · / * do not consume a slot.
+  function alignPoolToken(token) {
+    const text = String(token == null ? "" : token).trim();
+    if (!text || text === "*" || text === "·") return null;
+    if (text === "-") return "-";
+    return text.replace(/[|\s]/g, "") || null;
+  }
+
+  function alignFrozenToken(token) {
+    const text = String(token == null ? "" : token).trim();
+    if (!text || text === "·") return "*";
+    if (text === "-") return "-";
+    if (text === "*") return "*";
+    return text.replace(/[|\s]/g, "") || "*";
+  }
+
+  function collectLyricExtras(source, marks, slotByIndex) {
+    const lines = String(source || "").split("\n");
+    const starts = [];
+    let cursor = 0;
+    for (let i = 0; i < lines.length; i++) {
+      starts.push(cursor);
+      cursor += lines[i].length + 1;
+    }
+    const musicMarks = (marks || []).filter((mark) => mark.kind !== "lyric" && mark.voice === "Vocal");
+    const extras = [];
+    let voice = null;
+    let pendingNotes = 0;
+    let pendingLastIndex = -1;
+    for (let li = 0; li < lines.length; li++) {
+      const raw = lines[li];
+      const trim = raw.trim();
+      if (!trim) continue;
+      if (/^[1-7]=/.test(trim) || /^%/.test(trim) || /^\d+\s*\/\s*\d+$/.test(trim)) {
+        voice = null;
+        continue;
+      }
+      if (trim === "唱") {
+        voice = "Vocal";
+        continue;
+      }
+      if (trim === "伴") {
+        voice = "Ins";
+        continue;
+      }
+      if (trim.startsWith("词")) {
+        const spans = lyricLineSpans(raw);
+        for (let n = pendingNotes; n < spans.length; n++) {
+          extras.push({
+            token: spans[n].token,
+            start: starts[li] + spans[n].start,
+            end: starts[li] + spans[n].end,
+            afterIndex: pendingLastIndex,
+          });
+        }
+        continue;
+      }
+      if (voice !== "Vocal") continue;
+      const lineStart = starts[li];
+      const lineEnd = lineStart + raw.length;
+      const noteMarks = musicMarks
+        .filter((mark) => mark.start >= lineStart && mark.start < lineEnd && slotByIndex.has(mark.index))
+        .sort((a, b) => a.index - b.index);
+      pendingNotes = noteMarks.length;
+      if (noteMarks.length) pendingLastIndex = noteMarks[noteMarks.length - 1].index;
+    }
+    return extras;
+  }
+
+  function lyricAlignStream(slots, extras) {
+    const stream = [];
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (slot.start == null || slot.end == null) continue;
+      stream.push({
+        start: slot.start,
+        end: slot.end,
+        token: slot.token,
+        slot: i,
+        id: "s" + i,
+      });
+    }
+    (extras || []).forEach((extra, ei) => {
+      stream.push({
+        start: extra.start,
+        end: extra.end,
+        token: extra.token,
+        slot: null,
+        afterIndex: extra.afterIndex,
+        id: "e" + ei,
+      });
+    });
+    stream.sort((a, b) => a.start - b.start || a.end - b.end);
+    return stream;
+  }
+
+  function slotAtOrAfterEvent(eventIndex, slots, events, slotByIndex) {
+    const eventByIndex = new Map((events || []).map((ev) => [ev.index, ev]));
+    const ev = eventByIndex.get(eventIndex);
+    if (ev && ev.kind === "note" && slotByIndex.has(eventIndex)) return slotByIndex.get(eventIndex);
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i].index > eventIndex) return i;
+    }
+    return slots.length;
+  }
+
+  function decideAlignFreeze(caretAt, slots, extras, marks, events, source, slotByIndex) {
+    const stream = lyricAlignStream(slots, extras);
+    const empty = {
+      freezeSlot: slots.length,
+      override: null,
+      poolPrefix: [],
+      anchor: caretAt,
+      skipId: null,
+      musicMarkStart: null,
+    };
+    for (const item of stream) {
+      if (caretAt > item.start && caretAt < item.end) {
+        const left = alignFrozenToken(source.slice(item.start, caretAt));
+        const right = alignPoolToken(source.slice(caretAt, item.end));
+        if (item.slot != null) {
+          return {
+            freezeSlot: item.slot + 1,
+            override: { slot: item.slot, token: left },
+            poolPrefix: right ? [right] : [],
+            anchor: caretAt,
+            skipId: item.id,
+            musicMarkStart: null,
+          };
+        }
+        const afterSlot = slotByIndex.has(item.afterIndex) ? slotByIndex.get(item.afterIndex) + 1 : slots.length;
+        return {
+          freezeSlot: afterSlot,
+          override: null,
+          poolPrefix: right ? [right] : [],
+          anchor: caretAt,
+          skipId: item.id,
+          musicMarkStart: null,
+        };
+      }
+      if (caretAt === item.start) {
+        if (item.slot != null) {
+          return {
+            freezeSlot: item.slot,
+            override: null,
+            poolPrefix: [],
+            anchor: caretAt,
+            skipId: null,
+            musicMarkStart: null,
+          };
+        }
+        return {
+          freezeSlot: slotByIndex.has(item.afterIndex) ? slotByIndex.get(item.afterIndex) + 1 : slots.length,
+          override: null,
+          poolPrefix: [],
+          anchor: caretAt,
+          skipId: null,
+          musicMarkStart: null,
+        };
+      }
+    }
+    // Caret on a music glyph in the text score.
+    for (const mark of marks || []) {
+      if (mark.kind === "lyric") continue;
+      if (!(caretAt >= mark.start && caretAt < mark.end)) continue;
+      if (mark.voice === "Vocal") {
+        const freezeSlot = slotAtOrAfterEvent(mark.index, slots, events, slotByIndex);
+        return {
+          freezeSlot: freezeSlot,
+          override: null,
+          poolPrefix: [],
+          anchor: mark.start,
+          skipId: null,
+          musicMarkStart: mark.start,
+        };
+      }
+      const vocal = (marks || [])
+        .filter((item) => item.kind !== "lyric" && item.voice === "Vocal" && item.start >= mark.end)
+        .sort((a, b) => a.start - b.start || a.index - b.index);
+      if (!vocal.length) return empty;
+      const next = vocal[0];
+      const freezeSlot = slotAtOrAfterEvent(next.index, slots, events, slotByIndex);
+      return {
+        freezeSlot: freezeSlot,
+        override: null,
+        poolPrefix: [],
+        anchor: next.start,
+        skipId: null,
+        musicMarkStart: next.start,
+      };
+    }
+    // Between syllables (or after the last frozen one): next lyric piece wins
+    // over a later music line further down the page.
+    for (const item of stream) {
+      if (item.start < caretAt) continue;
+      if (item.slot != null) {
+        return {
+          freezeSlot: item.slot,
+          override: null,
+          poolPrefix: [],
+          anchor: caretAt,
+          skipId: null,
+          musicMarkStart: null,
+        };
+      }
+      return {
+        freezeSlot: slotByIndex.has(item.afterIndex) ? slotByIndex.get(item.afterIndex) + 1 : slots.length,
+        override: null,
+        poolPrefix: [],
+        anchor: caretAt,
+        skipId: null,
+        musicMarkStart: null,
+      };
+    }
+    const vocalMarks = (marks || [])
+      .filter((mark) => mark.kind !== "lyric" && mark.voice === "Vocal")
+      .slice()
+      .sort((a, b) => a.start - b.start || a.index - b.index);
+    for (const mark of vocalMarks) {
+      if (mark.start < caretAt) continue;
+      const freezeSlot = slotAtOrAfterEvent(mark.index, slots, events, slotByIndex);
+      return {
+        freezeSlot: freezeSlot,
+        override: null,
+        poolPrefix: [],
+        anchor: mark.start,
+        skipId: null,
+        musicMarkStart: mark.start,
+      };
+    }
+    return empty;
+  }
+
+  function collectAlignPool(stream, decision, slots) {
+    const pool = decision.poolPrefix.slice();
+    const freezeSlot = decision.freezeSlot;
+    let anchor = decision.anchor;
+    if (decision.musicMarkStart != null) {
+      const slot = slots[freezeSlot];
+      if (slot && slot.start != null) anchor = slot.start;
+      else anchor = decision.musicMarkStart;
+    }
+    for (const item of stream) {
+      if (decision.skipId && item.id === decision.skipId) continue;
+      if (item.slot != null) {
+        if (item.slot < freezeSlot) continue;
+        const token = alignPoolToken(item.token);
+        if (token) pool.push(token);
+        continue;
+      }
+      if (item.start < anchor) continue;
+      const token = alignPoolToken(item.token);
+      if (token) pool.push(token);
+    }
+    // Notes with no lyric mark still keep non-empty tokens from ABC (rare).
+    for (let i = freezeSlot; i < slots.length; i++) {
+      if (slots[i].start != null) continue;
+      const token = alignPoolToken(slots[i].token);
+      if (token) pool.push(token);
+    }
+    return pool;
+  }
+
+  /// Align syllables after `caret` onto the following vocal notes, one per note.
+  function alignLyricsAfter(text, baseAbc, caret) {
+    const parsed = parseJianpuText(text, baseAbc);
+    const caretAt = Math.max(0, Number(caret) || 0);
+    if (!parsed.abc) {
+      return {
+        text: null,
+        abc: null,
+        error: parsed.error || m("jpFixTextFirst"),
+        none: false,
+        caret: caretAt,
+        leftover: 0,
+      };
+    }
+    const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const clamped = Math.max(0, Math.min(caretAt, source.length));
+    const collected = collect(parsed.abc);
+    if (collected.error) {
+      return {
+        text: null,
+        abc: null,
+        error: collected.error,
+        none: false,
+        caret: clamped,
+        leftover: 0,
+      };
+    }
+    const noteEvents = collected.events.filter((ev) => ev.kind === "note");
+    const slots = noteEvents.map((ev) => ({
+      index: ev.index,
+      token: String(ev.lyric == null ? "*" : ev.lyric).trim() || "*",
+      start: null,
+      end: null,
+    }));
+    const slotByIndex = new Map();
+    slots.forEach((slot, i) => slotByIndex.set(slot.index, i));
+    for (const mark of parsed.marks || []) {
+      if (mark.kind !== "lyric") continue;
+      const si = slotByIndex.get(mark.index);
+      if (si == null) continue;
+      slots[si].start = mark.start;
+      slots[si].end = mark.end;
+      const raw = source.slice(mark.start, mark.end);
+      slots[si].token = raw === "·" ? "*" : alignFrozenToken(raw);
+    }
+    const extras = collectLyricExtras(source, parsed.marks || [], slotByIndex);
+    const stream = lyricAlignStream(slots, extras);
+    const decision = decideAlignFreeze(
+      clamped, slots, extras, parsed.marks || [], collected.events, source, slotByIndex);
+    const freezeSlot = decision.freezeSlot;
+    const pool = collectAlignPool(stream, decision, slots);
+    if (freezeSlot >= slots.length && !pool.length) {
+      return {
+        text: source,
+        abc: parsed.abc,
+        error: null,
+        none: true,
+        caret: clamped,
+        leftover: 0,
+      };
+    }
+    const newLyrics = slots.map((slot) => slot.token);
+    if (decision.override) newLyrics[decision.override.slot] = decision.override.token;
+    let poolAt = 0;
+    for (let i = freezeSlot; i < slots.length; i++) {
+      newLyrics[i] = poolAt < pool.length ? pool[poolAt++] : "*";
+    }
+    const leftover = Math.max(0, pool.length - poolAt);
+    let changed = leftover > 0;
+    for (let i = 0; i < slots.length; i++) {
+      if (newLyrics[i] !== slots[i].token) changed = true;
+    }
+    if (decision.override && decision.override.token !== slots[decision.override.slot].token) changed = true;
+    if (!changed) {
+      return {
+        text: source,
+        abc: parsed.abc,
+        error: null,
+        none: true,
+        caret: clamped,
+        leftover: 0,
+      };
+    }
+    for (const ev of collected.events) {
+      if (ev.kind !== "note") continue;
+      const si = slotByIndex.get(ev.index);
+      if (si == null) continue;
+      ev.lyric = newLyrics[si];
+    }
+    const lines = collected.lines.slice();
+    rewriteLyrics(lines, collected.events);
+    const abc = joinAbc(lines, parsed.abc);
+    const built = buildJianpuText(abc);
+    if (built.error) {
+      return {
+        text: null,
+        abc: null,
+        error: built.error,
+        none: false,
+        caret: clamped,
+        leftover: 0,
+      };
+    }
+    let newCaret = 0;
+    const builtMarks = built.marks || [];
+    if (freezeSlot > 0) {
+      const frozenIndex = slots[freezeSlot - 1].index;
+      const mark = builtMarks.find((item) => item.kind === "lyric" && item.index === frozenIndex);
+      newCaret = mark ? mark.end : 0;
+    } else if (freezeSlot < slots.length) {
+      const firstIndex = slots[freezeSlot].index;
+      const mark = builtMarks.find((item) => item.kind === "lyric" && item.index === firstIndex);
+      newCaret = mark ? mark.start : 0;
+    } else {
+      newCaret = (built.text || "").length;
+    }
+    return {
+      text: built.text || "",
+      abc: abc,
+      error: null,
+      none: false,
+      caret: newCaret,
+      leftover: leftover,
+    };
+  }
+
   const JIANPU_DOT = "\ue1e7";
   const JIANPU_ACC = {
     "\ue262": "#",
@@ -2409,8 +2820,10 @@
     let voice = null;
     let saw = false;
     const lines = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-    for (const raw of lines) {
+    for (let li = 0; li < lines.length; li++) {
+      const raw = lines[li];
       const trim = raw.trim();
+      const fail = (detail) => ({ error: m('jpErrLine', { line: li + 1, detail: detail }) });
       if (!trim) continue;
       if (!saw && /^[1-7]=/.test(trim)) {
         saw = true;
@@ -2421,14 +2834,15 @@
         voice = null;
         continue;
       }
+      if (/^\d+\s*\/\s*\d+$/.test(trim)) continue;
       if (trim === "唱" || trim === "伴") {
         voice = trim === "伴" ? "Ins" : "Vocal";
         continue;
       }
       if (trim.startsWith("词")) continue;
-      if (!voice) return { error: m('jpErrUnderVoice') };
+      if (!voice) return fail(m('jpErrUnderVoice'));
       const scanned = scanTextTokens(raw);
-      if (scanned.error) return scanned;
+      if (scanned.error) return fail(scanned.error);
       let current = null;
       const flush = () => {
         if (!current) return;
@@ -2441,16 +2855,16 @@
           continue;
         }
         if (item.kind === "dash") {
-          if (!current) return { error: m('jpErrSustainNoNote') };
+          if (!current) return fail(m('jpErrSustainNoNote'));
           current.units += beat;
           continue;
         }
         flush();
         if (item.degree === 0 && (item.acc || item.oct || item.tie)) {
-          return { error: m('jpErrRestNoAccidental') };
+          return fail(m('jpErrRestNoAccidental'));
         }
         const units = unitsFromMarks(item.slashes, item.dotted, beat);
-        if (units == null) return { error: m('jpErrDuration') };
+        if (units == null) return fail(m('jpErrDuration'));
         const octave = (item.oct.split("'").length - 1) - (item.oct.split(",").length - 1);
         current = {
           degree: item.degree,
@@ -2596,7 +3010,7 @@
   function compareJianpuNotes(text, svg, beat, lDen, perBar) {
     const written = writtenNotes(text, beat);
     if (written.error) {
-      return { ok: false, unreadable: true, message: m('jpTextUnreadable'), marks: [] };
+      return { ok: false, unreadable: true, message: written.error, marks: [] };
     }
     const shown = shownNotes(svg);
     const vocal = alignVoice(written.voices.Vocal, shown.Vocal, "Vocal", lDen, perBar || 0);
@@ -2760,6 +3174,91 @@
     return { top: boxTop, bottom: Math.max(boxTop, boxBottom) };
   }
 
+  // ponytail: one mirror pass per paint. Div wrap can drift a pixel from the textarea; switch the editor to per-line blocks if a row no longer sits on its number.
+  function measureWrappedHeights(textarea, lines) {
+    if (!textarea || typeof getComputedStyle !== "function" || !document.body) return null;
+    const view = getComputedStyle(textarea);
+    const padL = parseFloat(view.paddingLeft) || 0;
+    const padR = parseFloat(view.paddingRight) || 0;
+    const width = textarea.clientWidth - padL - padR;
+    if (width < 8) return null;
+    const mirror = document.createElement("div");
+    mirror.setAttribute("aria-hidden", "true");
+    mirror.style.position = "absolute";
+    mirror.style.left = "-9999px";
+    mirror.style.top = "0";
+    mirror.style.visibility = "hidden";
+    mirror.style.boxSizing = "content-box";
+    mirror.style.width = width + "px";
+    mirror.style.height = "auto";
+    mirror.style.padding = "0";
+    mirror.style.border = "0";
+    const rows = [];
+    for (let i = 0; i < lines.length; i++) {
+      const row = document.createElement("div");
+      row.style.whiteSpace = "pre-wrap";
+      row.style.overflowWrap = "break-word";
+      row.style.wordWrap = "break-word";
+      row.textContent = lines[i] ? lines[i] : "\u200b";
+      mirror.appendChild(row);
+      rows.push(row);
+    }
+    [
+      "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing",
+    ].forEach((name) => {
+      mirror.style[name] = view[name];
+    });
+    document.body.appendChild(mirror);
+    const heights = rows.map((row) => row.offsetHeight);
+    mirror.remove();
+    if (!heights.length || heights.some((height) => height < 1)) return null;
+    return heights;
+  }
+
+  function placeLineNumbers() {
+    if (!ui.lines || !ui.text) return;
+    ui.lines.style.transform = "translateY(" + (-ui.text.scrollTop) + "px)";
+  }
+
+  function paintLineNumbers() {
+    const text = ui.text;
+    const gutter = ui.lines;
+    const box = ui.lineBox;
+    if (!text || !gutter || !box) return;
+    const lines = String(text.value || "").split("\n");
+    const count = lines.length || 1;
+    if (gutter.childElementCount !== count) {
+      const frag = document.createDocumentFragment();
+      for (let i = 1; i <= count; i++) {
+        const row = document.createElement("div");
+        row.textContent = String(i);
+        frag.appendChild(row);
+      }
+      gutter.textContent = "";
+      gutter.appendChild(frag);
+    }
+    box.style.width = "calc(" + Math.max(2, String(count).length) + "ch + 14px)";
+    const bad = ui.textErrorLine || 0;
+    const rows = gutter.children;
+    for (let i = 0; i < rows.length; i++) rows[i].classList.toggle("bad", i + 1 === bad);
+    const heights = measureWrappedHeights(text, lines);
+    if (heights) {
+      for (let i = 0; i < rows.length && i < heights.length; i++) rows[i].style.height = heights[i] + "px";
+    }
+    placeLineNumbers();
+  }
+
+  function scheduleLineNumbers() {
+    if (ui.lineRaf) return;
+    const raf = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : (fn) => setTimeout(fn, 16);
+    ui.lineRaf = raf(() => {
+      ui.lineRaf = 0;
+      paintLineNumbers();
+    });
+  }
+
   const TEXT_WIDTH_KEY = "yue-jp-text-width";
   const TEXT_WIDTH_DEFAULT = 420;
   const TEXT_VISIBLE_KEY = "yue-jp-text-visible";
@@ -2913,9 +3412,11 @@
     textDirty: false,
     textBlocked: false,
     textError: "",
+    textErrorLine: 0,
     textMarks: [],
     lyricSelection: null,
     layoutRaf: 0,
+    lineRaf: 0,
     saveButton: null,
     saveNote: null,
     saveObserver: null,
@@ -2949,6 +3450,7 @@
     }
     if (persist) writeSavedTextWidth(width);
     scheduleScoreLayout();
+    scheduleLineNumbers();
     return width;
   }
 
@@ -3099,6 +3601,8 @@
       "html.dark .yue-jp-group + .yue-jp-group{border-left-color:rgba(255,255,255,.1);}",
       ".yue-jp-tools button{padding:4px 8px;min-width:28px;}",
       ".yue-jp-tools button.digit{font-weight:700;min-width:32px;}",
+      ".yue-jp-tools button.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px;}",
+      ".yue-jp-tools button.icon svg{width:15px;height:15px;display:block;fill:currentColor;}",
       ".yue-jp-status{min-height:1.4em;padding:8px 14px;color:#71717a;font-size:13px;}",
       ".yue-jp-status.ok{color:#059669;font-weight:650;}",
       "html.dark .yue-jp-status.ok{color:#34d399;}",
@@ -3124,15 +3628,24 @@
       ".yue-jp-check.bad{color:#e11d48;}",
       "html.dark .yue-jp-check.ok{color:#34d399;}",
       "html.dark .yue-jp-check.bad{color:#fb7185;}",
-      ".yue-jp-text-frame{position:relative;flex:1;min-width:0;min-height:0;}",
-      ".yue-jp-text textarea{box-sizing:border-box;margin:0;width:100%;height:100%;resize:none;",
+      ".yue-jp-text-frame{position:relative;flex:1;min-width:0;min-height:0;display:flex;",
+      "overflow:hidden;border:1px solid #e4e4e7;border-radius:8px;background:#fafafa;}",
+      "html.dark .yue-jp-text-frame{border-color:rgba(255,255,255,.1);background:#09090b;}",
+      ".yue-jp-text-frame:focus-within{outline:2px solid #ec4899;}",
+      ".yue-jp-lines{flex:0 0 auto;overflow:hidden;align-self:stretch;min-width:2.4em;",
+      "font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#a1a1aa;}",
+      ".yue-jp-lines-inner{box-sizing:border-box;padding:8px 6px 0 8px;text-align:right;",
+      "user-select:none;pointer-events:none;}",
+      ".yue-jp-lines-inner div.bad{color:#e11d48;font-weight:700;}",
+      "html.dark .yue-jp-lines-inner div.bad{color:#fb7185;}",
+      ".yue-jp-text textarea{box-sizing:border-box;margin:0;flex:1 1 auto;width:0;min-width:0;height:100%;resize:none;",
       "font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;",
-      "padding:8px;border:1px solid #e4e4e7;border-radius:8px;",
+      "padding:8px;border:0;border-radius:0;background:transparent;",
       "white-space:pre-wrap;overflow-wrap:break-word;word-wrap:break-word;",
-      "color:#18181b;background:#fafafa;}",
-      "html.dark .yue-jp-text textarea{border-color:rgba(255,255,255,.1);color:#fafafa;background:#09090b;}",
+      "color:#18181b;}",
+      "html.dark .yue-jp-text textarea{color:#fafafa;background:transparent;}",
       ".yue-jp-text textarea::selection{background:rgba(236,72,153,.28);}",
-      ".yue-jp-text textarea:focus{outline:2px solid #ec4899;border-color:transparent;}",
+      ".yue-jp-text textarea:focus{outline:none;}",
       ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#71717a;}",
       ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
       "user-select:none;-webkit-user-select:none;}",
@@ -3199,6 +3712,7 @@
       '<label for="yue-jp-score-text" data-i18n="jpTextScore"></label>',
       '<p class="yue-jp-check"></p>',
       '<div class="yue-jp-text-frame">',
+      '<div class="yue-jp-lines" aria-hidden="true"><div class="yue-jp-lines-inner"></div></div>',
       '<textarea id="yue-jp-score-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="soft" data-i18n-aria="jpTextScore"></textarea>',
       "</div>",
       '<p class="yue-jp-hint"></p>',
@@ -3221,6 +3735,8 @@
     ui.clock = root.querySelector(".yue-jp-clock");
     ui.tools = root.querySelector(".yue-jp-tools");
     ui.text = root.querySelector("#yue-jp-score-text");
+    ui.lineBox = root.querySelector(".yue-jp-lines");
+    ui.lines = root.querySelector(".yue-jp-lines-inner");
     ui.check = root.querySelector(".yue-jp-check");
     ui.hint = root.querySelector(".yue-jp-hint");
     ui.diagram = root.querySelector("[data-act='diagram']");
@@ -3231,12 +3747,15 @@
     }
     fillTools(ui.tools);
     ui.text.addEventListener("input", () => {
+      if (!ui.textSilent) ui.textErrorLine = 0;
+      paintLineNumbers();
       if (ui.textSilent) return;
       ui.textDirty = true;
       clearSavedNote();
       if (ui.textTimer) clearTimeout(ui.textTimer);
       ui.textTimer = setTimeout(applyText, 120);
     });
+    ui.text.addEventListener("scroll", placeLineNumbers);
     ui.text.addEventListener("keyup", () => {
       syncCaret();
     });
@@ -3273,6 +3792,7 @@
       else if (act === "save") saveEdit();
       else if (act === "ok") acceptText();
       else if (act === "cancel") finish(null);
+      else if (act === "align-lyrics") alignLyricsFromCaret();
       else if (button && ui.tools.contains(button)) {
         const command = commandFrom(button);
         if (!command) return;
@@ -3647,6 +4167,15 @@
         { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
         { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
       ],
+      [
+        {
+          html: ALIGN_LYRICS_ICON,
+          title: m("jpAlignLyricsTitle"),
+          aria: m("jpAlignLyrics"),
+          className: "icon",
+          attrs: { act: "align-lyrics" },
+        },
+      ],
     ];
     groups.forEach((specs) => {
       const group = document.createElement("div");
@@ -3655,13 +4184,53 @@
         const button = document.createElement("button");
         button.type = "button";
         if (spec.className) button.className = spec.className;
-        button.textContent = spec.label;
+        if (spec.html) button.innerHTML = spec.html;
+        else button.textContent = spec.label;
         button.title = spec.title;
+        if (spec.aria) button.setAttribute("aria-label", spec.aria);
         Object.keys(spec.attrs).forEach((key) => button.setAttribute("data-" + key, spec.attrs[key]));
         group.appendChild(button);
       });
       root.appendChild(group);
     });
+  }
+
+  function alignLyricsFromCaret() {
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+      applyText();
+    }
+    if (ui.textBlocked) {
+      setStatus(ui.textError || m("jpFixTextFirst"));
+      return;
+    }
+    if (!ui.text) return;
+    clearSavedNote();
+    const caret = ui.text.selectionStart || 0;
+    const result = alignLyricsAfter(ui.text.value, ui.sourceAbc || ui.abc, caret);
+    if (result.error) {
+      setStatus(result.error);
+      return;
+    }
+    if (result.none) {
+      setStatus(m("jpAlignLyricsNone"));
+      return;
+    }
+    stopPlayback();
+    ui.abc = result.abc;
+    refreshTextFromAbc();
+    renderScore();
+    try {
+      if (ui.text.focus) ui.text.focus({ preventScroll: true });
+      const at = Math.max(0, Math.min(result.caret || 0, ui.text.value.length));
+      ui.text.setSelectionRange(at, at);
+    } catch (_err) {
+      /* textarea may be detached */
+    }
+    syncCaret();
+    if (result.leftover) setStatus(m("jpLeftoverSyllables", { count: result.leftover }));
+    else if (!ui.statusSticky) setStatus("");
   }
 
   function commandFrom(button) {
@@ -4435,7 +5004,9 @@
     ui.textDirty = false;
     ui.textBlocked = false;
     ui.textError = "";
+    ui.textErrorLine = 0;
     ui.textMarks = built.marks || [];
+    paintLineNumbers();
     if (built.error) setStatus(built.error);
     showTextMark(true);
   }
@@ -4471,7 +5042,7 @@
     if (!ui.check || !ui.text) return;
     if (ui.textBlocked) {
       clearMismatch();
-      showCheck({ ok: false, message: m('jpTextUnreadable') });
+      showCheck({ ok: false, message: ui.textError || m('jpTextUnreadable') });
       return;
     }
     const svg = ui.scoreSvg || "";
@@ -4501,15 +5072,18 @@
     if (!parsed.abc) {
       ui.textBlocked = true;
       ui.textError = parsed.error || m('jpBadLine');
+      ui.textErrorLine = parsed.line || 0;
       ui.textMarks = [];
       setStatus(ui.textError);
       refreshNoteCheck();
       if (ui.lyricSelection) markSelection();
       showTextMark();
+      paintLineNumbers();
       return;
     }
     ui.textBlocked = false;
     ui.textError = "";
+    ui.textErrorLine = 0;
     ui.textMarks = parsed.marks || [];
     const changed = parsed.abc !== ui.abc;
     ui.abc = parsed.abc;
@@ -4521,6 +5095,7 @@
     else if (!ui.statusSticky) setStatus("");
     if (document.activeElement === ui.text) syncCaret();
     showTextMark();
+    paintLineNumbers();
   }
 
   function showTextMark(locate) {
@@ -4545,6 +5120,7 @@
     const next = textScrollTarget(
       before, ui.text.clientHeight, box.top, box.bottom, TEXT_SCROLL_MARGIN);
     ui.text.scrollTop = next == null ? before : next;
+    placeLineNumbers();
   }
 
   function syncCaret() {
@@ -5230,6 +5806,7 @@
     withDisplayTitle: withDisplayTitle,
     jianpuSvgParts: jianpuSvgParts,
     parseJianpuText: parseJianpuText,
+    alignLyricsAfter: alignLyricsAfter,
     textMarkFor: textMarkFor,
     textSpanFor: textSpanFor,
     lyricIndexesInSelection: lyricIndexesInSelection,

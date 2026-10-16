@@ -125,6 +125,49 @@ describe('JianpuEditor', () => {
     }
   });
 
+  it('numbers each text-score line and marks the error line', async () => {
+    localStorage.setItem('language', 'en');
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let root: Root | undefined;
+    try {
+      await act(async () => {
+        root = createRoot(host);
+        root.render(
+          <StrictMode>
+            <I18nProvider>
+              <JianpuEditor abc={ABC} onClose={() => {}} />
+            </I18nProvider>
+          </StrictMode>,
+        );
+      });
+      const text = document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
+      const numbers = () => [...document.querySelectorAll('.yue-jp-lines-inner > div')].map(el => el.textContent);
+      expect(numbers()).toEqual(text.value.split('\n').map((_, i) => String(i + 1)));
+      const broken = `${text.value}\n???`;
+      await act(async () => {
+        text.value = broken;
+        text.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 180));
+      });
+      expect(numbers()).toEqual(broken.split('\n').map((_, i) => String(i + 1)));
+      const status = document.querySelector('.yue-jp-status')?.textContent || '';
+      const line = Number(/^Line (\d+):/.exec(status)?.[1]);
+      expect(line).toBe(broken.split('\n').length);
+      expect(document.querySelector('.yue-jp-lines-inner > div.bad')?.textContent).toBe(String(line));
+    } finally {
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
+        root?.unmount();
+      });
+      host.remove();
+      globals.abc2svg = previous;
+    }
+  });
+
   it('opens the score editor under StrictMode', async () => {
     localStorage.setItem('language', 'en');
     localStorage.setItem('yue-jp-chord-diagram', 'off');

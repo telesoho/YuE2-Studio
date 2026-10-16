@@ -10,7 +10,20 @@ require(path.join(here, '../public/score/score_edit.js'));
 
 const editor = (globalThis as { yueScoreEditor?: {
   buildJianpuText: (abc: string) => { text: string; error?: string | null };
-  parseJianpuText: (text: string, baseAbc: string) => { abc: string | null; warning: string | null; error: string | null };
+  parseJianpuText: (text: string, baseAbc: string) => {
+    abc: string | null;
+    warning: string | null;
+    error: string | null;
+    line?: number;
+  };
+  alignLyricsAfter: (text: string, baseAbc: string, caret: number) => {
+    text: string | null;
+    abc: string | null;
+    error: string | null;
+    none: boolean;
+    caret: number;
+    leftover: number;
+  };
   editScore: (abc: string, command: Record<string, unknown>) => { abc: string; error?: string | null };
   compareJianpuNotes: (text: string, svg: string, beat: number, lDen: number, perBar: number) => { ok: boolean; message: string };
   sourceScrollTop: (
@@ -107,6 +120,57 @@ z8|
     expect(short.message).toContain('2 个 0');
   });
 
+  it('names the line, bar, and notes when a tie does not match', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const header = '1=C  4/4  ♩=120';
+    const bad = [header, '唱', '1 2 3 4 |', '伴', '0 - - - |', '唱', '5~ 6 5 5 |', '伴', '0 - - - |'].join('\n');
+    const parsed = editor.parseJianpuText(bad, ABC);
+    expect(parsed.error).toBeFalsy();
+    expect(parsed.warning).toContain('第 7 行');
+    expect(parsed.warning).toContain('唱');
+    expect(parsed.warning).toContain('第 1 小节');
+    expect(parsed.warning).toContain('5~');
+    expect(parsed.warning).toContain('6');
+    const same = [header, '唱', '5~ 5 6 5 |', '伴', '0 - - - |'].join('\n');
+    expect(editor.parseJianpuText(same, ABC).warning).toBeFalsy();
+    const ended = [header, '唱', '5~ - - - |', '伴', '0 - - - |'].join('\n');
+    const endWarn = editor.parseJianpuText(ended, ABC).warning || '';
+    expect(endWarn).toContain('第 3 行');
+    expect(endWarn).toContain('5~');
+    expect(endWarn).toContain('没有音');
+    const ins = [header, '唱', '0 - - - |', '伴', '1~ 2 3 4 |'].join('\n');
+    const insWarn = editor.parseJianpuText(ins, ABC).warning || '';
+    expect(insWarn).toContain('第 5 行');
+    expect(insWarn).toContain('伴');
+    expect(insWarn).toContain('1~');
+    expect(insWarn).toContain('2');
+  });
+
+  it('names the line when a mark cannot be read', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const text = ['1=C  4/4  ♩=120', '唱', '1 |', '土'].join('\n');
+    const result = editor.compareJianpuNotes(
+      text,
+      '<text class="fj v-Vocal" x="0" y="10">1</text>',
+      4, 16, 16,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('第 4 行');
+    expect(result.message).toContain('土');
+  });
+
+  it('skips a meter line when comparing notes', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const text = ['1=C  4/4  ♩=120', '% verse', '2/4', '唱', '1 |', '伴', '0 |'].join('\n');
+    const svg = [
+      '<text class="fj v-Vocal" x="0" y="10">1</text>',
+      '<text class="fj v-Ins" x="0" y="30">0</text>',
+    ].join('');
+    const result = editor.compareJianpuNotes(text, svg, 4, 16, 16);
+    expect(result.ok).toBe(true);
+    expect(result.message).not.toContain('要写在唱或伴下面');
+  });
+
   it('interpolates source scroll between row anchors', () => {
     expect(editor.sourceScrollTop([], 1, 200, 500)).toBe(0);
     const anchors = [
@@ -139,11 +203,152 @@ z8|
       const pending = editor.open?.(ABC, null, { strings: jianpuStrings.en as unknown as Record<string, string> });
       await Promise.resolve();
       expect(document.querySelector('.yue-jp-editor h2')?.textContent).toBe('Edit jianpu');
+      const align = document.querySelector('.yue-jp-editor [data-act="align-lyrics"]') as HTMLButtonElement | null;
+      expect(align?.querySelector('svg')).toBeTruthy();
+      expect(align?.getAttribute('aria-label')).toBe('Align lyrics');
       (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
       await pending;
     } finally {
       document.querySelector('.yue-jp-editor')?.remove();
       globals.abc2svg = previous;
     }
+  });
+
+  it('flows lyrics after the caret across vocal lines', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+C4D4E4F4|
+w: 春 天 啊 来
+V: Ins
+z16|
+% next
+V: Vocal
+G4A4B4c4|
+w: 了 花
+V: Ins
+z16|
+`;
+    const built = editor.buildJianpuText(score);
+    expect(built.error).toBeFalsy();
+    // Misaligned: 了 sits past the first line's notes; 花 alone on the next line.
+    const text = (built.text || '')
+      .replace('词 春 天 啊 来', '词 春 天 啊 来 了')
+      .replace('词 了 花', '词 花');
+    const ah = text.indexOf('啊');
+    expect(ah).toBeGreaterThan(-1);
+    const caret = ah + '啊'.length;
+    const aligned = editor.alignLyricsAfter(text, score, caret);
+    expect(aligned.error).toBeFalsy();
+    expect(aligned.none).toBe(false);
+    expect(aligned.text).toContain('词 春 天 啊 来');
+    expect(aligned.text).toContain('词 了 花');
+    expect(aligned.abc).toMatch(/w:\s*春 天 啊 来/);
+    expect(aligned.abc).toMatch(/w:\s*了 花/);
+  });
+
+  it('drops empty lyric slots from the pool and keeps melisma dashes', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C4D4E4F4|
+w: 春 * - 天
+V: Ins
+z16|
+`;
+    const built = editor.buildJianpuText(score);
+    const text = (built.text || '').replace('词 春 · - 天', '词 春 · - 花 开 啦');
+    const parsed = editor.parseJianpuText(text, score);
+    expect(parsed.error).toBeFalsy();
+    const spring = text.indexOf('春');
+    const caret = spring + '春'.length;
+    const aligned = editor.alignLyricsAfter(text, score, caret);
+    expect(aligned.error).toBeFalsy();
+    expect(aligned.none).toBe(false);
+    // · is skipped; - stays as one slot; 开 啦 outrun the three remaining notes.
+    expect(aligned.text).toMatch(/词 春 - 花 开/);
+    expect(aligned.leftover).toBe(1);
+  });
+
+  it('reports leftover syllables when the pool outruns the notes', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:2/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C4D4|
+w: 春
+V: Ins
+z8|
+`;
+    const built = editor.buildJianpuText(score);
+    const text = (built.text || '').replace('词 春', '词 春 天 啊 来');
+    const caret = text.indexOf('词') + 1;
+    const aligned = editor.alignLyricsAfter(text, score, caret);
+    expect(aligned.error).toBeFalsy();
+    expect(aligned.leftover).toBe(2);
+    expect(aligned.abc).toMatch(/w:\s*春 天/);
+  });
+
+  it('reports the text-score line of a bad token', () => {
+    editor.setStrings?.(jianpuStrings.en as unknown as Record<string, string>);
+    const built = editor.buildJianpuText(ABC);
+    const text = `${built.text || ''}\n???`;
+    const parsed = editor.parseJianpuText(text, ABC);
+    expect(parsed.abc).toBeNull();
+    expect(parsed.line).toBe(text.split('\n').length);
+    expect(parsed.error).toContain(`Line ${parsed.line}:`);
+    expect(parsed.error).toContain('???');
+  });
+
+  it('realigns from a vocal note under the caret in the text score', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C4D4E4F4|
+w: 春 天 啊 来
+V: Ins
+z16|
+`;
+    const built = editor.buildJianpuText(score);
+    // Extra 了 after the line; caret on the third degree pulls 啊 来 了 from there.
+    const text = (built.text || '').replace('词 春 天 啊 来', '词 春 天 啊 来 了');
+    const musicLine = text.split('\n').find((line) => /(?:^|\s)1\s+2\s+3\s+4\s*\|/.test(line));
+    expect(musicLine).toBeTruthy();
+    const lineStart = text.indexOf(musicLine!);
+    const digit = musicLine!.indexOf('3');
+    expect(digit).toBeGreaterThan(-1);
+    const aligned = editor.alignLyricsAfter(text, score, lineStart + digit);
+    expect(aligned.error).toBeFalsy();
+    expect(aligned.none).toBe(false);
+    expect(aligned.text).toMatch(/词 春 天 啊 来/);
+    expect(aligned.leftover).toBe(1);
   });
 });
