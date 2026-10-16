@@ -509,8 +509,10 @@
     const tokens = wLine
       ? wLine.replace(/^w:\s*/, "").trim().split(/\s+/).filter(Boolean)
       : [];
-    const noteCount = events.filter((ev) => ev.kind === "note").length;
-    if (tokens.length === events.length) {
+    // 1:1 with rests only when rest slots are placeholders (* / -).
+    const aligned = tokens.length === events.length
+      && events.every((ev, i) => ev.kind === "note" || tokens[i] === "*" || tokens[i] === "-");
+    if (aligned) {
       events.forEach((ev, index) => {
         ev.lyric = tokens[index];
       });
@@ -518,8 +520,7 @@
     }
     let cursor = 0;
     for (const ev of events) {
-      if (ev.kind === "note" && tokens.length === noteCount) ev.lyric = tokens[cursor++] || "*";
-      else if (ev.kind === "note") ev.lyric = cursor < tokens.length ? tokens[cursor++] : "*";
+      if (ev.kind === "note") ev.lyric = cursor < tokens.length ? tokens[cursor++] : "*";
       else ev.lyric = "*";
     }
   }
@@ -875,7 +876,562 @@
     return { abc: joinAbc(lines, abc), index: index + slice };
   }
 
+  function splitWritable(units) {
+    const parts = [];
+    let left = units;
+    const sizes = [48, 32, 24, 16, 12, 8, 6, 4, 3, 2, 1];
+    while (left > 0) {
+      let take = 0;
+      for (let i = 0; i < sizes.length; i++) {
+        if (sizes[i] <= left) {
+          take = sizes[i];
+          break;
+        }
+      }
+      if (!take) return null;
+      parts.push(take);
+      left -= take;
+    }
+    return parts;
+  }
+
+  function tiePieces(ev, lengths) {
+    const rest = ev.kind !== "note";
+    return lengths.map((units, i) => Object.assign({}, ev, {
+      units: units,
+      bars: 1,
+      kind: rest ? "rest" : "note",
+      letter: rest ? "z" : ev.letter,
+      acc: rest ? "" : ev.acc,
+      marks: rest ? "" : ev.marks,
+      tie: !rest && (i < lengths.length - 1 || !!ev.tie),
+      continuesTie: !rest && (i > 0 || !!ev.continuesTie),
+      lyric: !rest && i === 0 ? ev.lyric : "*",
+      chord: i === 0 ? (ev.chord || "") : "",
+    }));
+  }
+
+  function piecesAfter(ev, start, cut, perBar) {
+    const lengths = [];
+    let left = ev.units;
+    let at = start;
+    while (left > 0) {
+      const room = perBar - ((at - cut) % perBar);
+      const take = Math.min(left, room);
+      const writable = splitWritable(take);
+      if (!writable) return null;
+      for (let i = 0; i < writable.length; i++) lengths.push(writable[i]);
+      at += take;
+      left -= take;
+    }
+    return tiePieces(ev, lengths);
+  }
+
+  function flattenVoice(items, start, end, voice) {
+    const out = [];
+    let ordinal = 0;
+    let open = false;
+    function nextBar() {
+      if (open) ordinal += 1;
+      open = true;
+      return ordinal;
+    }
+    for (let i = start; i < end; i++) {
+      const item = items[i];
+      if (item.type !== "music" || item.voice !== voice) continue;
+      let prev = null;
+      for (const ev of item.events) {
+        if (ev.kind === "zrest") {
+          const count = ev.bars > 0 ? ev.bars : 1;
+          for (let b = 0; b < count; b++) {
+            out.push(Object.assign({}, ev, {
+              kind: "rest",
+              units: ev.perBar,
+              bars: 1,
+              letter: "z",
+              acc: "",
+              marks: "",
+              tie: false,
+              continuesTie: false,
+              lyric: "*",
+              chord: b === 0 ? (ev.chord || "") : "",
+              originalBar: nextBar(),
+              sourceIndex: b === 0 ? ev.index : -1,
+            }));
+          }
+          prev = null;
+          continue;
+        }
+        const bar = prev === ev.barIndex ? ordinal : nextBar();
+        prev = ev.barIndex;
+        out.push(Object.assign({}, ev, { originalBar: bar, sourceIndex: ev.index }));
+      }
+    }
+    return out;
+  }
+
+  function placeVoice(events, cut, perBar) {
+    let cursor = 0;
+    let cutBar = null;
+    const placed = [];
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const start = cursor;
+      cursor += ev.units;
+      if (start + ev.units <= cut) {
+        placed.push({ ev: ev, bar: ev.originalBar, start: start });
+        continue;
+      }
+      if (cutBar == null) {
+        if (start < cut) cutBar = ev.originalBar;
+        else if (start === cut) {
+          let prior = false;
+          for (let j = 0; j < i; j++) {
+            if (events[j].originalBar === ev.originalBar) prior = true;
+          }
+          cutBar = prior ? ev.originalBar : ev.originalBar - 1;
+        } else {
+          return null;
+        }
+      }
+      let pieces;
+      let at = start;
+      if (start < cut) {
+        const head = splitWritable(cut - start);
+        const tail = splitWritable(start + ev.units - cut);
+        if (!head || !tail) return null;
+        pieces = tiePieces(ev, head.concat(tail));
+        const headCount = head.length;
+        for (let p = 0; p < pieces.length; p++) {
+          const bar = p < headCount ? cutBar : cutBar + 1 + Math.floor((at - cut) / perBar);
+          placed.push({ ev: pieces[p], bar: bar, start: at, pick: false });
+          at += pieces[p].units;
+        }
+        continue;
+      }
+      pieces = piecesAfter(ev, start, cut, perBar);
+      if (!pieces) return null;
+      for (let p = 0; p < pieces.length; p++) {
+        const bar = cutBar + 1 + Math.floor((at - cut) / perBar);
+        placed.push({ ev: pieces[p], bar: bar, start: at, pick: start === cut && p === 0 });
+        at += pieces[p].units;
+      }
+    }
+    if (cutBar == null || cursor < cut) return null;
+    let min = placed.length ? placed[0].bar : 0;
+    for (const piece of placed) if (piece.bar < min) min = piece.bar;
+    if (min < 0) {
+      for (const piece of placed) piece.bar -= min;
+    }
+    return placed;
+  }
+
+  function barsOf(placed) {
+    if (!placed.length) return [];
+    let max = 0;
+    for (const piece of placed) if (piece.bar > max) max = piece.bar;
+    const bars = [];
+    for (let i = 0; i <= max; i++) bars.push([]);
+    for (const piece of placed) bars[piece.bar].push(piece.ev);
+    for (const bar of bars) if (!bar.length) return null;
+    return bars;
+  }
+
+  function renderBars(bars, state) {
+    return bars.map((bar) => bar.map((ev) => abcPiece(ev, state)).join(" ")).join(" | ") + "|";
+  }
+
+  function sameMeter(a, b) {
+    return !!a && !!b && a[0] === b[0] && a[1] === b[1];
+  }
+
+  // The selected note becomes beat 1 of the next bar. Bars before that bar stay.
+  // From the cut through the next section comment or meter change, both voices
+  // are packed again to the meter, within the user's bars-per-line range.
+  function reflowDownbeat(abc, voice, index, command) {
+    const walked = walkBody(abc);
+    if (walked.error) return { abc: abc, error: walked.error };
+    const items = walked.items;
+    let at = -1;
+    for (let i = 0; i < items.length && at < 0; i++) {
+      const item = items[i];
+      if (item.type !== "music" || item.voice !== voice) continue;
+      for (const ev of item.events) {
+        if (ev.index === index) {
+          at = i;
+          break;
+        }
+      }
+    }
+    if (at < 0) return { abc: abc, error: m("jpErrNoSuchNote") };
+    const meter = items[at].meter;
+    const perBar = perBarUnits(meter, walked.header.lDen);
+    if (!Number.isInteger(perBar) || perBar <= 0) return { abc: abc, error: m("jpErrBadMeter") };
+    let start = at;
+    while (start > 0) {
+      const prev = items[start - 1];
+      if (prev.type !== "music" || !sameMeter(prev.meter, meter)) break;
+      start -= 1;
+    }
+    let end = at + 1;
+    while (end < items.length) {
+      const next = items[end];
+      if (next.type !== "music" || !sameMeter(next.meter, meter)) break;
+      end += 1;
+    }
+    const selected = flattenVoice(items, start, end, voice);
+    const otherName = voice === "Ins" ? "Vocal" : "Ins";
+    const other = flattenVoice(items, start, end, otherName);
+    if (!selected.length || !other.length) return { abc: abc, error: m("jpErrVoicesBars") };
+    let cut = 0;
+    let found = false;
+    for (const ev of selected) {
+      if (ev.sourceIndex === index) {
+        found = true;
+        break;
+      }
+      cut += ev.units;
+    }
+    if (!found) return { abc: abc, error: m("jpErrNoSuchNote") };
+    const chosen = selected.find((item) => item.sourceIndex === index);
+    let prior = false;
+    for (const ev of selected) {
+      if (ev === chosen) break;
+      if (ev.originalBar === chosen.originalBar) prior = true;
+    }
+    if (!prior) return { abc: abc, error: m("jpErrAlreadyDownbeat") };
+    const placedSel = placeVoice(selected, cut, perBar);
+    const placedOther = placeVoice(other, cut, perBar);
+    if (!placedSel || !placedOther) return { abc: abc, error: m("jpErrVoicesBars") };
+    const barsSel = barsOf(placedSel);
+    const barsOther = barsOf(placedOther);
+    if (!barsSel || !barsOther || barsSel.length !== barsOther.length) {
+      return { abc: abc, error: m("jpErrVoicesBars") };
+    }
+    const vocalBars = voice === "Ins" ? barsOther : barsSel;
+    const insBars = voice === "Ins" ? barsSel : barsOther;
+    let vocalKey = null;
+    let insKey = null;
+    for (let i = start; i < end; i++) {
+      if (items[i].type !== "music") continue;
+      if (items[i].voice === "Vocal" && vocalKey == null) vocalKey = items[i].startKey;
+      if (items[i].voice === "Ins" && insKey == null) insKey = items[i].startKey;
+    }
+    let beforeMeter = walked.header.meter;
+    for (let i = start - 1; i >= 0; i--) {
+      if (items[i].type === "music") {
+        beforeMeter = items[i].meter;
+        break;
+      }
+    }
+    const meterLine = sameMeter(meter, beforeMeter) ? "" : "M:" + meter[0] + "/" + meter[1];
+    const stateV = { key: vocalKey || walked.header.key.name };
+    const stateI = { key: insKey || walked.header.key.name };
+    const diagram = normalizeDiagram(command && command.diagram);
+    const range = lineBarRange(command);
+    const widths = [];
+    for (let b = 0; b < vocalBars.length; b++) {
+      widths.push(Math.max(
+        barNaturalWidth(vocalBars[b], diagram),
+        barNaturalWidth(insBars[b], diagram),
+      ));
+    }
+    const chunks = packBarChunks(widths, range.min, range.max);
+    const region = [];
+    for (let g = 0; g < chunks.length; g++) {
+      const chunkV = vocalBars.slice(chunks[g].from, chunks[g].to);
+      const chunkI = insBars.slice(chunks[g].from, chunks[g].to);
+      region.push("V: Vocal");
+      if (g === 0 && meterLine) region.push(meterLine);
+      region.push(renderBars(chunkV, stateV));
+      const lyric = lyricAbc({ bars: chunkV });
+      if (lyric) region.push(lyric);
+      region.push("V: Ins");
+      if (g === 0 && meterLine) region.push(meterLine);
+      region.push(renderBars(chunkI, stateI));
+    }
+    let from = items[start].vLine;
+    let to = items[start].musicLine;
+    for (let i = start; i < end; i++) {
+      if (items[i].type !== "music") continue;
+      if (items[i].vLine < from) from = items[i].vLine;
+      const last = items[i].lyricLine >= 0 ? items[i].lyricLine : items[i].musicLine;
+      if (last > to) to = last;
+    }
+    const lines = walked.lines.slice();
+    lines.splice(from, to - from + 1, ...region);
+    let before = 0;
+    for (let i = 0; i < start; i++) {
+      if (items[i].type === "music" && items[i].voice === voice) before += items[i].events.length;
+    }
+    const pick = placedSel.findIndex((piece) => piece.pick);
+    return { abc: joinAbc(lines, abc), error: null, index: before + (pick < 0 ? 0 : pick) };
+  }
+
+  // Furigana in 目(め) sits above the base; it must not inflate line packing.
+  function lyricPackWidth(lyric) {
+    const text = displayLyricToken(lyric)
+      .replace(/（[^）]*）|\([^)]*\)/g, "");
+    let w = 0;
+    for (const ch of text) {
+      if (!ch || ch === "·" || ch === "-") continue;
+      w += isCjkChar(ch) ? 1 : 0.55;
+    }
+    return w;
+  }
+
+  // One event = one syllable slot; drawn lyrics widen the slot by glyph width.
+  function eventNaturalWidth(ev, diagram) {
+    let w = 1;
+    if (ev.chord) {
+      if (diagram === "guitar" || diagram === "ukulele") w = Math.max(w, 2.2);
+      else w = Math.max(w, Math.min(String(ev.chord).length * 0.45, 2.5));
+    }
+    if (lyricIsDrawn(ev.lyric)) w = Math.max(w, lyricPackWidth(ev.lyric));
+    return w;
+  }
+
+  function barNaturalWidth(bar, diagram) {
+    let sum = 0;
+    for (const ev of bar) sum += eventNaturalWidth(ev, diagram);
+    return sum;
+  }
+
+  // One ordinary bar is 8 wide. LINE scales with the maximum so that maximum is reachable.
+  const BAR_LINE_MIN = 1;
+  const BAR_LINE_CAP = 8;
+  const BAR_LINE_DEFAULT_MAX = 4;
+  const BARS_MIN_KEY = "yue-jp-bars-min";
+  const BARS_MAX_KEY = "yue-jp-bars-max";
+
+  function storedBarCount(key) {
+    try {
+      if (typeof localStorage === "undefined") return null;
+      const raw = localStorage.getItem(key);
+      if (raw == null || raw === "") return null;
+      const n = Number(raw);
+      return Number.isInteger(n) ? n : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function clampBarCount(value, fallback) {
+    const n = Number(value);
+    if (!Number.isInteger(n)) return fallback;
+    if (n < BAR_LINE_MIN) return BAR_LINE_MIN;
+    if (n > BAR_LINE_CAP) return BAR_LINE_CAP;
+    return n;
+  }
+
+  function normalizeBarRange(min, max) {
+    min = clampBarCount(min, BAR_LINE_MIN);
+    max = clampBarCount(max, BAR_LINE_DEFAULT_MAX);
+    if (min > max) min = max;
+    return { min: min, max: max };
+  }
+
+  function loadBarsPerLine() {
+    const savedMin = storedBarCount(BARS_MIN_KEY);
+    const savedMax = storedBarCount(BARS_MAX_KEY);
+    return normalizeBarRange(
+      savedMin == null ? BAR_LINE_MIN : savedMin,
+      savedMax == null ? BAR_LINE_DEFAULT_MAX : savedMax,
+    );
+  }
+
+  let barsPerLine = loadBarsPerLine();
+
+  function lineBarRange(command) {
+    const minGiven = command && command.minBars != null && command.minBars !== "";
+    const maxGiven = command && command.maxBars != null && command.maxBars !== "";
+    return normalizeBarRange(
+      minGiven ? command.minBars : barsPerLine.min,
+      maxGiven ? command.maxBars : barsPerLine.max,
+    );
+  }
+
+  function writeBarsPerLine() {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(BARS_MIN_KEY, String(barsPerLine.min));
+      localStorage.setItem(BARS_MAX_KEY, String(barsPerLine.max));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  function syncBarInputs() {
+    if (!ui || !ui.tools) return;
+    ui.tools.querySelectorAll("input[data-bars]").forEach((input) => {
+      const which = input.getAttribute("data-bars");
+      const next = String(which === "min" ? barsPerLine.min : barsPerLine.max);
+      if (input.value !== next) input.value = next;
+      const label = m(which === "min" ? "jpBarsMin" : "jpBarsMax");
+      input.title = label;
+      input.setAttribute("aria-label", label);
+    });
+  }
+
+  // Read both fields together. A toolbar button mousedown prevents blur, so
+  // `change` has not fired yet when Reflow runs.
+  function pullBarInputs(edited) {
+    if (!ui || !ui.tools) return;
+    const minEl = ui.tools.querySelector("input[data-bars='min']");
+    const maxEl = ui.tools.querySelector("input[data-bars='max']");
+    if (!minEl || !maxEl) return;
+    const minRaw = String(minEl.value).trim();
+    const maxRaw = String(maxEl.value).trim();
+    let min = /^\d+$/.test(minRaw) ? clampBarCount(Number(minRaw), barsPerLine.min) : barsPerLine.min;
+    let max = /^\d+$/.test(maxRaw) ? clampBarCount(Number(maxRaw), barsPerLine.max) : barsPerLine.max;
+    if (min > max) {
+      if (edited === "min") max = min;
+      else min = max;
+    }
+    barsPerLine = { min: min, max: max };
+    writeBarsPerLine();
+    syncBarInputs();
+  }
+
+  function barCountField(which) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = String(BAR_LINE_MIN);
+    input.max = String(BAR_LINE_CAP);
+    input.step = "1";
+    input.className = "yue-jp-bars";
+    input.setAttribute("data-bars", which);
+    input.value = String(which === "min" ? barsPerLine.min : barsPerLine.max);
+    const label = m(which === "min" ? "jpBarsMin" : "jpBarsMax");
+    input.title = label;
+    input.setAttribute("aria-label", label);
+    input.addEventListener("change", () => pullBarInputs(which));
+    return input;
+  }
+
+  // Stay inside [min, max] bars. Width may stop early, but not before min.
+  // A bar that already fills the line stays alone only when min allows one bar.
+  function packBarChunks(widths, minBars, maxBars) {
+    const range = normalizeBarRange(minBars, maxBars);
+    const min = range.min;
+    const max = range.max;
+    const LINE = 8 * max;
+    const ALONE = LINE / 2;
+    const chunks = [];
+    let i = 0;
+    while (i < widths.length) {
+      const floor = Math.min(min, widths.length - i);
+      if (floor <= 1 && widths[i] >= ALONE) {
+        chunks.push({ from: i, to: i + 1 });
+        i += 1;
+        continue;
+      }
+      let sum = 0;
+      let count = 0;
+      const from = i;
+      while (i < widths.length && count < max) {
+        if (count >= floor && (widths[i] >= ALONE || sum + widths[i] > LINE)) break;
+        sum += widths[i];
+        count += 1;
+        i += 1;
+      }
+      chunks.push({ from: from, to: from + count });
+    }
+    return chunks;
+  }
+
+  function barsFromVoice(items, start, end, voice) {
+    const flat = flattenVoice(items, start, end, voice);
+    if (!flat.length) return [];
+    return barsOf(flat.map((ev) => ({ ev: ev, bar: ev.originalBar })));
+  }
+
+  // Rewrite line breaks so each system has a similar natural width. Notes stay put.
+  function reflowScore(abc, command) {
+    const walked = walkBody(abc);
+    if (walked.error) return { abc: abc, error: walked.error };
+    const diagram = normalizeDiagram(command && command.diagram);
+    const items = walked.items;
+    const regions = [];
+    let i = 0;
+    while (i < items.length) {
+      if (items[i].type !== "music") {
+        i += 1;
+        continue;
+      }
+      const meter = items[i].meter;
+      const start = i;
+      let end = i + 1;
+      while (end < items.length && items[end].type === "music" && sameMeter(items[end].meter, meter)) {
+        end += 1;
+      }
+      regions.push({ start: start, end: end, meter: meter });
+      i = end;
+    }
+    let lines = walked.lines.slice();
+    for (let r = regions.length - 1; r >= 0; r--) {
+      const region = regions[r];
+      const vocalBars = barsFromVoice(items, region.start, region.end, "Vocal");
+      const insBars = barsFromVoice(items, region.start, region.end, "Ins");
+      if (!vocalBars.length || !insBars.length || vocalBars.length !== insBars.length) {
+        return { abc: abc, error: m("jpErrVoicesBars") };
+      }
+      const widths = [];
+      for (let b = 0; b < vocalBars.length; b++) {
+        widths.push(Math.max(
+          barNaturalWidth(vocalBars[b], diagram),
+          barNaturalWidth(insBars[b], diagram),
+        ));
+      }
+      const range = lineBarRange(command);
+      const chunks = packBarChunks(widths, range.min, range.max);
+      let vocalKey = null;
+      let insKey = null;
+      for (let j = region.start; j < region.end; j++) {
+        if (items[j].type !== "music") continue;
+        if (items[j].voice === "Vocal" && vocalKey == null) vocalKey = items[j].startKey;
+        if (items[j].voice === "Ins" && insKey == null) insKey = items[j].startKey;
+      }
+      let beforeMeter = walked.header.meter;
+      for (let j = region.start - 1; j >= 0; j--) {
+        if (items[j].type === "music") {
+          beforeMeter = items[j].meter;
+          break;
+        }
+      }
+      const meterLine = sameMeter(region.meter, beforeMeter)
+        ? ""
+        : "M:" + region.meter[0] + "/" + region.meter[1];
+      const stateV = { key: vocalKey || walked.header.key.name };
+      const stateI = { key: insKey || walked.header.key.name };
+      const out = [];
+      for (let g = 0; g < chunks.length; g++) {
+        const chunkV = vocalBars.slice(chunks[g].from, chunks[g].to);
+        const chunkI = insBars.slice(chunks[g].from, chunks[g].to);
+        out.push("V: Vocal");
+        if (g === 0 && meterLine) out.push(meterLine);
+        out.push(renderBars(chunkV, stateV));
+        const lyric = lyricAbc({ bars: chunkV });
+        if (lyric) out.push(lyric);
+        out.push("V: Ins");
+        if (g === 0 && meterLine) out.push(meterLine);
+        out.push(renderBars(chunkI, stateI));
+      }
+      let from = items[region.start].vLine;
+      let to = items[region.start].musicLine;
+      for (let j = region.start; j < region.end; j++) {
+        if (items[j].type !== "music") continue;
+        if (items[j].vLine < from) from = items[j].vLine;
+        const last = items[j].lyricLine >= 0 ? items[j].lyricLine : items[j].musicLine;
+        if (last > to) to = last;
+      }
+      lines.splice(from, to - from + 1, ...out);
+    }
+    return { abc: joinAbc(lines, abc), error: null };
+  }
+
   function editScore(abc, command) {
+    if (command.op === "reflow") return reflowScore(abc, command);
     const voice = command.voice === "Ins" ? "Ins" : "Vocal";
     if (command.slice != null) {
       const expanded = expandSlicedRest(abc, voice, command.index | 0, command.slice | 0);
@@ -896,8 +1452,9 @@
       return { abc: abc, error: voice === "Ins" ? m('jpErrNoInsNotes') : m('jpErrNoVocalNotes') };
     }
     if (index < 0 || index >= events.length) return { abc: abc, error: m('jpErrNoSuchNote') };
-    const ev = events[index];
     const op = command.op;
+    if (op === "downbeat") return reflowDownbeat(abc, voice, index, command);
+    const ev = events[index];
     let lyricsDirty = false;
     let leftover = 0;
     let select = index;
@@ -1442,6 +1999,7 @@
         continue;
       }
       const startKey = key.name;
+      const vLine = i;
       i += 1;
       while (i < lines.length && /^(M:|K:)/.test(lines[i])) {
         if (lines[i].startsWith("M:")) {
@@ -1456,12 +2014,15 @@
         i += 1;
       }
       if (i >= lines.length) break;
+      const musicLine = i;
       const scanned = scanMusic(lines[i], key, perBar);
       if (scanned.error) return { error: scanned.error, header: header, lines: lines, items: [] };
       key = scanned.key;
       i += 1;
+      let lyricLine = -1;
       let wLine = null;
       if (voice === "Vocal" && i < lines.length && /^w:/.test(lines[i])) {
+        lyricLine = i;
         wLine = lines[i];
         i += 1;
       }
@@ -1476,7 +2037,16 @@
         ev.index = count;
         count += 1;
       }
-      items.push({ type: "music", voice: voice, events: scanned.events, startKey: startKey, meter: meter.slice() });
+      items.push({
+        type: "music",
+        voice: voice,
+        events: scanned.events,
+        startKey: startKey,
+        meter: meter.slice(),
+        vLine: vLine,
+        musicLine: musicLine,
+        lyricLine: lyricLine,
+      });
     }
     return { error: null, header: header, lines: lines, kIdx: kIdx, items: items };
   }
@@ -2127,7 +2697,9 @@
     function checkLine(item) {
       if (!item) return;
       const barUnits = perBarUnits(item.meter || [4, 4], lDen);
-      if (item.bars.length < 1 || item.bars.length > 4) push(m('jpErrMaxBars'));
+      if (item.bars.length < 1 || item.bars.length > barsPerLine.max) {
+        push(m('jpErrMaxBars', { max: barsPerLine.max }));
+      }
       for (const bar of item.bars) {
         if (!bar.length) {
           push(m('jpErrEmptyBar'));
@@ -3603,6 +4175,9 @@
       ".yue-jp-group:not([hidden]) + .yue-jp-group:not([hidden]){border-left:1px solid #e4e4e7;}",
       "html.dark .yue-jp-group:not([hidden]) + .yue-jp-group:not([hidden]){border-left-color:rgba(255,255,255,.1);}",
       ".yue-jp-tools button{padding:4px 8px;min-width:28px;}",
+      ".yue-jp-tools input.yue-jp-bars{width:3em;padding:4px 2px;text-align:center;",
+      "font:inherit;color:inherit;background:transparent;border:1px solid #d4d4d8;border-radius:8px;}",
+      "html.dark .yue-jp-tools input.yue-jp-bars{border-color:rgba(255,255,255,.15);}",
       ".yue-jp-tools button.digit{font-weight:700;min-width:32px;}",
       ".yue-jp-tools button.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px;}",
       ".yue-jp-tools button.icon svg{width:15px;height:15px;display:block;fill:currentColor;}",
@@ -3797,6 +4372,7 @@
       else if (act === "ok") acceptText();
       else if (act === "cancel") finish(null);
       else if (act === "align-lyrics") alignLyricsFromCaret();
+      else if (act === "reflow") run({ op: "reflow" });
       else if (act === "lyric-sustain") insertLyricMark("-");
       else if (act === "lyric-empty") insertLyricMark("·");
       else if (button && ui.tools.contains(button)) {
@@ -4171,6 +4747,8 @@
       ],
       [
         { label: m("jpTie"), title: m("jpTieTitle"), attrs: { act: "tie" } },
+        { label: m("jpDownbeat"), title: m("jpDownbeatTitle"), attrs: { act: "downbeat" } },
+        { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
         { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
         { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
       ],
@@ -4212,6 +4790,10 @@
           if (spec.aria) button.setAttribute("aria-label", spec.aria);
           Object.keys(spec.attrs).forEach((key) => button.setAttribute("data-" + key, spec.attrs[key]));
           group.appendChild(button);
+          if (spec.attrs.act === "reflow") {
+            group.appendChild(barCountField("min"));
+            group.appendChild(barCountField("max"));
+          }
         });
         root.appendChild(group);
       });
@@ -4317,7 +4899,8 @@
     if (act === "octave") return { op: "octave", delta: Number(button.getAttribute("data-delta")) };
     if (act === "accidental") return { op: "accidental", kind: button.getAttribute("data-kind") };
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
-    if (act === "tie" || act === "sustain" || act === "insert" || act === "delete") return { op: act };
+    if (act === "tie" || act === "sustain" || act === "insert" || act === "delete"
+        || act === "downbeat" || act === "reflow") return { op: act };
     return null;
   }
 
@@ -5349,7 +5932,11 @@
     }
     clearSavedNote();
     stopPlayback();
-    if (ui.index < 0) {
+    const barField = ui.tools && document.activeElement && ui.tools.contains(document.activeElement)
+      ? document.activeElement.getAttribute("data-bars")
+      : "";
+    pullBarInputs(barField);
+    if (command.op !== "reflow" && ui.index < 0) {
       setStatus(m('jpPickNote'));
       return false;
     }
@@ -5357,6 +5944,7 @@
       index: ui.index,
       voice: ui.voice || "Vocal",
       slice: ui.slice || 0,
+      diagram: currentDiagram(),
     }, command));
     if (next.error) {
       setStatus(next.error);

@@ -444,4 +444,389 @@ z16|
     expect(aligned.text).toMatch(/词 春 天 啊 来/);
     expect(aligned.leftover).toBe(1);
   });
+
+  it('makes the selected beat the first beat of the next bar', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+C D E F|G A B c|d e f g|
+w: do re mi fa so la ti do re mi fa so
+V: Ins
+C D E F|G A B c|d e f g|
+% chorus
+V: Vocal
+c B A G|
+w: end
+V: Ins
+c B A G|
+V: Vocal
+M:3/4
+E F G|
+V: Ins
+M:3/4
+E F G|
+`;
+    const packed = (abc: string) => abc.replace(/\s+/g, '');
+    const moved = editor.editScore(score, { op: 'downbeat', index: 5, voice: 'Vocal' });
+    expect(moved.error).toBeFalsy();
+    const body = packed(moved.abc);
+    expect(body).toContain('V:VocalCDEF|G|ABcd|efg|');
+    expect(body).toContain('w:doremifasolatidoremifaso');
+    expect(body).toContain('V:InsCDEF|G|ABcd|efg|');
+    expect(body).toContain('%chorus');
+    expect(body).toContain('cBAG|');
+    expect(body).toContain('M:3/4');
+    expect(body).toContain('EFG|');
+    const stayed = editor.editScore(score, { op: 'downbeat', index: 4, voice: 'Vocal' });
+    expect(stayed.error).toBeTruthy();
+    expect(stayed.abc).toBe(score);
+  });
+
+  it('ties a note split by the new bar and keeps the lyric on the first half', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|G A4|
+w: do re mi fa so la
+V: Ins
+C D E F|G A4|
+`;
+    const moved = editor.editScore(score, { op: 'downbeat', index: 3, voice: 'Vocal' });
+    expect(moved.error).toBeFalsy();
+    const body = moved.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDE|FGA2-|A2|');
+    expect(body).toContain('w:doremifasola');
+    expect(moved.index).toBe(3);
+  });
+
+  it('repacks sparse and dense bars onto lines without crossing section or meter breaks', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+C16|
+w: a
+V: Ins
+C16|
+V: Vocal
+D16|
+w: b
+V: Ins
+D16|
+V: Vocal
+E16|
+w: c
+V: Ins
+E16|
+V: Vocal
+F16|
+w: d
+V: Ins
+F16|
+V: Vocal
+G16|
+w: e
+V: Ins
+G16|
+V: Vocal
+A16|
+w: f
+V: Ins
+A16|
+V: Vocal
+B16|
+w: g
+V: Ins
+B16|
+V: Vocal
+c16|
+w: h
+V: Ins
+c16|
+% chorus
+V: Vocal
+CDEF GABc defg abc'd'|
+w: one two three four five six seven eight nine ten eleven twelve thir teen fif teen
+V: Ins
+CDEF GABc defg abc'd'|
+V: Vocal
+CDEF GABc defg abc'd'|
+w: more notes packed tight here now yes
+V: Ins
+CDEF GABc defg abc'd'|
+V: Vocal
+M:3/4
+C8D8E8|
+w: end
+V: Ins
+M:3/4
+C8D8E8|
+`;
+    const packed = (abc: string) => abc.replace(/\s+/g, '');
+    const musicLines = (abc: string, voice: string) =>
+      abc.split(/\r?\n/).filter((line, i, lines) => {
+        if (!/\|/.test(line) || /^[wW]:/.test(line) || /^%/.test(line)) return false;
+        for (let j = i - 1; j >= 0; j--) {
+          if (lines[j] === `V: ${voice}`) return true;
+          if (/^V:/.test(lines[j])) return false;
+        }
+        return false;
+      });
+    const once = editor.editScore(score, { op: 'reflow' });
+    expect(once.error).toBeFalsy();
+    // Eight whole-note bars pack to two lines of four.
+    expect(packed(once.abc)).toContain('C16|D16|E16|F16|');
+    expect(packed(once.abc)).toContain('G16|A16|B16|c16|');
+    expect(packed(once.abc)).toContain('w:abcd');
+    expect(packed(once.abc)).toContain('w:efgh');
+    // Dense bars stay one per line (rewritten with spaces between degrees).
+    const dense = musicLines(once.abc, 'Vocal').filter((line) => /c'\s*d'/.test(line));
+    expect(dense).toHaveLength(2);
+    expect(dense.every((line) => (line.match(/\|/g) || []).length === 1)).toBe(true);
+    // Section and meter boundaries stay.
+    expect(once.abc).toContain('% chorus');
+    expect(packed(once.abc)).toContain('M:3/4');
+    expect(packed(once.abc)).toMatch(/%chorus[\s\S]*M:3\/4/);
+    // Voices share the same cuts.
+    const vocalCuts = musicLines(once.abc, 'Vocal').map((line) => (line.match(/\|/g) || []).length);
+    const insCuts = musicLines(once.abc, 'Ins').map((line) => (line.match(/\|/g) || []).length);
+    expect(insCuts).toEqual(vocalCuts);
+    // Second pass is a no-op.
+    const twice = editor.editScore(once.abc, { op: 'reflow' });
+    expect(twice.error).toBeFalsy();
+    expect(packed(twice.abc)).toBe(packed(once.abc));
+  });
+
+  it('reflow ignores furigana width so chord bars can share a line', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=75
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:D
+V: Vocal
+"Em7/G"A2z2B2d2"A7sus4"A2z2B2G2|
+w: 目(め)を 閉(と)じ て 風(かぜ) を 感(かん) じ て
+V: Ins
+A2z2B2d2A2z2B2G2|
+V: Vocal
+"Dmaj7"d4 z4 A2 d2|
+w: 春(はる) の 風(かぜ) を
+V: Ins
+d4 z4 A2 d2|
+V: Vocal
+"Em7/G"A2z2d2"A7sus4"A2z2B2G2|
+w: また 会(あ) い た い ね
+V: Ins
+A2z2d2A2z2B2G2|
+V: Vocal
+"Dmaj7"d4 z4 A2 d2|
+w: 今(いま) は 遠(とお) く
+V: Ins
+d4 z4 A2 d2|
+`;
+    const musicLines = (abc: string, voice: string) =>
+      abc.split(/\r?\n/).filter((line, i, lines) => {
+        if (!/\|/.test(line) || /^[wW]:/.test(line) || /^%/.test(line)) return false;
+        for (let j = i - 1; j >= 0; j--) {
+          if (lines[j] === `V: ${voice}`) return true;
+          if (/^V:/.test(lines[j])) return false;
+        }
+        return false;
+      });
+    const once = editor.editScore(score, { op: 'reflow', diagram: 'guitar' });
+    expect(once.error).toBeFalsy();
+    const vocal = musicLines(once.abc, 'Vocal');
+    expect(vocal.some((line) => (line.match(/\|/g) || []).length >= 2)).toBe(true);
+    expect(vocal.every((line) => (line.match(/\|/g) || []).length <= 4)).toBe(true);
+    const again = editor.editScore(once.abc, { op: 'reflow', diagram: 'guitar' });
+    expect(again.abc.replace(/\s+/g, '')).toBe(once.abc.replace(/\s+/g, ''));
+  });
+
+  it('reflow packs by syllable density: sparse wholes share a line, dense sixteenths stay alone', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C16|
+w: a
+V: Ins
+C16|
+V: Vocal
+D16|
+w: b
+V: Ins
+D16|
+V: Vocal
+E16|
+w: c
+V: Ins
+E16|
+V: Vocal
+F16|
+w: d
+V: Ins
+F16|
+V: Vocal
+CDEF GABc defg abc'd'|
+V: Ins
+CDEF GABc defg abc'd'|
+V: Vocal
+CDEF GABc defg abc'd'|
+V: Ins
+CDEF GABc defg abc'd'|
+`;
+    const musicLines = (abc: string, voice: string) =>
+      abc.split(/\r?\n/).filter((line, i, lines) => {
+        if (!/\|/.test(line) || /^[wW]:/.test(line) || /^%/.test(line)) return false;
+        for (let j = i - 1; j >= 0; j--) {
+          if (lines[j] === `V: ${voice}`) return true;
+          if (/^V:/.test(lines[j])) return false;
+        }
+        return false;
+      });
+    const barsOn = (line: string) => (line.match(/\|/g) || []).length;
+    const once = editor.editScore(score, { op: 'reflow' });
+    expect(once.error).toBeFalsy();
+    const vocal = musicLines(once.abc, 'Vocal');
+    expect(vocal.some((line) => /C16\|D16\|E16\|F16\|/.test(line.replace(/\s+/g, '')))).toBe(true);
+    const dense = vocal.filter((line) => /c'\s*d'/.test(line));
+    expect(dense).toHaveLength(2);
+    expect(dense.every((line) => barsOn(line) === 1)).toBe(true);
+  });
+
+  it('reflow keeps four bars on a line unless a bar already fills it', () => {
+    const bar = 'CDEF GABc|';
+    const score = `X:1
+T:
+M:4/4
+L:1/8
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+${Array.from({ length: 8 }, () => `V: Vocal\n${bar}\nV: Ins\n${bar}`).join('\n')}
+`;
+    const musicLines = (abc: string, voice: string) =>
+      abc.split(/\r?\n/).filter((line, i, lines) => {
+        if (!/\|/.test(line) || /^[wW]:/.test(line) || /^%/.test(line)) return false;
+        for (let j = i - 1; j >= 0; j--) {
+          if (lines[j] === `V: ${voice}`) return true;
+          if (/^V:/.test(lines[j])) return false;
+        }
+        return false;
+      });
+    const once = editor.editScore(score, { op: 'reflow' });
+    expect(once.error).toBeFalsy();
+    const vocal = musicLines(once.abc, 'Vocal');
+    expect(vocal).toHaveLength(2);
+    expect(vocal.every((line) => (line.match(/\|/g) || []).length === 4)).toBe(true);
+  });
+
+  function vocalLines(abc: string) {
+    return abc.split(/\r?\n/).filter((line, i, lines) => {
+      if (!/\|/.test(line) || /^[wW]:/.test(line) || /^%/.test(line)) return false;
+      for (let j = i - 1; j >= 0; j--) {
+        if (lines[j] === 'V: Vocal') return true;
+        if (/^V:/.test(lines[j])) return false;
+      }
+      return false;
+    });
+  }
+
+  function pairedScore(bar: string, count: number, unit: string) {
+    return `X:1
+T:
+M:4/4
+L:${unit}
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+${Array.from({ length: count }, () => `V: Vocal\n${bar}\nV: Ins\n${bar}`).join('\n')}
+`;
+  }
+
+  it('reflow keeps at least the minimum bars when a bar is dense', () => {
+    const once = editor.editScore(pairedScore("CDEF GABc defg abc'd'|", 4, '1/16'), {
+      op: 'reflow', minBars: 2, maxBars: 4,
+    });
+    expect(once.error).toBeFalsy();
+    const vocal = vocalLines(once.abc);
+    expect(vocal).toHaveLength(2);
+    expect(vocal.every((line) => (line.match(/\|/g) || []).length === 2)).toBe(true);
+  });
+
+  it('reflow uses the maximum on every full line when minimum and maximum match', () => {
+    const once = editor.editScore(pairedScore("CDEF GABc defg abc'd'|", 6, '1/16'), {
+      op: 'reflow', minBars: 4, maxBars: 4,
+    });
+    expect(once.error).toBeFalsy();
+    const vocal = vocalLines(once.abc);
+    expect(vocal.map((line) => (line.match(/\|/g) || []).length)).toEqual([4, 2]);
+  });
+
+  it('reflow packs ordinary bars up to a higher maximum', () => {
+    const once = editor.editScore(pairedScore('CDEF GABc|', 8, '1/8'), {
+      op: 'reflow', minBars: 1, maxBars: 6,
+    });
+    expect(once.error).toBeFalsy();
+    const vocal = vocalLines(once.abc);
+    expect(vocal.map((line) => (line.match(/\|/g) || []).length)).toEqual([6, 2]);
+  });
+
+  it('reflow uses the bar fields even when the toolbar click does not blur them', async () => {
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    const score = pairedScore("CDEF GABc defg abc'd'|", 8, '1/16');
+    try {
+      const pending = editor.open?.(score, null, { strings: jianpuStrings.zh as unknown as Record<string, string> });
+      await Promise.resolve();
+      const min = document.querySelector(".yue-jp-editor input[data-bars='min']") as HTMLInputElement | null;
+      const max = document.querySelector(".yue-jp-editor input[data-bars='max']") as HTMLInputElement | null;
+      expect(min && max).toBeTruthy();
+      min!.value = '4';
+      max!.value = '5';
+      min!.focus();
+      (document.querySelector(".yue-jp-editor [data-act='reflow']") as HTMLButtonElement).click();
+      const abc = (editor as { currentAbc?: () => string }).currentAbc?.() || '';
+      const vocal = vocalLines(abc);
+      expect(vocal.map((line) => (line.match(/\|/g) || []).length)).toEqual([4, 4]);
+      min!.value = '1';
+      max!.value = '4';
+      min!.dispatchEvent(new Event('change'));
+      (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
+      await pending;
+    } finally {
+      document.querySelector('.yue-jp-editor')?.remove();
+      globals.abc2svg = previous;
+    }
+  });
 });
