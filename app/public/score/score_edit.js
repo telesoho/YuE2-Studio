@@ -66,6 +66,9 @@
   const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6];
   const FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3];
   const SIGNATURE_MAJOR = ["Cb", "Gb", "Db", "Ab", "Eb", "Bb", "F", "C", "G", "D", "A", "E", "B", "F#", "C#"];
+  const SIGNATURE_MINOR = ["Abm", "Ebm", "Bbm", "Fm", "Cm", "Gm", "Dm", "Am", "Em", "Bm", "F#m", "C#m", "G#m", "D#m", "A#m"];
+  const PITCH_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const PITCH_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
   const TOKEN = /^(?:"([^"\n]*)"|\[K:([^\]\n]+)\]|(\^\^|__|\^|_|=)?([A-Ga-gz])([,']*)([0-9]*)(-?))/;
 
   function keyAlter(stepIdx, fifths) {
@@ -213,7 +216,10 @@
   }
 
   function previewAbc(abc, diagram) {
-    const src = jianpuAbcWithDirective(withDisplayTitle(String(abc || ""), ui.songTitle));
+    const header = parseHeader(String(abc || "").split(/\r?\n/));
+    const selected = chosenChordKey(header.key.name);
+    const titled = withDisplayTitle(chordsInKey(abc, ui.chordKey), ui.songTitle);
+    const src = jianpuAbcWithDirective(withKeyLegend(titled, keyLegend(header.key.name, selected)));
     const kind = normalizeDiagram(diagram);
     if (kind === DIAGRAM_OFF) return src;
     if (typeof abc2svg !== "undefined" && !abc2svg.diag) return src;
@@ -1894,6 +1900,66 @@
     return (NATURAL[match[1]] + (CHORD_ACC[match[2]] || 0) + 12) % 12;
   }
 
+  function tonicPc(key) {
+    const acc = key.acc === "#" ? 1 : key.acc === "b" ? -1 : 0;
+    return (NATURAL[key.step] + acc + 12) % 12;
+  }
+
+  // Chord quotes only. K: and notes stay, so jianpu degrees do not move.
+  function chordsInKey(abc, targetName) {
+    const src = String(abc || "");
+    const name = String(targetName || "").trim();
+    if (!name || !knownKey(name)) return src;
+    const header = parseHeader(src.split(/\r?\n/));
+    const target = keyFromName(name);
+    if (target.name !== name || header.key.name.endsWith("m") !== name.endsWith("m")) return src;
+    const step = (tonicPc(target) - tonicPc(header.key) + 12) % 12;
+    const flats = target.fifths < 0;
+    if (!step && flats === (header.key.fifths < 0)) return src;
+    const names = flats ? PITCH_FLAT : PITCH_SHARP;
+    const shift = step;
+    return src.replace(/"([^"\n]*)"/g, (full, inner) => {
+      const match = CHORD_RE.exec(String(inner || "").trim());
+      if (!match) return full;
+      const root = pitchClass(match[1]);
+      if (root == null) return full;
+      let out = names[(root + shift) % 12] + (match[2] || "");
+      if (match[3]) {
+        const bass = pitchClass(match[3]);
+        if (bass == null) return full;
+        out += "/" + names[(bass + shift) % 12];
+      }
+      return '"' + out + '"';
+    });
+  }
+
+  function signatureNames(key) {
+    return String(key.name).endsWith("m") ? SIGNATURE_MINOR : SIGNATURE_MAJOR;
+  }
+
+  function chosenChordKey(originalName) {
+    const chosen = ui.chordKey;
+    if (!chosen || !knownKey(chosen) || chosen.endsWith("m") !== originalName.endsWith("m")) return originalName;
+    return chosen;
+  }
+
+  // Frets that raise shapes in the selected key up to the original sounding key. 0 means no capo.
+  function capoFret(originalName, selectedName) {
+    const original = keyFromName(originalName);
+    const selected = keyFromName(selectedName);
+    if (!knownKey(original.name) || !knownKey(selected.name)) return null;
+    if (original.name.endsWith("m") !== selected.name.endsWith("m")) return null;
+    return (tonicPc(original) - tonicPc(selected) + 12) % 12;
+  }
+
+  function keyLegend(originalName, selectedName) {
+    const fret = capoFret(originalName, selectedName);
+    if (fret == null) return "";
+    return m("jpLeadKey") + " " + jianpuKeyLabel(keyFromName(selectedName))
+      + "  " + m("jpCapoAt", { n: fret })
+      + "  " + m("jpOriginalKey") + " " + jianpuKeyLabel(keyFromName(originalName));
+  }
+
   // Chord tones sit in the C4 octave so they stay audible on small speakers.
   // A slash bass, or the root, is added an octave below.
   function spellChord(symbol) {
@@ -2444,6 +2510,15 @@
     return src.replace(/^T:[ \t]*$/m, "T:" + title);
   }
 
+  // Second T: is the engraving subtitle only. The stored score is unchanged.
+  function withKeyLegend(abc, legend) {
+    const src = String(abc || "");
+    const line = String(legend || "").trim();
+    if (!line) return src;
+    if (/^T:/m.test(src)) return src.replace(/^T:[^\n]*/m, (title) => title + "\nT:" + line);
+    return "T:\nT:" + line + "\n" + src;
+  }
+
   // Guitar shape key for %%diagram 6, same spelling rules as diag-1.js.
   function resolveGuitarShape(symbol) {
     const raw = String(symbol || "").trim();
@@ -2556,16 +2631,25 @@
    * Lyrics + chords only: sections from % comments, syllable or beat rows,
    * and guitar shapes for the chords that appear (order of first use).
    */
-  function leadSheet(abc, fallbackTitle) {
+  function leadSheet(abc, fallbackTitle, keyName) {
     const songTitle = fallbackTitle != null ? String(fallbackTitle).trim() : (ui.songTitle || "");
-    const walked = walkBody(abc);
-    const header = walked.header || parseHeader(String(abc || "").split(/\r?\n/));
+    const sourceHeader = parseHeader(String(abc || "").split(/\r?\n/));
+    const pickedName = String(keyName || "").trim();
+    const picked = pickedName && knownKey(pickedName) ? keyFromName(pickedName) : null;
+    const sameMode = !!(picked && sourceHeader.key.name.endsWith("m") === picked.name.endsWith("m"));
+    const selected = sameMode ? picked : sourceHeader.key;
+    const view = sameMode ? chordsInKey(abc, picked.name) : String(abc || "");
+    const walked = walkBody(view);
+    const header = walked.header || sourceHeader;
+    const fret = capoFret(sourceHeader.key.name, selected.name);
     const empty = {
       error: walked.error || null,
       title: displayTitle(abc, songTitle),
       meter: header.meter[0] + "/" + header.meter[1],
       bpm: header.bpm,
-      keyLabel: jianpuKeyLabel(header.key),
+      keyLabel: jianpuKeyLabel(selected),
+      originalKeyLabel: jianpuKeyLabel(sourceHeader.key),
+      capoFret: fret,
       chords: [],
       sections: [],
     };
@@ -2613,7 +2697,9 @@
       title: displayTitle(abc, songTitle),
       meter: header.meter[0] + "/" + header.meter[1],
       bpm: header.bpm,
-      keyLabel: jianpuKeyLabel(header.key),
+      keyLabel: jianpuKeyLabel(selected),
+      originalKeyLabel: jianpuKeyLabel(sourceHeader.key),
+      capoFret: fret,
       chords: chordOrder,
       sections: sections,
     };
@@ -4120,6 +4206,7 @@
 
   const ui = {
     abc: "",
+    chordKey: "",
     index: -1,
     voice: "Vocal",
     slice: 0,
@@ -4329,7 +4416,12 @@
       "color:#fff;font-weight:700;}",
       ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
       ".yue-jp-bar button.primary.on{box-shadow:none;}",
-      ".yue-jp-meta{opacity:.7;font-size:13px;margin-right:auto;}",
+      ".yue-jp-meta{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;",
+      "opacity:.85;font-size:13px;margin-right:auto;}",
+      ".yue-jp-meta label{display:inline-flex;align-items:center;gap:4px;}",
+      ".yue-jp-chord-key{font:inherit;color:inherit;background:transparent;",
+      "border:1px solid #d4d4d8;border-radius:8px;padding:2px 4px;}",
+      "html.dark .yue-jp-chord-key{border-color:rgba(255,255,255,.15);background:#18181b;}",
       ".yue-jp-tools{display:flex;flex-wrap:wrap;gap:8px 0;align-items:center;",
       "padding:8px 6px 10px;background:#fff;color:#18181b;",
       "border-bottom:1px solid #e4e4e7;}",
@@ -4435,7 +4527,13 @@
       '<div class="yue-jp-card" tabindex="-1">',
       '<div class="yue-jp-bar">',
       '<h2 data-i18n="jpTitle"></h2>',
-      '<span class="yue-jp-meta"></span>',
+      '<span class="yue-jp-meta">',
+      '<span class="yue-jp-meta-title"></span>',
+      '<label><span data-i18n="jpLeadKey"></span> <select class="yue-jp-chord-key"></select></label>',
+      '<span class="yue-jp-capo"></span>',
+      '<label><span data-i18n="jpOriginalKey"></span> <b class="yue-jp-orig-key"></b></label>',
+      '<span class="yue-jp-meta-tempo"></span>',
+      '</span>',
       '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_OFF_ICON + "</button>",
       '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
       '<button type="button" class="lead-label" data-act="lead" data-i18n="jpLead" data-i18n-aria="jpLead" data-i18n-title="jpLead"></button>',
@@ -4471,6 +4569,11 @@
     ui.root = root;
     ui.card = root.querySelector(".yue-jp-card");
     ui.meta = root.querySelector(".yue-jp-meta");
+    ui.chordKeySelect = ui.meta.querySelector(".yue-jp-chord-key");
+    ui.chordKeySelect.addEventListener("change", () => {
+      ui.chordKey = ui.chordKeySelect.value;
+      renderScore();
+    });
     ui.status = root.querySelector(".yue-jp-status");
     ui.body = root.querySelector(".yue-jp-body");
     ui.textPane = root.querySelector(".yue-jp-text");
@@ -4599,6 +4702,13 @@
       el.title = m(el.getAttribute("data-i18n-title"));
     });
     if (ui.hint) ui.hint.textContent = m("jpHint");
+    if (ui.abc && ui.meta) {
+      const info = inspectScore(ui.abc);
+      paintCapo(info.error ? "" : info.keyName, info.error ? "" : chosenChordKey(info.keyName));
+    }
+    if (ui.scoreSvg && ui.root && !ui.root.hidden && typeof abc2svg !== "undefined" && abc2svg.jianpu) {
+      renderScore();
+    }
     if (ui.tools) {
       ui.tools.innerHTML = "";
       fillTools(ui.tools);
@@ -4636,6 +4746,8 @@
       + "<div><b>" + escapeHtml(m("jpLeadMeter")) + "</b>" + escapeHtml(sheet.meter) + "</div>"
       + "<div><b>" + escapeHtml(m("jpLeadTempo")) + "</b>" + escapeHtml(String(sheet.bpm)) + "</div>"
       + "<div><b>" + escapeHtml(m("jpLeadKey")) + "</b>" + escapeHtml(sheet.keyLabel) + "</div>"
+      + (sheet.capoFret == null ? "" : "<div>" + escapeHtml(m("jpCapoAt", { n: sheet.capoFret })) + "</div>")
+      + "<div><b>" + escapeHtml(m("jpOriginalKey")) + "</b>" + escapeHtml(sheet.originalKeyLabel || sheet.keyLabel) + "</div>"
       + "</div>";
     if (sheet.chords.length) {
       html += '<div class="yue-jp-lead-diags">';
@@ -4701,7 +4813,7 @@
   }
 
   function openLeadWindow() {
-    const sheet = leadSheet(ui.abc);
+    const sheet = leadSheet(ui.abc, ui.songTitle, chosenChordKey(parseHeader(String(ui.abc || "").split(/\r?\n/)).key.name));
     if (sheet.error) {
       setStatus(m("jpLeadFail"));
       return;
@@ -5809,6 +5921,49 @@
     return fitDiagramSvg(buf.join(""));
   }
 
+  function paintCapo(originalName, selectedName) {
+    if (!ui.meta) return;
+    const el = ui.meta.querySelector(".yue-jp-capo");
+    if (!el) return;
+    if (!originalName) {
+      el.textContent = "";
+      return;
+    }
+    const fret = capoFret(originalName, selectedName || originalName);
+    el.textContent = fret == null ? "" : m("jpCapoAt", { n: fret });
+  }
+
+  function syncKeyBar(info, title) {
+    if (!ui.meta) return;
+    const titleEl = ui.meta.querySelector(".yue-jp-meta-title");
+    const origEl = ui.meta.querySelector(".yue-jp-orig-key");
+    const tempoEl = ui.meta.querySelector(".yue-jp-meta-tempo");
+    const select = ui.chordKeySelect;
+    if (!info || info.error) {
+      if (titleEl) titleEl.textContent = "";
+      if (origEl) origEl.textContent = "";
+      if (tempoEl) tempoEl.textContent = "";
+      paintCapo("", "");
+      if (select) select.hidden = true;
+      return;
+    }
+    if (select) select.hidden = false;
+    if (titleEl) titleEl.textContent = title ? title + "  ·  " : "";
+    if (origEl) origEl.textContent = info.keyLabel;
+    if (tempoEl) tempoEl.textContent = "♩=" + info.bpm;
+    const names = signatureNames(keyFromName(info.keyName));
+    const selected = chosenChordKey(info.keyName);
+    paintCapo(info.keyName, selected);
+    ui.chordKey = selected === info.keyName ? "" : selected;
+    if (select && select.dataset.keys !== names.join(",")) {
+      select.dataset.keys = names.join(",");
+      select.innerHTML = names.map((name) => {
+        return '<option value="' + name + '">' + jianpuKeyLabel(keyFromName(name)) + "</option>";
+      }).join("");
+    }
+    if (select) select.value = selected;
+  }
+
   function renderScore() {
     stopEaseScroll();
     clearSourceScroll();
@@ -5818,7 +5973,7 @@
     syncLeadButton();
     const info = inspectScore(ui.abc);
     const title = displayTitle(ui.abc, ui.songTitle);
-    ui.meta.textContent = info.error ? "" : (title ? title + "  ·  " : "") + info.keyLabel + "  ·  ♩=" + info.bpm;
+    syncKeyBar(info, title);
     if (typeof abc2svg === "undefined" || !abc2svg.Abc || !abc2svg.jianpu) {
       ui.paper.innerHTML = '<p>' + m('jpModuleMissing') + '</p>';
       ui.scoreSvg = "";
@@ -6746,6 +6901,7 @@
     return new Promise((resolve) => {
       ui.sourceAbc = String(abc || "");
       ui.abc = ui.sourceAbc;
+      ui.chordKey = "";
       ui.textDirty = false;
       ui.textBlocked = false;
       ui.textError = "";
@@ -6799,6 +6955,9 @@
     followsScore: followsScore,
     inspectScore: inspectScore,
     previewAbc: previewAbc,
+    capoFret: capoFret,
+    keyLegend: keyLegend,
+    withKeyLegend: withKeyLegend,
     diagramDirective: diagramDirective,
     noteMidi: noteMidi,
     jianpuAbcWithDirective: jianpuAbcWithDirective,

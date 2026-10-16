@@ -15,6 +15,9 @@ require(path.join(here, '../public/score/score_edit.js'));
 type LeadSheet = {
   error: string | null;
   title: string;
+  keyLabel: string;
+  originalKeyLabel: string;
+  capoFret: number | null;
   sections: Array<{
     label: string;
     lines: Array<{ kind: string; cells: Array<{ text: string; chord: string; bar?: boolean }> }>;
@@ -24,8 +27,12 @@ type LeadSheet = {
 
 const editor = (globalThis as {
   yueScoreEditor?: {
-    leadSheet: (abc: string, fallbackTitle?: string) => LeadSheet;
+    leadSheet: (abc: string, fallbackTitle?: string, keyName?: string) => LeadSheet;
     leadSheetDocument: (sheet: LeadSheet) => string;
+    capoFret: (originalName: string, selectedName: string) => number | null;
+    keyLegend: (originalName: string, selectedName: string) => string;
+    withKeyLegend: (abc: string, legend: string) => string;
+    setStrings: (next: Record<string, string>) => void;
     rewriteCjkFonts: (text: string) => string;
     embedPdfFonts: (svg: string) => string;
     displayTitle: (abc: string, fallback?: string) => string;
@@ -202,6 +209,18 @@ describe('JianpuEditor', () => {
       expect(printBtn).toBeInstanceOf(HTMLButtonElement);
       expect(printBtn?.getAttribute('title')).toBe('Print the jianpu (A4)');
       expect(document.querySelector('.yue-jp-editor [data-act="lead"]')?.textContent).toBe('Lead sheet');
+      expect(document.querySelector('.yue-jp-orig-key')?.textContent).toBe('1=C');
+      expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 0');
+      const keySelect = document.querySelector('.yue-jp-chord-key');
+      expect(keySelect).toBeInstanceOf(HTMLSelectElement);
+      expect((keySelect as HTMLSelectElement).value).toBe('C');
+      await act(async () => {
+        (keySelect as HTMLSelectElement).value = 'G';
+        keySelect?.dispatchEvent(new Event('change'));
+      });
+      expect((keySelect as HTMLSelectElement).value).toBe('G');
+      expect(document.querySelector('.yue-jp-orig-key')?.textContent).toBe('1=C');
+      expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 5');
       const diagram = document.querySelector('.yue-jp-editor [data-act="diagram"]');
       expect(diagram).toBeInstanceOf(HTMLButtonElement);
       expect(diagram?.getAttribute('data-diagram')).toBe('off');
@@ -241,6 +260,18 @@ describe('JianpuEditor', () => {
     expect(verse.cells.every(c => c.text)).toBe(true);
   });
 
+  it('transposes lead-sheet chords into the selected key', () => {
+    const sheet = editor.leadSheet(LEAD_ABC, undefined, 'G');
+    expect(sheet.originalKeyLabel).toBe('1=C');
+    expect(sheet.keyLabel).toBe('1=G');
+    expect(sheet.capoFret).toBe(5);
+    expect(sheet.chords.map(c => c.symbol)).toEqual(['Em', 'D', 'G', 'C', 'Bm7']);
+    const intro = sheet.sections[0].lines[0];
+    expect(intro.cells.filter(c => !c.bar).map(c => c.chord)).toEqual(['Em', 'D', 'G', 'C']);
+    expect(sheet.sections[1].lines[0].cells.map(c => c.chord)).toEqual(['G', '', '', 'Bm7']);
+    expect(editor.leadSheet(LEAD_ABC, undefined, 'F').chords.map(c => c.symbol)).toEqual(['Dm', 'C', 'F', 'Bb', 'Am7']);
+  });
+
   it('uses the library title when T: is blank, and keeps an existing T:', () => {
     const blank = `X:1
 T:
@@ -274,6 +305,31 @@ Z|
     expect(html).toContain('.yue-jp-lead-ly{');
     expect(html).toContain('color:#18181b');
     expect(html).toContain('background:#fff');
+  });
+
+  it('places the capo fret between the selected key and the original key', () => {
+    expect(editor.capoFret('C', 'C')).toBe(0);
+    expect(editor.capoFret('E', 'C')).toBe(4);
+    expect(editor.capoFret('C', 'G')).toBe(5);
+    expect(editor.capoFret('Em', 'Am')).toBe(7);
+    expect(editor.capoFret('C', 'Am')).toBeNull();
+    editor.setStrings({
+      jpLeadKey: '选调',
+      jpCapoAt: '变调夹 {n}品',
+      jpOriginalKey: '原调',
+      jpLead: '弹唱谱',
+    });
+    expect(editor.keyLegend('E', 'C')).toBe('选调 1=C  变调夹 4品  原调 1=E');
+    const engraved = editor.withKeyLegend('T:知了\nK:C\n', editor.keyLegend('C', 'C'));
+    expect(engraved).toBe('T:知了\nT:选调 1=C  变调夹 0品  原调 1=C\nK:C\n');
+    const sheet = editor.leadSheet(LEAD_ABC, undefined, 'C');
+    const html = editor.leadSheetDocument(sheet);
+    const selected = html.indexOf('选调');
+    const capo = html.indexOf('变调夹 0品');
+    const original = html.indexOf('原调');
+    expect(selected).toBeGreaterThan(-1);
+    expect(selected).toBeLessThan(capo);
+    expect(capo).toBeLessThan(original);
   });
 
   it('rewrites CJK font stacks for PDF SVG rasterization', () => {
