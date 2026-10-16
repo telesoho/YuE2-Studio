@@ -183,7 +183,9 @@ const en = {
   captureLoopFail: 'Cannot open loopback for the chosen app: {detail}',
   captureStartFail: 'Cannot start recording: {detail}',
   captureSilent: 'Recording peak is near silence. This app may block loopback capture; score reading may have no sound.',
-  captureRecording: 'Recording {label}… {seconds}s',
+  captureWaiting: 'Waiting for the window to make a sound…',
+  captureNoSound: 'No sound yet; nothing was saved.',
+  captureRecording: 'Recording {time}',
 };
 
 export type JianpuStrings = { readonly [K in keyof typeof en]: string };
@@ -368,7 +370,9 @@ const zh: JianpuStrings = {
   captureLoopFail: '无法打开所选应用的回环：{detail}',
   captureStartFail: '无法开始录音：{detail}',
   captureSilent: '录音峰值接近静音。这个程序可能禁止回环采集，识谱结果可能没有声音。',
-  captureRecording: '正在录制 {label}… {seconds}s',
+  captureWaiting: '等待窗口出声…',
+  captureNoSound: '还没有声音，未保存录音。',
+  captureRecording: '正在录制 {time}',
 };
 
 const ja: JianpuStrings = {
@@ -551,7 +555,9 @@ const ja: JianpuStrings = {
   captureLoopFail: '選択したアプリのループバックを開けません：{detail}',
   captureStartFail: '録音を開始できません：{detail}',
   captureSilent: '録音ピークがほぼ無音です。このアプリはループバックを禁止している可能性があり、識譜に音が入らないことがあります。',
-  captureRecording: '{label} を録音中… {seconds}s',
+  captureWaiting: 'ウィンドウの音を待っています…',
+  captureNoSound: 'まだ音がないため、録音は保存しませんでした。',
+  captureRecording: '録音中 {time}',
 };
 
 const ko: JianpuStrings = {
@@ -734,7 +740,9 @@ const ko: JianpuStrings = {
   captureLoopFail: '선택한 앱의 루프백을 열 수 없습니다: {detail}',
   captureStartFail: '녹음을 시작할 수 없습니다: {detail}',
   captureSilent: '녹음 피크가 거의 무음입니다. 이 앱이 루프백을 막을 수 있어 악보 인식에 소리가 없을 수 있습니다.',
-  captureRecording: '{label} 녹음 중… {seconds}s',
+  captureWaiting: '창에서 소리가 날 때까지 기다리는 중…',
+  captureNoSound: '아직 소리가 없어 녹음을 저장하지 않았습니다.',
+  captureRecording: '녹음 중 {time}',
 };
 
 const ru: JianpuStrings = {
@@ -917,7 +925,9 @@ const ru: JianpuStrings = {
   captureLoopFail: 'Нельзя открыть loopback выбранного приложения: {detail}',
   captureStartFail: 'Нельзя начать запись: {detail}',
   captureSilent: 'Пик записи почти тишина. Программа может запрещать loopback; в разборе партитуры может не быть звука.',
-  captureRecording: 'Запись {label}… {seconds} с',
+  captureWaiting: 'Ожидание звука из окна…',
+  captureNoSound: 'Звука ещё не было, запись не сохранена.',
+  captureRecording: 'Запись {time}',
 };
 
 export const jianpuStrings = { en, zh, ja, ko, ru };

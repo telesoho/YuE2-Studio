@@ -162,6 +162,22 @@ export async function listCaptureWindows(): Promise<CaptureWindow[]> {
   return payload.windows ?? [];
 }
 
+export async function captureStatus(): Promise<{ recording: boolean; note: string; duration: number | null }> {
+  const response = await fetch('/v1/capture/status');
+  const payload = (await response.json().catch(() => ({}))) as {
+    recording?: boolean;
+    note?: string;
+    duration?: number | null;
+    error?: string;
+  };
+  if (!response.ok) throw new Error(payload.error || `capture status failed (${response.status})`);
+  return {
+    recording: Boolean(payload.recording),
+    note: payload.note || '',
+    duration: typeof payload.duration === 'number' ? payload.duration : null,
+  };
+}
+
 export async function startCapture(target: CaptureWindow): Promise<void> {
   const response = await fetch('/v1/capture/start', {
     method: 'POST',

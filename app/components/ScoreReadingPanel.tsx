@@ -6,6 +6,7 @@ import {
   readScore,
   scoreFitTiming,
   setScoreFitTiming,
+  captureStatus,
   startCapture,
   stopCapture,
   type CaptureWindow,
@@ -40,6 +41,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const [captureNote, setCaptureNote] = useState('');
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const captureLive = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const preview = useRef<HTMLAudioElement | null>(null);
 
@@ -120,14 +122,34 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
     if (!target) return;
     try {
       await startCapture(target);
+      captureLive.current = true;
       setCapturing(true);
-      setCaptureNote(tt('scoreCapturing'));
+      setCaptureNote(say('{"code":"captureWaiting"}'));
     } catch (err) {
       setCaptureNote(say(err instanceof Error ? err.message : String(err)));
     }
   };
 
+  useEffect(() => {
+    if (!capturing) return;
+    let cancel = false;
+    const tick = () => {
+      void captureStatus()
+        .then(status => {
+          if (!cancel && captureLive.current) setCaptureNote(say(status.note));
+        })
+        .catch(() => {});
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => {
+      cancel = true;
+      window.clearInterval(id);
+    };
+  }, [capturing, say]);
+
   const endCapture = async () => {
+    captureLive.current = false;
     try {
       const recording = await stopCapture();
       setCapturing(false);

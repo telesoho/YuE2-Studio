@@ -64,6 +64,24 @@ pub fn on_current_desktop(cloaked: u32) -> bool {
     (cloaked & 0x2) == 0
 }
 
+/// Drops leading silence. The chunk that crosses [`SILENCE_PEAK`] is kept, and
+/// everything after it, including later silence. Returns true only on the chunk
+/// that opens the gate.
+pub fn keep_from_first_sound(open: &mut bool, pcm: &mut Vec<u8>, chunk: &[u8]) -> bool {
+    let was_open = *open;
+    if !was_open && pcm16_peak(chunk) < SILENCE_PEAK {
+        return false;
+    }
+    *open = true;
+    pcm.extend_from_slice(chunk);
+    !was_open
+}
+
+pub fn clock(seconds: f64) -> String {
+    let total = seconds.max(0.0) as u64;
+    format!("{}:{:02}", total / 60, total % 60)
+}
+
 pub fn pcm16_peak(pcm: &[u8]) -> i32 {
     let even = pcm.len() - (pcm.len() % 2);
     if even == 0 {
@@ -148,7 +166,8 @@ pub struct Recorder {
 struct Inner {
     thread: Option<std::thread::JoinHandle<Result<Recording, CaptureError>>>,
     stop: Option<Arc<AtomicBool>>,
-    started: Option<std::time::Instant>,
+    /// Set by the capture thread on the first audible chunk, not when the device opens.
+    heard: Arc<Mutex<Option<std::time::Instant>>>,
     label: String,
     process_name: String,
     pid: u32,
@@ -162,7 +181,7 @@ impl Recorder {
             inner: Mutex::new(Inner {
                 thread: None,
                 stop: None,
-                started: None,
+                heard: Arc::new(Mutex::new(None)),
                 label: String::new(),
                 process_name: String::new(),
                 pid: 0,
@@ -175,13 +194,25 @@ impl Recorder {
     pub fn status(&self) -> CaptureStatus {
         let guard = self.inner.lock().expect("capture");
         if guard.thread.is_some() {
-            let secs = guard.started.map(|at| at.elapsed().as_secs_f64()).unwrap_or(0.0);
-            CaptureStatus {
-                recording: true,
-                note: serde_json::json!({"code":"captureRecording","label": guard.label, "seconds": format!("{:.0}", secs)}).to_string(),
-                path: None,
-                duration: Some(secs),
-                silent: None,
+            let heard = *guard.heard.lock().expect("heard");
+            match heard {
+                Some(at) => {
+                    let secs = at.elapsed().as_secs_f64();
+                    CaptureStatus {
+                        recording: true,
+                        note: serde_json::json!({"code":"captureRecording","time": clock(secs)}).to_string(),
+                        path: None,
+                        duration: Some(secs),
+                        silent: None,
+                    }
+                }
+                None => CaptureStatus {
+                    recording: true,
+                    note: r#"{"code":"captureWaiting"}"#.into(),
+                    path: None,
+                    duration: None,
+                    silent: None,
+                },
             }
         } else {
             CaptureStatus {
@@ -218,10 +249,12 @@ impl Recorder {
             let ready_flag = ready.clone();
             let early_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
             let early_slot = early_error.clone();
+            let heard = Arc::new(Mutex::new(None));
+            let heard_thread = heard.clone();
             let handle = std::thread::Builder::new()
                 .name("yue-capture".into())
                 .spawn(move || {
-                    match win::record_loopback(pid, &path, &stop_thread, &ready_flag) {
+                    match win::record_loopback(pid, &path, &stop_thread, &ready_flag, &heard_thread) {
                         Ok((duration, silent)) => Ok(Recording {
                             path,
                             pid,
@@ -255,7 +288,7 @@ impl Recorder {
             }
             guard.thread = Some(handle);
             guard.stop = Some(stop);
-            guard.started = Some(std::time::Instant::now());
+            guard.heard = heard;
             guard.label = label.to_owned();
             guard.process_name = process_name.to_owned();
             guard.pid = pid;
@@ -284,7 +317,7 @@ impl Recorder {
             guard.note = SILENCE_NOTE.into();
         }
         guard.path = Some(recording.path.clone());
-        guard.started = None;
+        *guard.heard.lock().expect("heard") = None;
         Ok(recording)
     }
 }
@@ -406,8 +439,14 @@ mod win {
         Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned())
     }
 
-    pub fn record_loopback(pid: u32, path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
-        unsafe { record_loopback_inner(pid, path, stop, ready) }
+    pub fn record_loopback(
+        pid: u32,
+        path: &Path,
+        stop: &AtomicBool,
+        ready: &AtomicBool,
+        heard: &Mutex<Option<std::time::Instant>>,
+    ) -> Result<(f64, bool), CaptureError> {
+        unsafe { record_loopback_inner(pid, path, stop, ready, heard) }
     }
 
     struct ActivateState {
@@ -548,7 +587,13 @@ mod win {
         }
     }
 
-    unsafe fn record_loopback_inner(pid: u32, path: &Path, stop: &AtomicBool, ready: &AtomicBool) -> Result<(f64, bool), CaptureError> {
+    unsafe fn record_loopback_inner(
+        pid: u32,
+        path: &Path,
+        stop: &AtomicBool,
+        ready: &AtomicBool,
+        heard: &Mutex<Option<std::time::Instant>>,
+    ) -> Result<(f64, bool), CaptureError> {
         unsafe {
             let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
             if hr.is_err() && hr.0 as u32 != 0x80010106 {
@@ -605,6 +650,7 @@ mod win {
             ready.store(true, Ordering::Relaxed);
 
             let mut pcm = Vec::new();
+            let mut open = false;
             while !stop.load(Ordering::Relaxed) {
                 let _ = WaitForSingleObject(event, 100);
                 loop {
@@ -629,7 +675,16 @@ mod win {
                     if frames > 0 && !data.is_null() && (flags & 0x2) == 0 {
                         let bytes = frames as usize * block;
                         let slice = std::slice::from_raw_parts(data as *const u8, bytes);
-                        append_as_pcm16(&mut pcm, slice, bits, channels);
+                        let mut converted = Vec::new();
+                        let chunk = if bits == 16 {
+                            slice
+                        } else {
+                            append_as_pcm16(&mut converted, slice, bits, channels);
+                            converted.as_slice()
+                        };
+                        if keep_from_first_sound(&mut open, &mut pcm, chunk) {
+                            *heard.lock().expect("heard") = Some(std::time::Instant::now());
+                        }
                     }
                     let _ = capture.ReleaseBuffer(frames);
                 }
@@ -637,6 +692,9 @@ mod win {
             let _ = client.Stop();
             let _ = CloseHandle(event);
 
+            if !open {
+                return Err(CaptureError(r#"{"code":"captureNoSound"}"#.into()));
+            }
             let (duration, _peak, silent) = assess_pcm16(rate, channels, &pcm);
             let frames = pcm.len() / (channels as usize * 2).max(1);
             require_usable(duration, frames)?;
@@ -683,6 +741,21 @@ mod tests {
         assert!(dur > 0.0);
         assert!(require_usable(0.1, 10).is_err());
         assert!(require_usable(1.0, 10).is_ok());
+        assert_eq!(clock(0.0), "0:00");
+        assert_eq!(clock(83.9), "1:23");
+    }
+
+    #[test]
+    fn leading_silence_is_dropped_until_the_first_sound() {
+        let mut open = false;
+        let mut pcm = Vec::new();
+        assert!(!keep_from_first_sound(&mut open, &mut pcm, &[0, 0, 10, 0]));
+        assert!(pcm.is_empty());
+        let loud = 100i16.to_le_bytes();
+        assert!(keep_from_first_sound(&mut open, &mut pcm, &loud));
+        assert_eq!(pcm, loud);
+        assert!(!keep_from_first_sound(&mut open, &mut pcm, &[0, 0]));
+        assert_eq!(pcm, [loud[0], loud[1], 0, 0]);
     }
 
     fn target(pid: u32, value: &str, label: &str) -> CaptureTarget {

@@ -10,6 +10,7 @@ vi.mock('../services/scoreReading', () => ({
   readScore: vi.fn(),
   scoreFitTiming: vi.fn(() => false),
   setScoreFitTiming: vi.fn(),
+  captureStatus: vi.fn(async () => ({ recording: false, note: '', duration: null })),
   startCapture: vi.fn(),
   stopCapture: vi.fn(),
 }));
