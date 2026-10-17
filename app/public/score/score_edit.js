@@ -1485,8 +1485,8 @@
     return Math.round(units * 4 / lDen * 10) / 10;
   }
 
-  // The bar containing the note, and the next bar in the same meter region.
-  function joinLocate(abc, voice, index, slice) {
+  // The bar containing the note, inside one stretch of the same meter.
+  function locateBar(abc, voice, index, slice) {
     const walked = walkBody(abc);
     if (walked.error) return { error: walked.error };
     const items = walked.items;
@@ -1524,17 +1524,6 @@
     }
     const bar = barOrdinal(voice === "Ins" ? insFlat : vocalFlat, index, slice);
     if (bar < 0) return { error: m("jpErrNoSuchNote") };
-    if (bar + 1 >= vocalBars.length) return { error: m("jpErrJoinLast") };
-    const heads = [];
-    function take(bars, which) {
-      const events = bars[bar].concat(bars[bar + 1]);
-      for (const ev of events) {
-        if (ev.index == null || ev.index < 0) continue;
-        heads.push({ voice: which, index: ev.index });
-      }
-    }
-    take(vocalBars, "Vocal");
-    take(insBars, "Ins");
     return {
       error: null,
       walked: walked,
@@ -1545,8 +1534,179 @@
       vocalBars: vocalBars,
       insBars: insBars,
       bar: bar,
-      heads: heads,
     };
+  }
+
+  function joinLocate(abc, voice, index, slice) {
+    const found = locateBar(abc, voice, index, slice);
+    if (found.error) return found;
+    if (found.bar + 1 >= found.vocalBars.length) return { error: m("jpErrJoinLast") };
+    const heads = [];
+    function take(bars, which) {
+      const events = bars[found.bar].concat(bars[found.bar + 1]);
+      for (const ev of events) {
+        if (ev.index == null || ev.index < 0) continue;
+        heads.push({ voice: which, index: ev.index });
+      }
+    }
+    take(found.vocalBars, "Vocal");
+    take(found.insBars, "Ins");
+    found.heads = heads;
+    return found;
+  }
+
+  function eventsBefore(items, start, voice) {
+    let n = 0;
+    for (let i = 0; i < start; i++) {
+      if (items[i].type === "music" && items[i].voice === voice) n += items[i].events.length;
+    }
+    return n;
+  }
+
+  function vocalBarCount(items) {
+    const flat = flattenVoice(items, 0, items.length, "Vocal");
+    let max = -1;
+    for (const ev of flat) if (ev.originalBar > max) max = ev.originalBar;
+    return max + 1;
+  }
+
+  // One beat is the denominator note. 3/4 with L:1/4 is one unit; L:1/8 is two.
+  function oneBeatUnits(meter, lDen) {
+    const units = meter && meter[1] ? lDen / meter[1] : 0;
+    if (!Number.isInteger(units) || units < 1) return { error: m("jpErrBadUnit") };
+    if (!DURATIONS.has(units)) return { error: m("jpErrDuration") };
+    return { units: units };
+  }
+
+  function beatRest(sample, units) {
+    return Object.assign({}, sample, {
+      kind: "rest",
+      units: units,
+      bars: 1,
+      letter: "z",
+      acc: "",
+      marks: "",
+      tie: false,
+      continuesTie: false,
+      lyric: "*",
+      chord: "",
+      sourceIndex: -1,
+      index: -1,
+    });
+  }
+
+  function breakOutgoing(fromBar, toBar) {
+    if (!fromBar || !fromBar.length) return;
+    const tail = fromBar[fromBar.length - 1];
+    if (!tail.tie) return;
+    tail.tie = false;
+    if (toBar && toBar.length && toBar[0].continuesTie) toBar[0].continuesTie = false;
+  }
+
+  function barBeats(events, meter, lDen) {
+    let units = 0;
+    for (const ev of events) units += ev.units;
+    const count = quarterBeats(units, lDen);
+    const meterCount = quarterBeats(perBarUnits(meter, lDen), lDen);
+    return Math.abs(count - meterCount) > 0.05 ? count : null;
+  }
+
+  function indexInBar(items, start, bars, voice, bar, atEnd) {
+    let n = eventsBefore(items, start, voice);
+    const stop = atEnd ? bar + 1 : bar;
+    for (let b = 0; b < stop && b < bars.length; b++) n += bars[b].length;
+    return atEnd ? Math.max(0, n - 1) : n;
+  }
+
+  // The same note after a rewrite, or the first event of its bar when a rest slice expanded.
+  function sameNoteIndex(items, start, bars, voice, bar, sourceIndex) {
+    let n = eventsBefore(items, start, voice);
+    for (let b = 0; b < bars.length; b++) {
+      for (let e = 0; e < bars[b].length; e++) {
+        if (b === bar && bars[b][e].sourceIndex === sourceIndex) return n;
+        n += 1;
+      }
+    }
+    return indexInBar(items, start, bars, voice, bar, false);
+  }
+
+  function indexAfterDelete(items, start, bars, voice, bar) {
+    const before = eventsBefore(items, start, voice);
+    if (bar < bars.length) return indexInBar(items, start, bars, voice, bar, false);
+    if (bars.length) return indexInBar(items, start, bars, voice, bars.length - 1, true);
+    return Math.max(0, before - 1);
+  }
+
+  // Rewrite one meter stretch. Consecutive bars that share a meter stay on the
+  // same lines; a meter change gets its own M: and is packed on its own.
+  function writeRegion(abc, found, vocalBars, insBars, meters, command) {
+    const items = found.items;
+    const walked = found.walked;
+    let from = items[found.start].vLine;
+    let to = items[found.start].musicLine;
+    for (let j = found.start; j < found.end; j++) {
+      if (items[j].type !== "music") continue;
+      if (items[j].vLine < from) from = items[j].vLine;
+      const last = items[j].lyricLine >= 0 ? items[j].lyricLine : items[j].musicLine;
+      if (last > to) to = last;
+    }
+    const lines = walked.lines.slice();
+    if (!vocalBars.length) {
+      lines.splice(from, to - from + 1);
+      return { abc: joinAbc(lines, abc) };
+    }
+    let vocalKey = null;
+    let insKey = null;
+    for (let j = found.start; j < found.end; j++) {
+      if (items[j].type !== "music") continue;
+      if (items[j].voice === "Vocal" && vocalKey == null) vocalKey = items[j].startKey;
+      if (items[j].voice === "Ins" && insKey == null) insKey = items[j].startKey;
+    }
+    let sounding = walked.header.meter;
+    for (let j = found.start - 1; j >= 0; j--) {
+      if (items[j].type === "music") {
+        sounding = items[j].meter;
+        break;
+      }
+    }
+    const runs = [];
+    for (let i = 0; i < vocalBars.length; i++) {
+      const last = runs[runs.length - 1];
+      if (last && sameMeter(last.meter, meters[i])) last.to = i + 1;
+      else runs.push({ from: i, to: i + 1, meter: meters[i] });
+    }
+    const diagram = normalizeDiagram(command && command.diagram);
+    const range = lineBarRange(command);
+    const stateV = { key: vocalKey || walked.header.key.name };
+    const stateI = { key: insKey || walked.header.key.name };
+    const out = [];
+    for (let r = 0; r < runs.length; r++) {
+      const run = runs[r];
+      const meterLine = sameMeter(run.meter, sounding) ? "" : "M:" + run.meter[0] + "/" + run.meter[1];
+      const widths = [];
+      for (let b = run.from; b < run.to; b++) {
+        widths.push(Math.max(
+          barNaturalWidth(vocalBars[b], diagram),
+          barNaturalWidth(insBars[b], diagram),
+        ));
+      }
+      const chunks = packBarChunks(widths, range.min, range.max);
+      for (let g = 0; g < chunks.length; g++) {
+        const chunkV = vocalBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
+        const chunkI = insBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
+        out.push("V: Vocal");
+        if (g === 0 && meterLine) out.push(meterLine);
+        out.push(renderBars(chunkV, stateV));
+        const lyric = lyricAbc({ bars: chunkV });
+        if (lyric) out.push(lyric);
+        out.push("V: Ins");
+        if (g === 0 && meterLine) out.push(meterLine);
+        out.push(renderBars(chunkI, stateI));
+      }
+      sounding = run.meter;
+    }
+    lines.splice(from, to - from + 1, ...out);
+    return { abc: joinAbc(lines, abc) };
   }
 
   // Drop the barline between this bar and the next. Other bars stay.
@@ -1560,67 +1720,66 @@
     insBars[found.bar] = found.insBars[found.bar].concat(found.insBars[found.bar + 1]);
     vocalBars.splice(found.bar + 1, 1);
     insBars.splice(found.bar + 1, 1);
-    const diagram = normalizeDiagram(command && command.diagram);
-    const widths = [];
-    for (let b = 0; b < vocalBars.length; b++) {
-      widths.push(Math.max(
-        barNaturalWidth(vocalBars[b], diagram),
-        barNaturalWidth(insBars[b], diagram),
-      ));
-    }
-    const range = lineBarRange(command);
-    const chunks = packBarChunks(widths, range.min, range.max);
-    const items = found.items;
-    let vocalKey = null;
-    let insKey = null;
-    for (let j = found.start; j < found.end; j++) {
-      if (items[j].type !== "music") continue;
-      if (items[j].voice === "Vocal" && vocalKey == null) vocalKey = items[j].startKey;
-      if (items[j].voice === "Ins" && insKey == null) insKey = items[j].startKey;
-    }
-    const walked = found.walked;
-    let beforeMeter = walked.header.meter;
-    for (let j = found.start - 1; j >= 0; j--) {
-      if (items[j].type === "music") {
-        beforeMeter = items[j].meter;
-        break;
-      }
-    }
-    const meterLine = sameMeter(found.meter, beforeMeter)
-      ? ""
-      : "M:" + found.meter[0] + "/" + found.meter[1];
-    const stateV = { key: vocalKey || walked.header.key.name };
-    const stateI = { key: insKey || walked.header.key.name };
-    const out = [];
-    for (let g = 0; g < chunks.length; g++) {
-      const chunkV = vocalBars.slice(chunks[g].from, chunks[g].to);
-      const chunkI = insBars.slice(chunks[g].from, chunks[g].to);
-      out.push("V: Vocal");
-      if (g === 0 && meterLine) out.push(meterLine);
-      out.push(renderBars(chunkV, stateV));
-      const lyric = lyricAbc({ bars: chunkV });
-      if (lyric) out.push(lyric);
-      out.push("V: Ins");
-      if (g === 0 && meterLine) out.push(meterLine);
-      out.push(renderBars(chunkI, stateI));
-    }
-    let from = items[found.start].vLine;
-    let to = items[found.start].musicLine;
-    for (let j = found.start; j < found.end; j++) {
-      if (items[j].type !== "music") continue;
-      if (items[j].vLine < from) from = items[j].vLine;
-      const last = items[j].lyricLine >= 0 ? items[j].lyricLine : items[j].musicLine;
-      if (last > to) to = last;
-    }
-    const lines = walked.lines.slice();
-    lines.splice(from, to - from + 1, ...out);
+    const meters = vocalBars.map(() => found.meter);
+    const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
     const chosen = voice === "Ins" ? insBars[found.bar] : vocalBars[found.bar];
-    let units = 0;
-    for (const ev of chosen) units += ev.units;
-    const count = quarterBeats(units, walked.header.lDen);
-    const meterCount = quarterBeats(perBarUnits(found.meter, walked.header.lDen), walked.header.lDen);
-    const beats = Math.abs(count - meterCount) > 0.05 ? count : null;
-    return { abc: joinAbc(lines, abc), error: null, beats: beats };
+    const beats = barBeats(chosen, found.meter, found.walked.header.lDen);
+    return { abc: written.abc, error: null, beats: beats };
+  }
+
+  // This bar's numerator grows by one. Both voices gain a rest of one beat at the end.
+  function addBeat(abc, voice, index, slice, command) {
+    const found = locateBar(abc, voice, index, slice);
+    if (found.error) return { abc: abc, error: found.error };
+    const beat = oneBeatUnits(found.meter, found.walked.header.lDen);
+    if (beat.error) return { abc: abc, error: beat.error };
+    const vocalBars = found.vocalBars.slice();
+    const insBars = found.insBars.slice();
+    const bar = found.bar;
+    breakOutgoing(vocalBars[bar], vocalBars[bar + 1]);
+    breakOutgoing(insBars[bar], insBars[bar + 1]);
+    const vBar = vocalBars[bar].slice();
+    const iBar = insBars[bar].slice();
+    vBar.push(beatRest(vBar[vBar.length - 1], beat.units));
+    iBar.push(beatRest(iBar[iBar.length - 1], beat.units));
+    vocalBars[bar] = vBar;
+    insBars[bar] = iBar;
+    const next = [found.meter[0] + 1, found.meter[1]];
+    const meters = vocalBars.map((_, i) => (i === bar ? next : found.meter));
+    const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
+    const which = voice === "Ins" ? insBars : vocalBars;
+    return {
+      abc: written.abc,
+      error: null,
+      beats: barBeats(which[bar], next, found.walked.header.lDen),
+      index: sameNoteIndex(found.items, found.start, which, voice, bar, index),
+    };
+  }
+
+  // Remove this bar from both voices. The only bar in the score stays.
+  function deleteBar(abc, voice, index, slice, command) {
+    const found = locateBar(abc, voice, index, slice);
+    if (found.error) return { abc: abc, error: found.error };
+    if (vocalBarCount(found.items) <= 1) return { abc: abc, error: m("jpErrDeleteLast") };
+    const vocalBars = found.vocalBars.slice();
+    const insBars = found.insBars.slice();
+    const bar = found.bar;
+    if (bar > 0) {
+      breakOutgoing(vocalBars[bar - 1], vocalBars[bar]);
+      breakOutgoing(insBars[bar - 1], insBars[bar]);
+    }
+    breakOutgoing(vocalBars[bar], vocalBars[bar + 1]);
+    breakOutgoing(insBars[bar], insBars[bar + 1]);
+    vocalBars.splice(bar, 1);
+    insBars.splice(bar, 1);
+    const meters = vocalBars.map(() => found.meter);
+    const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
+    const which = voice === "Ins" ? insBars : vocalBars;
+    return {
+      abc: written.abc,
+      error: null,
+      index: indexAfterDelete(found.items, found.start, which, voice, bar),
+    };
   }
 
   function editScore(abc, command) {
@@ -1628,6 +1787,12 @@
     const voice = command.voice === "Ins" ? "Ins" : "Vocal";
     if (command.op === "join") {
       return joinBars(abc, voice, command.index | 0, command.slice | 0, command);
+    }
+    if (command.op === "add-beat") {
+      return addBeat(abc, voice, command.index | 0, command.slice | 0, command);
+    }
+    if (command.op === "delete-bar") {
+      return deleteBar(abc, voice, command.index | 0, command.slice | 0, command);
     }
     if (command.slice != null) {
       const expanded = expandSlicedRest(abc, voice, command.index | 0, command.slice | 0);
@@ -5051,6 +5216,8 @@
         { label: m("jpTie"), title: m("jpTieTitle"), attrs: { act: "tie" } },
         { label: m("jpDownbeat"), title: m("jpDownbeatTitle"), attrs: { act: "downbeat" } },
         { label: m("jpJoin"), title: m("jpJoinTitle"), attrs: { act: "join" } },
+        { label: m("jpAddBeat"), title: m("jpAddBeatTitle"), attrs: { act: "add-beat" } },
+        { label: m("jpDeleteBar"), title: m("jpDeleteBarTitle"), attrs: { act: "delete-bar" } },
         { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
         { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
         { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
@@ -5209,7 +5376,8 @@
     if (act === "accidental") return { op: "accidental", kind: button.getAttribute("data-kind") };
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
     if (act === "tie" || act === "sustain" || act === "insert" || act === "delete"
-        || act === "downbeat" || act === "reflow" || act === "join") return { op: act };
+        || act === "downbeat" || act === "reflow" || act === "join"
+        || act === "add-beat" || act === "delete-bar") return { op: act };
     return null;
   }
 

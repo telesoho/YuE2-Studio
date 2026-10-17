@@ -960,4 +960,166 @@ C D|E F|G|
     expect(stayed.error).toBeTruthy();
     expect(stayed.abc).toBe(score);
   });
+
+  it('adds one beat to the selected bar and restores the following meter', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+C D E|"G"F G A|B c d|
+w: do re mi fa so la ti do re
+V: Ins
+C D E|F G A|B c d|
+% chorus
+V: Vocal
+E F G|
+w: end
+V: Ins
+E F G|
+`;
+    const added = editor.editScore(score, { op: 'add-beat', index: 3, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(added.error).toBeFalsy();
+    const body = added.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDE|');
+    expect(body).toContain('M:4/4');
+    expect(body).toContain('"G"FGAz|');
+    expect(body).toContain('FGAz|');
+    expect(body).toMatch(/M:4\/4[\s\S]*M:3\/4/);
+    expect(body).toContain('Bcd|');
+    expect(body).toContain('w:doremi');
+    expect(body).toContain('w:fasola');
+    expect(body).toContain('w:tidore');
+    expect(body).not.toContain('w:fasolaz');
+    expect(body).toContain('%chorus');
+    expect(body).toContain('EFG|');
+    expect(added.beats).toBeNull();
+    expect(added.index).toBe(3);
+  });
+
+  it('writes the extra beat in the score unit', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/8
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C2 D2 E2|F2 G2 A2|
+V: Ins
+C2 D2 E2|F2 G2 A2|
+`;
+    const added = editor.editScore(score, { op: 'add-beat', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(added.error).toBeFalsy();
+    const body = added.abc.replace(/\s+/g, '');
+    expect(body).toContain('M:4/4');
+    expect(body).toContain('C2D2E2z2|');
+    expect(body).toContain('M:3/4');
+    expect(body).toContain('F2G2A2|');
+  });
+
+  it('drops a tie that would cross the inserted rest', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E-|F G A|
+V: Ins
+C D E-|F G A|
+`;
+    const added = editor.editScore(score, { op: 'add-beat', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(added.error).toBeFalsy();
+    const body = added.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDEz|');
+    expect(body).not.toContain('CDE-');
+    expect(body).toContain('FGA|');
+  });
+
+  it('refuses a beat the score unit cannot write', () => {
+    const score = `X:1
+T:
+M:6/8
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E|
+V: Ins
+C D E|
+`;
+    const stayed = editor.editScore(score, { op: 'add-beat', index: 0, voice: 'Vocal' });
+    expect(stayed.error).toBeTruthy();
+    expect(stayed.abc).toBe(score);
+  });
+
+  it('refuses to delete the only bar', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:3/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E|
+V: Ins
+C D E|
+`;
+    const stayed = editor.editScore(score, { op: 'delete-bar', index: 0, voice: 'Vocal' });
+    expect(stayed.error).toBe(jianpuStrings.zh.jpErrDeleteLast);
+    expect(stayed.abc).toBe(score);
+  });
+
+  it('deletes the selected bar from both voices and keeps the neighbours', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+% verse
+V: Vocal
+"C"C D E F|"G"G A B c|d e f g|
+w: do re mi fa so la ti do re mi fa so
+V: Ins
+C D E F|G A B c|d e f g|
+% chorus
+V: Vocal
+c B A G|
+w: end
+V: Ins
+c B A G|
+`;
+    const removed = editor.editScore(score, { op: 'delete-bar', index: 4, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).toContain('"C"CDEF|');
+    expect(body).not.toContain('"G"');
+    expect(body).not.toContain('GABC');
+    expect(body).toContain('defg|');
+    expect(body).toContain('w:doremifaremifaso');
+    expect(body).not.toContain('solatido');
+    expect(body).toContain('%chorus');
+    expect(body).toContain('cBAG|');
+    expect(body).toContain('w:end');
+    expect(removed.index).toBe(4);
+  });
 });
