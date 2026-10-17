@@ -37,9 +37,9 @@ abc2svg.jianpu = {
     short_nm: function(p_v) {
         var id = p_v.id || ""
         if (id == "Vocal" || /^vocal/i.test(p_v.nm || ""))
-            return "唱"
+            return "V:"
         if (id == "Ins" || /^ins/i.test(p_v.nm || ""))
-            return "伴"
+            return "A:"
         return p_v.snm || p_v.nm
     },
     calc_beam: function(of, bm, s1) {

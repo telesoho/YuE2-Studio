@@ -1,8 +1,8 @@
 /**
  * Jianpu editor for Yue Studio.
- * The page shows the vocal staff (唱) and the accompaniment staff (伴).
+ * The page shows the vocal staff (V:) and the accompaniment staff (A:).
  * Both staves edit in the browser. w: lyrics stay on the vocal staff.
- * Lyrics are edited on 词 lines in the text score. Selecting those words
+ * Lyrics are edited on L: lines in the text score. Selecting those words
  * marks the matching syllables on the jianpu.
  * The text score sits to the left of the staff. Editing it redraws the jianpu.
  * Clicking a jianpu note marks that span in the text score and scrolls it into view.
@@ -23,6 +23,31 @@
     strings = next && typeof next === "object" ? next : {};
     applyChrome();
   }
+  const MARK_VOCAL = "V:";
+  const MARK_INS = "A:";
+  const MARK_LYRIC = "L:";
+
+  // Voice label of a text-score line, or "" when the line is not one.
+  // Bare V / A are notes or words, not labels. Old 唱 / 伴 still read.
+  function voiceOfMark(trim) {
+    if (trim === MARK_VOCAL || trim === "v:" || trim === "唱") return "Vocal";
+    if (trim === MARK_INS || trim === "a:" || trim === "伴") return "Ins";
+    return "";
+  }
+
+  function voiceMark(voice) {
+    return voice === "Ins" ? MARK_INS : MARK_VOCAL;
+  }
+
+  // Lyric-line prefix ("L:" / "l:" or legacy 词, plus the spaces after it), or "".
+  // L: needs a space or the end of the line, so "Love" stays a word.
+  function lyricPrefix(trim) {
+    const marked = /^(?:L:|l:)(?:\s+|$)/.exec(trim);
+    if (marked) return marked[0];
+    const legacy = /^词\s*/.exec(trim);
+    return legacy ? legacy[0] : "";
+  }
+
   function m(key, vars) {
     let text = Object.prototype.hasOwnProperty.call(strings, key) ? strings[key] : key;
     if (vars) {
@@ -388,15 +413,15 @@
     return lyricBodySpans(String(text == null ? "" : text).trim()).map((span) => span.token);
   }
 
-  // Spans of a 词 line, offsets into the raw line (leading spaces included).
+  // Spans of an L: line, offsets into the raw line (leading spaces included).
   function lyricLineSpans(line) {
     const raw = String(line == null ? "" : line);
     const lead = raw.length - raw.trimStart().length;
     const trim = raw.trim();
-    const prefix = /^词\s*/.exec(trim);
+    const prefix = lyricPrefix(trim);
     if (!prefix) return [];
-    const origin = lead + prefix[0].length;
-    return lyricBodySpans(trim.slice(prefix[0].length)).map((span) => ({
+    const origin = lead + prefix.length;
+    return lyricBodySpans(trim.slice(prefix.length)).map((span) => ({
       token: span.token,
       start: origin + span.start,
       end: origin + span.end,
@@ -2388,7 +2413,7 @@
     if (!meaningful) return { line: "", marks: [] };
     while (tokens.length && tokens[tokens.length - 1].text === "·") tokens.pop();
     if (!tokens.length) return { line: "", marks: [] };
-    let line = "词";
+    let line = MARK_LYRIC;
     const marks = [];
     for (const token of tokens) {
       line += " ";
@@ -2423,7 +2448,7 @@
         text += "\n" + item.meter[0] + "/" + item.meter[1];
         shownMeter = item.meter;
       }
-      text += "\n" + (item.voice === "Ins" ? "伴" : "唱");
+      text += "\n" + voiceMark(item.voice);
       const tokened = tokensForBars(layoutBars(item.events), beat, item.startKey);
       if (tokened.error) return { text: "", error: tokened.error, marks: [] };
       const rendered = renderMusicLine(tokened.bars);
@@ -2962,7 +2987,7 @@
           if (!DURATIONS.has(ev.units)) push(m('jpErrDuration'));
           if (item.voice === "Ins" && ev.chord) push(m('jpErrChordOnIns'));
         }
-        if (units !== barUnits) push(m('jpErrVoiceBarBeats', { voice: item.voice === 'Ins' ? '伴' : '唱' }));
+        if (units !== barUnits) push(m('jpErrVoiceBarBeats', { voice: voiceMark(item.voice) }));
       }
     }
     function checkTies(events, voice) {
@@ -3001,8 +3026,8 @@
       for (const ev of flattenBars(group.ins)) insEvents.push(ev);
     }
     if (!music) push(m('jpErrNeedVoices'));
-    checkTies(vocalEvents, "唱");
-    checkTies(insEvents, "伴");
+    checkTies(vocalEvents, MARK_VOCAL);
+    checkTies(insEvents, MARK_INS);
     return warnings;
   }
 
@@ -3147,11 +3172,12 @@
         sawContent = true;
         continue;
       }
-      if (trim === "唱" || trim === "伴") {
-        voice = trim === "伴" ? "Ins" : "Vocal";
+      const markedVoice = voiceOfMark(trim);
+      if (markedVoice) {
+        voice = markedVoice;
         continue;
       }
-      if (trim.startsWith("词")) {
+      if (lyricPrefix(trim)) {
         if (voice === "Ins") {
           return textFail(m('jpErrLine', { line: li + 1, detail: m('jpErrLineInsLyrics') }), li + 1);
         }
@@ -3264,15 +3290,12 @@
         voice = null;
         continue;
       }
-      if (trim === "唱") {
-        voice = "Vocal";
+      const markedVoice = voiceOfMark(trim);
+      if (markedVoice) {
+        voice = markedVoice;
         continue;
       }
-      if (trim === "伴") {
-        voice = "Ins";
-        continue;
-      }
-      if (trim.startsWith("词")) {
+      if (lyricPrefix(trim)) {
         const spans = lyricLineSpans(raw);
         for (let n = pendingNotes; n < spans.length; n++) {
           extras.push({
@@ -3658,11 +3681,12 @@
         continue;
       }
       if (/^\d+\s*\/\s*\d+$/.test(trim)) continue;
-      if (trim === "唱" || trim === "伴") {
-        voice = trim === "伴" ? "Ins" : "Vocal";
+      const markedVoice = voiceOfMark(trim);
+      if (markedVoice) {
+        voice = markedVoice;
         continue;
       }
-      if (trim.startsWith("词")) continue;
+      if (lyricPrefix(trim)) continue;
       if (!voice) return fail(m('jpErrUnderVoice'));
       const scanned = scanTextTokens(raw);
       if (scanned.error) return fail(scanned.error);
@@ -3757,7 +3781,7 @@
     let message = "";
     let j = 0;
     let ordinal = 0;
-    const name = voice === "Ins" ? "伴" : "唱";
+    const name = voiceMark(voice);
     const fail = (text) => {
       if (!message) message = name + text;
     };
@@ -5087,7 +5111,7 @@
     append(lyricGroups, "lyrics");
   }
 
-  // Insert a lyric token ("-" hold, "·" empty syllable) into the 词 line at the caret.
+  // Insert a lyric token ("-" hold, "·" empty syllable) into the L: line at the caret.
   function insertLyricMark(token) {
     if (ui.textTimer) {
       clearTimeout(ui.textTimer);
@@ -5557,14 +5581,14 @@
     followSelection();
   }
 
-  // True when the caret sits on a 词 line (prefix alone counts).
+  // True when the caret sits on an L: line (prefix alone counts).
   function caretOnLyricLine(text, caret) {
     const value = String(text || "");
     const at = Math.max(0, Math.min(Number(caret) || 0, value.length));
     const lineStart = value.lastIndexOf("\n", Math.max(0, at - 1)) + 1;
     const lineEnd = value.indexOf("\n", at);
     const line = value.slice(lineStart, lineEnd < 0 ? value.length : lineEnd);
-    return /^\s*词/.test(line);
+    return lyricPrefix(line.trim()) !== "";
   }
 
   function reveal(node) {
@@ -6075,7 +6099,7 @@
       const cls = el.getAttribute("class") || "";
       if (!/(?:^|\s)f\d+/.test(cls)) return;
       const text = (el.textContent || "").replace(/\s+/g, "");
-      if (!text || text === "唱" || text === "伴" || text.indexOf("=") >= 0) return;
+      if (!text || text === "V:" || text === "A:" || text.indexOf("=") >= 0) return;
       if (!el.getBoundingClientRect) return;
       const box = el.getBoundingClientRect();
       if (!(box.width || box.height)) return;
