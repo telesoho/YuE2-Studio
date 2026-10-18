@@ -251,6 +251,7 @@ export const ja = {
   eqMonoHint: "モノ：両方のスピーカーで同じミックス",
   vizTitle: "ビジュアライザー",
   vizSpectrum: "スペクトラム",
+  vizBlackHole: "ブラックホール",
   vizPrevious: "前へ",
   vizNext: "次へ",
   vizFullscreen: "全画面",

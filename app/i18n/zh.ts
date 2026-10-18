@@ -251,6 +251,7 @@ export const zh = {
     eqMonoHint: "单声道：两个扬声器播放相同的混音",
     vizTitle: "可视化",
     vizSpectrum: "频谱",
+    vizBlackHole: "黑洞",
     vizPrevious: "上一个",
     vizNext: "下一个",
     vizFullscreen: "全屏",

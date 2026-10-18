@@ -253,6 +253,7 @@ export const ru = {
     eqMonoHint: "Моно: обе колонки играют одинаковый микс",
     vizTitle: "Визуализатор",
     vizSpectrum: "Спектр",
+    vizBlackHole: "Чёрная дыра",
     vizPrevious: "Предыдущий",
     vizNext: "Следующий",
     vizFullscreen: "Во весь экран",

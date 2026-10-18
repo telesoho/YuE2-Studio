@@ -66,7 +66,7 @@ export const EngineTabs: React.FC = () => {
   useEffect(() => onVisualizer((state) => setEngine(state.engine)), []);
   return (
     <div className="flex rounded-md bg-black/5 p-0.5 dark:bg-white/5">
-      {(['milkdrop', 'spectrum'] as const).map((id) => (
+      {(['milkdrop', 'spectrum', 'blackhole'] as const).map((id) => (
         <button
           key={id}
           type="button"
@@ -74,7 +74,7 @@ export const EngineTabs: React.FC = () => {
           onClick={() => setVisualizer({ engine: id })}
           className={`rounded-sm px-2 py-0.5 text-[10px] font-semibold ${engine === id ? 'bg-pink-500 text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
         >
-          {id === 'milkdrop' ? 'MilkDrop' : t('vizSpectrum')}
+          {id === 'milkdrop' ? 'MilkDrop' : id === 'spectrum' ? t('vizSpectrum') : t('vizBlackHole')}
         </button>
       ))}
     </div>

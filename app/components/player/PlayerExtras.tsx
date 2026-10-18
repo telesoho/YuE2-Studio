@@ -164,7 +164,7 @@ export const PlayerExtras: React.FC<Props> = ({ queue, currentSong, currentTime,
   useBridgeCommand('visualizer_get', () => visualizerReport());
   useBridgeCommand('visualizer_set', async (args) => {
     const change: Partial<VisualizerState> = {};
-    if (args.engine === 'milkdrop' || args.engine === 'spectrum') change.engine = args.engine;
+    if (args.engine === 'milkdrop' || args.engine === 'spectrum' || args.engine === 'blackhole') change.engine = args.engine;
     if (typeof args.preset === 'string') {
       const names = await milkdropPresetNames();
       const found = names.find((entry) => entry.toLowerCase() === String(args.preset).toLowerCase())

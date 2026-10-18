@@ -5,7 +5,7 @@
  * commands (next, previous) go to whichever window draws.
  */
 
-export type VisualizerEngine = 'milkdrop' | 'spectrum';
+export type VisualizerEngine = 'milkdrop' | 'spectrum' | 'blackhole';
 export type VisualizerPlace = 'closed' | 'panel' | 'window';
 
 export interface VisualizerState {

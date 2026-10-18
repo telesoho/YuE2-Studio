@@ -252,6 +252,7 @@ export const en = {
     eqMonoHint: "Mono: both speakers play the same mix",
     vizTitle: "Visualizer",
     vizSpectrum: "Spectrum",
+    vizBlackHole: "Black hole",
     vizPrevious: "Previous",
     vizNext: "Next",
     vizFullscreen: "Fullscreen",

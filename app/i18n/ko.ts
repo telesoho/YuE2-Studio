@@ -251,6 +251,7 @@ export const ko = {
     eqMonoHint: "모노: 두 스피커가 같은 믹스를 재생",
     vizTitle: "시각화",
     vizSpectrum: "스펙트럼",
+    vizBlackHole: "블랙홀",
     vizPrevious: "이전",
     vizNext: "다음",
     vizFullscreen: "전체 화면",
