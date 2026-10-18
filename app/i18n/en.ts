@@ -253,6 +253,8 @@ export const en = {
     vizTitle: "Visualizer",
     vizSpectrum: "Spectrum",
     vizBlackHole: "Black hole",
+    vizTunnel: "Tunnel",
+    vizJumpAt: "Jump threshold",
     vizPrevious: "Previous",
     vizNext: "Next",
     vizFullscreen: "Fullscreen",

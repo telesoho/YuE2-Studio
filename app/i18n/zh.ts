@@ -252,6 +252,8 @@ export const zh = {
     vizTitle: "可视化",
     vizSpectrum: "频谱",
     vizBlackHole: "黑洞",
+    vizTunnel: "隧道",
+    vizJumpAt: "跳跃阈值",
     vizPrevious: "上一个",
     vizNext: "下一个",
     vizFullscreen: "全屏",

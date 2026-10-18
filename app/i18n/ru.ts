@@ -254,6 +254,8 @@ export const ru = {
     vizTitle: "Визуализатор",
     vizSpectrum: "Спектр",
     vizBlackHole: "Чёрная дыра",
+    vizTunnel: "Туннель",
+    vizJumpAt: "Порог прыжка",
     vizPrevious: "Предыдущий",
     vizNext: "Следующий",
     vizFullscreen: "Во весь экран",

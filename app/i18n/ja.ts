@@ -252,6 +252,8 @@ export const ja = {
   vizTitle: "ビジュアライザー",
   vizSpectrum: "スペクトラム",
   vizBlackHole: "ブラックホール",
+  vizTunnel: "トンネル",
+  vizJumpAt: "跳躍の閾値",
   vizPrevious: "前へ",
   vizNext: "次へ",
   vizFullscreen: "全画面",

@@ -252,6 +252,8 @@ export const ko = {
     vizTitle: "시각화",
     vizSpectrum: "스펙트럼",
     vizBlackHole: "블랙홀",
+    vizTunnel: "터널",
+    vizJumpAt: "점프 임계값",
     vizPrevious: "이전",
     vizNext: "다음",
     vizFullscreen: "전체 화면",

@@ -409,8 +409,7 @@ export function createBlackHoleVisualizer(canvas: HTMLCanvasElement): BlackHoleV
       gl.deleteProgram(sceneProg);
       gl.deleteProgram(blitProg);
       gl.deleteVertexArray(vao);
-      const lose = gl.getExtension('WEBGL_lose_context');
-      lose?.loseContext();
+      // same canvas is compiled again after a dev remount; losing the context fails that compile
     },
   };
 }
