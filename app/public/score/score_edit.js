@@ -78,6 +78,10 @@
   const PRINT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h8v3.2H4zm-1.5 4.2h11A1.5 1.5 0 0 1 15 7.2v4.3h-2.5V9.2H3.5v2.3H1V7.2A1.5 1.5 0 0 1 2.5 5.7zm1.8 5.3h7.4V14.5H4.3z"/></svg>';
   const LEAD_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.2h12v1.2H2zm0 3.2h7v1.2H2zm0 3.2h12v1.2H2zm0 3.2h7v1.2H2zM11 6.2l3 2.2-3 2.2z"/></svg>';
   const ALIGN_LYRICS_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2.2h2.4v6.2H2zm4.8 0h2.4v6.2H6.8zm4.8 0H14v6.2h-2.4zM1.5 10.8h3.4v1.6H1.5zm4.8 0h3.4v1.6H6.3zm4.8 0H14.5v1.6h-3.4z"/></svg>';
+  const UNDO_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 1.8 2 6.2l4.6 4.4V8.2h2.2a2.7 2.7 0 0 1 0 5.4H6.4v1.6h2.4a4.3 4.3 0 0 0 0-8.6H6.6z"/></svg>';
+  const REDO_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path transform="translate(16 0) scale(-1 1)" d="M6.6 1.8 2 6.2l4.6 4.4V8.2h2.2a2.7 2.7 0 0 1 0 5.4H6.4v1.6h2.4a4.3 4.3 0 0 0 0-8.6H6.6z"/></svg>';
+  const HISTORY_LIMIT = 100;
+  const TEXT_BURST_MS = 800;
   const STEPS = "CDEFGAB";
   const NATURAL = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const ACC = { "^^": 2, "^": 1, "=": 0, _: -1, __: -2 };
@@ -4445,6 +4449,11 @@
     sourceScrollAt: 0,
     view: "jianpu",
     songTitle: "",
+    past: [],
+    future: [],
+    textBurst: 0,
+    restoring: false,
+    keysBound: false,
   };
 
   function applyTextWidth(px, persist) {
@@ -4601,6 +4610,9 @@
       "background:rgba(236,72,153,.15);border-color:#ec4899;color:#db2777;box-shadow:none;}",
       "html.dark .yue-jp-bar button.on,html.dark .yue-jp-tools button.on{color:#f9a8d4;}",
       ".yue-jp-bar button[hidden]{display:none;}",
+      ".yue-jp-bar button:disabled{opacity:.35;cursor:default;}",
+      ".yue-jp-bar button:disabled:hover{border-color:#d4d4d8;color:inherit;}",
+      "html.dark .yue-jp-bar button:disabled:hover{border-color:rgba(255,255,255,.15);color:inherit;}",
       ".yue-jp-bar button.primary{border:0;background:linear-gradient(to right,#f97316,#db2777);",
       "color:#fff;font-weight:700;}",
       ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
@@ -4732,6 +4744,8 @@
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
       '<button type="button" class="icon" data-act="stop" data-i18n-aria="jpStop" data-i18n-title="jpStop">' + STOP_ICON + "</button>",
       '<span class="yue-jp-clock">0:00</span>',
+      '<button type="button" class="icon" data-act="undo" data-i18n-aria="jpUndo" data-i18n-title="jpUndo" disabled>' + UNDO_ICON + "</button>",
+      '<button type="button" class="icon" data-act="redo" data-i18n-aria="jpRedo" data-i18n-title="jpRedo" disabled>' + REDO_ICON + "</button>",
       '<button type="button" class="icon" data-act="save" data-i18n-aria="jpSave" data-i18n-title="jpSave">' + SAVE_ICON + "</button>",
       '<button type="button" class="icon primary" data-act="ok" data-i18n-aria="jpDone" data-i18n-title="jpDone">' + DONE_ICON + "</button>",
       '<button type="button" class="icon" data-act="cancel" data-i18n-aria="jpCancel" data-i18n-title="jpCancel">' + CANCEL_ICON + "</button>",
@@ -4826,6 +4840,8 @@
       else if (act === "text") setTextVisible(ui.textVisible === false);
       else if (act === "play") togglePlay();
       else if (act === "stop") stopPlayback();
+      else if (act === "undo") undoEdit();
+      else if (act === "redo") redoEdit();
       else if (act === "save") saveEdit();
       else if (act === "ok") acceptText();
       else if (act === "cancel") finish(null);
@@ -4857,17 +4873,29 @@
       if (!picked) return;
       applyPicked(picked);
     });
-    document.addEventListener("keydown", (event) => {
-    if (!ui.root || ui.root.hidden) return;
-    if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === "s") {
-      event.preventDefault();
-      saveEdit();
-      return;
+    if (!ui.keysBound) {
+      ui.keysBound = true;
+      document.addEventListener("keydown", (event) => {
+        if (!ui.root || ui.root.hidden) return;
+        if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+          const key = String(event.key).toLowerCase();
+          if (key === "s") {
+            event.preventDefault();
+            saveEdit();
+            return;
+          }
+          if (key === "z" || key === "y") {
+            event.preventDefault();
+            if (key === "y" || event.shiftKey) redoEdit();
+            else undoEdit();
+            return;
+          }
+        }
+        if (ui.text && event.target === ui.text) return;
+        if (ui.split && event.target === ui.split) return;
+        onKey(event);
+      });
     }
-    if (ui.text && event.target === ui.text) return;
-    if (ui.split && event.target === ui.split) return;
-      onKey(event);
-    });
     bindSplitter();
   }
 
@@ -4907,6 +4935,7 @@
     syncDiagram();
     syncTextVisible();
     syncLeadButton();
+    syncHistoryButtons();
   }
 
   function syncLeadButton() {
@@ -5354,6 +5383,7 @@
       return;
     }
     stopPlayback();
+    if (result.abc !== ui.abc) remember("edit");
     ui.abc = result.abc;
     refreshTextFromAbc();
     renderScore();
@@ -6400,7 +6430,9 @@
     ui.textError = "";
     ui.textErrorLine = 0;
     ui.textMarks = parsed.marks || [];
+    ui.textDirty = false;
     const changed = parsed.abc !== ui.abc;
+    if (changed && !ui.restoring) remember("text");
     ui.abc = parsed.abc;
     if (changed) {
       stopPlayback();
@@ -6530,6 +6562,122 @@
     return ui.abc || "";
   }
 
+  function snapshot() {
+    const start = ui.text ? (ui.text.selectionStart || 0) : 0;
+    const end = ui.text && ui.text.selectionEnd != null ? ui.text.selectionEnd : start;
+    return {
+      abc: ui.abc,
+      index: ui.index,
+      voice: ui.voice || "Vocal",
+      slice: ui.slice || 0,
+      caret: start,
+      caretEnd: end,
+      lyricSelection: Array.isArray(ui.lyricSelection) ? ui.lyricSelection.slice() : null,
+    };
+  }
+
+  function syncHistoryButtons() {
+    if (!ui.root) return;
+    const undo = ui.root.querySelector("[data-act='undo']");
+    const redo = ui.root.querySelector("[data-act='redo']");
+    if (undo) undo.disabled = !ui.past.length;
+    if (redo) redo.disabled = !ui.future.length;
+  }
+
+  // Text typed within TEXT_BURST_MS of the previous text apply shares one step.
+  // A note edit, lyric alignment, or undo closes that burst.
+  function remember(kind) {
+    if (ui.restoring) return;
+    const now = Date.now();
+    if (kind === "text" && ui.textBurst && now - ui.textBurst < TEXT_BURST_MS) {
+      ui.textBurst = now;
+      return;
+    }
+    const shot = snapshot();
+    ui.past.push(shot);
+    if (ui.past.length > HISTORY_LIMIT) ui.past.shift();
+    ui.future = [];
+    ui.textBurst = kind === "text" ? now : 0;
+    syncHistoryButtons();
+  }
+
+  function restoreSnapshot(shot) {
+    ui.restoring = true;
+    clearSavedNote();
+    stopPlayback();
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+    }
+    ui.abc = shot.abc;
+    ui.index = shot.index;
+    ui.voice = shot.voice || "Vocal";
+    ui.slice = shot.slice || 0;
+    ui.lyricSelection = null;
+    ui.textDirty = false;
+    ui.textBlocked = false;
+    ui.textError = "";
+    ui.textErrorLine = 0;
+    ui.statusSticky = false;
+    setStatus("");
+    refreshTextFromAbc();
+    renderScore();
+    followSelection();
+    if (shot.lyricSelection && shot.lyricSelection.length) markLyricSelection(shot.lyricSelection);
+    else markSelection();
+    if (ui.text) {
+      try {
+        const at = Math.max(0, Math.min(shot.caret || 0, ui.text.value.length));
+        const end = Math.max(at, Math.min(shot.caretEnd == null ? at : shot.caretEnd, ui.text.value.length));
+        ui.text.setSelectionRange(at, end);
+      } catch (_err) {
+        /* textarea may be detached */
+      }
+    }
+    ui.restoring = false;
+    ui.textBurst = 0;
+    syncHistoryButtons();
+  }
+
+  function settleTextForHistory() {
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+    }
+    if (ui.text && (ui.textDirty || ui.textBlocked)) applyText();
+  }
+
+  function undoEdit() {
+    settleTextForHistory();
+    if (ui.textBlocked) {
+      refreshTextFromAbc();
+      return;
+    }
+    if (!ui.past.length) return;
+    const current = snapshot();
+    ui.future.push(current);
+    restoreSnapshot(ui.past.pop());
+  }
+
+  function redoEdit() {
+    const pending = !!(ui.textTimer || (ui.text && (ui.textDirty || ui.textBlocked)));
+    if (ui.textTimer) {
+      clearTimeout(ui.textTimer);
+      ui.textTimer = 0;
+    }
+    ui.textDirty = false;
+    ui.textBlocked = false;
+    ui.textError = "";
+    if (!ui.future.length) {
+      if (pending) refreshTextFromAbc();
+      return;
+    }
+    const current = snapshot();
+    ui.past.push(current);
+    if (ui.past.length > HISTORY_LIMIT) ui.past.shift();
+    restoreSnapshot(ui.future.pop());
+  }
+
   function run(command) {
     if (ui.textTimer) {
       clearTimeout(ui.textTimer);
@@ -6560,6 +6708,7 @@
       setStatus(next.error);
       return false;
     }
+    if (next.abc !== ui.abc) remember("edit");
     ui.abc = next.abc;
     if (command.index == null) {
       if (next.index != null) ui.index = next.index;
@@ -7093,6 +7242,11 @@
     return new Promise((resolve) => {
       ui.sourceAbc = String(abc || "");
       ui.abc = ui.sourceAbc;
+      ui.past = [];
+      ui.future = [];
+      ui.textBurst = 0;
+      ui.restoring = false;
+      syncHistoryButtons();
       ui.chordKey = "";
       ui.textDirty = false;
       ui.textBlocked = false;

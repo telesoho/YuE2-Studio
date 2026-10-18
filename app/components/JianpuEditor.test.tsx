@@ -48,6 +48,49 @@ Q:1/4=120
 K:C
 C4D4E4F4|`;
 
+function press(key: string, init: KeyboardEventInit = {}) {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+}
+
+async function commitText(next: string) {
+  const text = document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
+  await act(async () => {
+    text.value = next;
+    text.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 180));
+  });
+}
+
+async function mountEditor(abc: string) {
+  localStorage.setItem('language', 'en');
+  const globals = globalThis as { abc2svg?: unknown };
+  const previous = globals.abc2svg;
+  globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  let root: Root | undefined;
+  await act(async () => {
+    root = createRoot(host);
+    root.render(
+      <StrictMode>
+        <I18nProvider>
+          <JianpuEditor abc={abc} onClose={() => {}} />
+        </I18nProvider>
+      </StrictMode>,
+    );
+  });
+  return {
+    async close() {
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement | null)?.click();
+        root?.unmount();
+      });
+      host.remove();
+      globals.abc2svg = previous;
+    },
+  };
+}
+
 const LEAD_ABC = `X:1
 T:知了
 M:4/4
@@ -330,6 +373,106 @@ Z|
     expect(selected).toBeGreaterThan(-1);
     expect(selected).toBeLessThan(capo);
     expect(capo).toBeLessThan(original);
+  });
+
+  it('undoes and redoes text and note edits', async () => {
+    const vocal = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+K:C
+V: Vocal
+C4D4E4F4|
+`;
+    const mounted = await mountEditor(vocal);
+    try {
+      const undo = () => document.querySelector('.yue-jp-editor [data-act="undo"]') as HTMLButtonElement;
+      const redo = () => document.querySelector('.yue-jp-editor [data-act="redo"]') as HTMLButtonElement;
+      const text = () => document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
+      const abc = () => (editor as { currentAbc: () => string }).currentAbc();
+      expect(undo().disabled).toBe(true);
+      expect(redo().disabled).toBe(true);
+      expect(undo().getAttribute('aria-label')).toBe('Undo (Ctrl+Z)');
+      expect(redo().getAttribute('aria-label')).toBe('Redo (Ctrl+Y)');
+
+      const written = text().value;
+      await commitText(written.replace('♩=120', '♩=90'));
+      expect(abc()).toContain('Q:1/4=90');
+      expect(undo().disabled).toBe(false);
+
+      press('z', { ctrlKey: true });
+      expect(abc()).toBe(vocal);
+      expect(text().value).toContain('♩=120');
+      expect(undo().disabled).toBe(true);
+      expect(redo().disabled).toBe(false);
+
+      press('y', { ctrlKey: true });
+      expect(abc()).toContain('Q:1/4=90');
+      expect(redo().disabled).toBe(true);
+
+      press('z', { ctrlKey: true });
+      await commitText(text().value.replace('♩=120', '♩=60'));
+      expect(abc()).toContain('Q:1/4=60');
+      expect(redo().disabled).toBe(true);
+      press('y', { ctrlKey: true });
+      expect(abc()).toContain('Q:1/4=60');
+
+      const lines = text().value.split('\n');
+      const voice = lines.findIndex((line) => line.trim() === 'V:');
+      const digit = /[1-7]/.exec(lines[voice + 1] || '');
+      expect(digit).not.toBeNull();
+      const caret = lines.slice(0, voice + 1).join('\n').length + 1 + (digit?.index || 0);
+      const area = text();
+      area.focus();
+      area.setSelectionRange(caret, caret);
+      area.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      (document.querySelector('.yue-jp-card') as HTMLElement).focus();
+      press('5');
+      expect(abc()).toMatch(/G4\s+D4\s+E4\s+F4/);
+      undo().click();
+      expect(abc()).toMatch(/C4\s+D4\s+E4\s+F4/);
+      expect(abc()).not.toMatch(/G4/);
+      redo().click();
+      expect(abc()).toMatch(/G4\s+D4\s+E4\s+F4/);
+    } finally {
+      await mounted.close();
+    }
+  });
+
+  it('groups rapid text edits and ignores an unreadable line', async () => {
+    const mounted = await mountEditor(ABC);
+    try {
+      const undo = () => document.querySelector('.yue-jp-editor [data-act="undo"]') as HTMLButtonElement;
+      const text = () => document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
+      const abc = () => (editor as { currentAbc: () => string }).currentAbc();
+      const written = text().value;
+
+      await commitText(`${written}\n???`);
+      expect(undo().disabled).toBe(true);
+      expect(abc()).toBe(ABC);
+
+      await commitText(written.replace('♩=120', '♩=90'));
+      await commitText(written.replace('♩=120', '♩=60'));
+      expect(abc()).toContain('Q:1/4=60');
+      press('z', { ctrlKey: true });
+      expect(abc()).toBe(ABC);
+
+      await commitText(text().value.replace('♩=120', '♩=90'));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+      });
+      await commitText(text().value.replace('♩=90', '♩=60'));
+      press('z', { ctrlKey: true });
+      expect(abc()).toContain('Q:1/4=90');
+      press('Z', { ctrlKey: true, shiftKey: true });
+      expect(abc()).toContain('Q:1/4=60');
+      press('z', { ctrlKey: true });
+      press('z', { ctrlKey: true });
+      expect(abc()).toBe(ABC);
+    } finally {
+      await mounted.close();
+    }
   });
 
   it('rewrites CJK font stacks for PDF SVG rasterization', () => {
