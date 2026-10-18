@@ -12,6 +12,7 @@ pub mod import;
 pub mod instrumental;
 pub mod notation;
 pub mod opening;
+pub mod publish;
 pub mod phrasing;
 pub mod reading;
 pub mod rebuild;

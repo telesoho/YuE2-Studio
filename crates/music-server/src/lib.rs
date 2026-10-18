@@ -1128,6 +1128,9 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/library/songs/{id}/score", axum::routing::put(save_song_score))
         .route("/v1/library/songs/{id}/score-align", post(align_song_score_lyrics))
         .route("/v1/library/songs/{id}/score-share", post(share_song_score))
+        .route("/v1/library/songs/{id}/score-publish", post(publish_song_score))
+        .route("/v1/score/publish-settings", get(publish_settings).put(update_publish_settings))
+        .route("/v1/score/publish-settings/test", post(test_publish_settings))
         .route("/v1/capture/windows", get(capture_windows))
         .route("/v1/capture/start", post(capture_start))
         .route("/v1/capture/stop", post(capture_stop))
@@ -8740,6 +8743,119 @@ async fn share_song_score(
         .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{id}-share.zip\""))
         .body(Body::from(bytes))
         .expect("share zip"))
+}
+
+fn publish_settings_body(target: &score::publish::PublishTarget) -> Value {
+    let source = credentials::github_source();
+    serde_json::json!({
+        "repo": target.repo,
+        "branch": target.branch,
+        "site": target.site,
+        "token_configured": source.is_some(),
+        "token_source": source,
+        "environment_variable": credentials::GITHUB_ENV_VAR,
+    })
+}
+
+async fn publish_settings() -> Json<Value> {
+    Json(publish_settings_body(&score::publish::load_target()))
+}
+
+#[derive(Deserialize)]
+struct PublishSettingsBody {
+    repo: String,
+    branch: String,
+    site: String,
+    /// Absent leaves the stored token. Null or "" clears it. A string stores it.
+    #[serde(default)]
+    token: Option<Value>,
+}
+
+async fn update_publish_settings(Json(body): Json<PublishSettingsBody>) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {
+    let target = score::publish::store_target(&body.repo, &body.branch, &body.site).map_err(|error| api_error(StatusCode::BAD_REQUEST, error))?;
+    if let Some(token) = body.token {
+        let next = match token {
+            Value::Null => None,
+            Value::String(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() { None } else { Some(trimmed.to_owned()) }
+            }
+            _ => return Err(api_error(StatusCode::BAD_REQUEST, "token must be a string".into())),
+        };
+        credentials::store_github_token(next.as_deref()).map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+    }
+    Ok(Json(publish_settings_body(&target)))
+}
+
+fn publish_settings_token(token: Option<Value>) -> Result<Option<String>, (StatusCode, Json<ApiError>)> {
+    match token {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => {
+            let trimmed = value.trim().to_owned();
+            Ok((!trimmed.is_empty()).then_some(trimmed))
+        }
+        Some(_) => Err(api_error(StatusCode::BAD_REQUEST, "token must be a string".into())),
+    }
+}
+
+/// Checks the form as typed. A token in the body wins; otherwise the stored one.
+async fn test_publish_settings(Json(body): Json<PublishSettingsBody>) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {
+    let target = score::publish::parse_target(&body.repo, &body.branch, &body.site).map_err(|error| api_error(StatusCode::BAD_REQUEST, error))?;
+    let token = publish_settings_token(body.token)?
+        .or_else(credentials::github_token)
+        .ok_or_else(|| api_error(StatusCode::BAD_REQUEST, score::reading::warn_code("githubTokenMissing")))?;
+    match score::publish::probe(&token, &target).await {
+        Ok(value) => Ok(Json(value)),
+        Err(error) => {
+            let status = if error.contains("githubTokenRejected") {
+                StatusCode::UNAUTHORIZED
+            } else if error.contains("githubPublishFailed") {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            Err(api_error(status, error))
+        }
+    }
+}
+
+async fn publish_song_score(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {
+    let Some(token) = credentials::github_token() else {
+        return Err(api_error(StatusCode::BAD_REQUEST, score::reading::warn_code("githubTokenMissing")));
+    };
+    let target = score::publish::load_target();
+    let song = state
+        .library
+        .get_song(&id)
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, "Song not found.".into()))?;
+    let display = song
+        .metadata
+        .pointer("/derived/settings/display_abc")
+        .and_then(Value::as_str)
+        .or_else(|| song.metadata.pointer("/derived/settings/abc").and_then(Value::as_str))
+        .or_else(|| song.replay_request.as_ref().and_then(|value| value.get("abc")).and_then(Value::as_str))
+        .unwrap_or("")
+        .to_owned();
+    if display.trim().is_empty() {
+        return Err(api_error(StatusCode::BAD_REQUEST, score::reading::warn_code("scoreShareNoScore")));
+    }
+    match score::publish::publish(&song.id, &song.title, &display, &token, &target).await {
+        Ok(url) => Ok(Json(serde_json::json!({ "ok": true, "url": url }))),
+        Err(error) => {
+            let status = if error.contains("githubTokenRejected") {
+                StatusCode::UNAUTHORIZED
+            } else if error.contains("githubPublishFailed") {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            Err(api_error(status, error))
+        }
+    }
 }
 
 async fn capture_windows(State(_state): State<AppState>) -> Result<Json<Value>, (StatusCode, Json<ApiError>)> {

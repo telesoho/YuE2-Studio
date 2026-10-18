@@ -17,7 +17,7 @@ import { localized, useAdapterLibrary, usesFromSettings } from '../services/adap
 import { useSongActions } from '../context/SongActionsContext';
 import { downloadSongAudio } from '../services/songDownload';
 import { saveFile } from '../services/saveFile';
-import { alignSongScoreLyrics, downloadScoreShare, scoreFitTiming, setScoreFitTiming } from '../services/scoreReading';
+import { alignSongScoreLyrics, downloadScoreShare, publishScore, scoreFitTiming, setScoreFitTiming } from '../services/scoreReading';
 import { karaokeReason } from '../services/karaoke';
 import { localizeCode } from '../services/localizeCode';
 import { stemOf } from '../services/songStems';
@@ -821,6 +821,9 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
     const [jianpuOpen, setJianpuOpen] = useState(false);
     const [abcLive, setAbcLive] = useState<string | null>(null);
     const [sharing, setSharing] = useState(false);
+    const [publishing, setPublishing] = useState(false);
+    const [publishNote, setPublishNote] = useState<string | null>(null);
+    const [askSettings, setAskSettings] = useState(false);
     const [alignLyrics, setAlignLyrics] = useState(song.lyrics || '');
     const [fitTiming, setFitTiming] = useState(() => scoreFitTiming());
     const [aligning, setAligning] = useState(false);
@@ -830,6 +833,8 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
         setAlignLyrics(song.lyrics || '');
         setAlignError(null);
         setFitTiming(scoreFitTiming());
+        setPublishNote(null);
+        setAskSettings(false);
     }, [song.id, song.lyrics]);
     const fromParams = typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string'
         ? String((song.generationParams as Record<string, unknown>).abc).trim()
@@ -847,6 +852,22 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
     const warnings = Array.isArray(settings?.warnings)
         ? (settings.warnings as unknown[]).filter((item): item is string => typeof item === 'string')
         : [];
+    const publish = async () => {
+        if (publishing) return;
+        setPublishing(true);
+        setPublishNote(null);
+        try {
+            await publishScore(song.id);
+            setAskSettings(false);
+            setPublishNote(tt('scorePublished'));
+        } catch (error) {
+            const raw = error instanceof Error ? error.message : String(error);
+            setAskSettings(raw.includes('githubTokenMissing') || raw.includes('githubTokenRejected'));
+            setPublishNote(say(raw));
+        } finally {
+            setPublishing(false);
+        }
+    };
     const share = async () => {
         if (!isScoreReading || sharing) return;
         setSharing(true);
@@ -910,6 +931,15 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
                     )}
                     <button
                         type="button"
+                        disabled={publishing}
+                        onClick={() => void publish()}
+                        className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-black dark:hover:text-white disabled:opacity-50"
+                    >
+                        {publishing ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                        {publishing ? tt('scorePublishing') : tt('scorePublish')}
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => void saveFile(`${song.title || 'score'}.abc`, { blob: new Blob([`${abc.replace(/^w:.*$/gim, '').replace(/\n{3,}/g, '\n\n')}\n`], { type: 'text/vnd.abc' }) })}
                         className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-black dark:hover:text-white"
                     >
@@ -926,6 +956,20 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
                     </button>
                 </div>
             </div>
+            {publishNote && (
+                <p className="flex items-center gap-2 px-4 py-1 text-[11px] text-zinc-500">
+                    <span>{publishNote}</span>
+                    {askSettings && (
+                        <button
+                            type="button"
+                            onClick={() => window.dispatchEvent(new CustomEvent('yue:open-settings', { detail: 'jianpu' }))}
+                            className="font-semibold text-pink-600 hover:text-pink-500 dark:text-pink-300"
+                        >
+                            {tt('jianpuPublishOpenSettings')}
+                        </button>
+                    )}
+                </p>
+            )}
             {open && (
                 <>
                     {warnings.length > 0 && (

@@ -11,6 +11,7 @@ import { SetupGate } from './SetupGate';
 import { CoverTemplateSettings } from './CoverTemplateSettings';
 import { AgentPanel } from './AgentPanel';
 import { HubSettings } from './HubSettings';
+import { JianpuPublishSettings } from './JianpuPublishSettings';
 import { isDesktop } from '../services/externalLinks';
 import { onSidebarExtras, setSidebarExtras, sidebarExtras, type SidebarExtras } from '../services/playerPanels';
 
@@ -27,7 +28,7 @@ import { onSidebarExtras, setSidebarExtras, sidebarExtras, type SidebarExtras } 
 /// The assistant and the karaoke recogniser are not sections of their own: they
 /// are set up where they are installed, on the models page. Having both was one
 /// capability drawn twice, and the two drawings disagreed.
-type SectionId = 'account' | 'models' | 'engine' | 'cloud' | 'agent' | 'covers' | 'interface' | 'privacy' | 'about';
+type SectionId = 'account' | 'models' | 'engine' | 'cloud' | 'agent' | 'covers' | 'jianpu' | 'interface' | 'privacy' | 'about';
 
 const INPUT =
   'w-full rounded-lg border-2 border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-900 outline-hidden focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white';
@@ -79,6 +80,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
     { id: 'cloud', label: t('providers'), hint: t('cloudSectionHint'), icon: <Cloud size={16} /> },
     { id: 'agent', label: t('agentSection'), hint: t('agentSectionHint'), icon: <Plug size={16} /> },
     { id: 'covers', label: t('coversSection'), hint: t('coversSectionHint'), icon: <ImageIcon size={16} /> },
+    { id: 'jianpu', label: t('jianpuPublishSection'), hint: t('jianpuPublishSectionHint'), icon: <SiGithub size={16} /> },
     { id: 'interface', label: t('appearance'), hint: t('interfaceSectionHint'), icon: <Monitor size={16} /> },
     { id: 'privacy', label: t('hubTelemetryTitle'), hint: t('hubSettingsHint'), icon: <BarChart3 size={16} /> },
     { id: 'about', label: t('about'), hint: t('aboutSectionHint'), icon: <Info size={16} /> },
@@ -153,6 +155,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
             {/* The same chooser as the first run, because it is the same
                 decision - only now nothing is waiting on it. */}
             {section === 'covers' && <CoverTemplateSettings />}
+            {section === 'jianpu' && <JianpuPublishSettings />}
             {section === 'models' && <div className="-m-6"><SetupGate mode="settings" focus={focus} /></div>}
             {section === 'engine' && <EngineSettings />}
             {section === 'cloud' && <ProviderSettings />}

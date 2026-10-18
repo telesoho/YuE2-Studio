@@ -101,6 +101,55 @@ fn openrouter_key_path() -> Option<PathBuf> {
     Some(crate::studio_data_root()?.join(OPENROUTER_FILE))
 }
 
+pub const GITHUB_ENV_VAR: &str = "GITHUB_TOKEN";
+const GITHUB_FILE: &str = "github-token";
+
+/// Token that can write the configured jianpu repo. The environment wins.
+pub fn github_token() -> Option<String> {
+    if let Some(key) = env::var(GITHUB_ENV_VAR).ok().map(|key| key.trim().to_owned()).filter(|key| !key.is_empty()) {
+        return Some(key);
+    }
+    let stored = fs::read_to_string(crate::studio_data_root()?.join(GITHUB_FILE)).ok()?.trim().to_owned();
+    (!stored.is_empty()).then_some(stored)
+}
+
+/// Where the token comes from, without returning it.
+pub fn github_source() -> Option<CredentialSource> {
+    if env::var(GITHUB_ENV_VAR).ok().is_some_and(|key| !key.trim().is_empty()) {
+        return Some(CredentialSource::Environment);
+    }
+    let stored = fs::read_to_string(crate::studio_data_root()?.join(GITHUB_FILE)).ok()?.trim().to_owned();
+    (!stored.is_empty()).then_some(CredentialSource::LocalStore)
+}
+
+/// Stores or clears the token. Refuses to shadow `GITHUB_TOKEN`.
+pub fn store_github_token(token: Option<&str>) -> Result<bool> {
+    if env::var(GITHUB_ENV_VAR).is_ok_and(|key| !key.trim().is_empty()) {
+        bail!("{GITHUB_ENV_VAR} is set in this environment and takes priority; unset it before storing a token in Studio");
+    }
+    let path = crate::studio_data_root().context("no per-user application data directory for credential storage")?.join(GITHUB_FILE);
+    match token.map(str::trim).filter(|token| !token.is_empty()) {
+        Some(token) => {
+            if token.contains(['\r', '\n']) {
+                bail!("a GitHub token must be a single line");
+            }
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+            }
+            fs::write(&path, token).with_context(|| format!("write {}", path.display()))?;
+            Ok(true)
+        }
+        None => {
+            match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error).with_context(|| format!("remove {}", path.display())),
+            }
+            Ok(false)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

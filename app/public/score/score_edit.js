@@ -2131,6 +2131,12 @@
     return String(key.name).endsWith("m") ? SIGNATURE_MINOR : SIGNATURE_MAJOR;
   }
 
+  function chordKeyNames(keyName) {
+    const key = keyFromName(keyName);
+    if (!knownKey(key.name)) return [];
+    return signatureNames(key).slice();
+  }
+
   function chosenChordKey(originalName) {
     const chosen = ui.chordKey;
     if (!chosen || !knownKey(chosen) || chosen.endsWith("m") !== originalName.endsWith("m")) return originalName;
@@ -7301,6 +7307,8 @@
     followsScore: followsScore,
     inspectScore: inspectScore,
     previewAbc: previewAbc,
+    chordsInKey: chordsInKey,
+    chordKeyNames: chordKeyNames,
     capoFret: capoFret,
     keyLegend: keyLegend,
     withKeyLegend: withKeyLegend,
