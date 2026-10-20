@@ -37,6 +37,7 @@ const editor = (globalThis as {
     embedPdfFonts: (svg: string) => string;
     displayTitle: (abc: string, fallback?: string) => string;
     withDisplayTitle: (abc: string, fallback?: string) => string;
+    currentAbc: () => string;
   };
 }).yueScoreEditor!;
 
@@ -390,7 +391,7 @@ C4D4E4F4|
       const undo = () => document.querySelector('.yue-jp-editor [data-act="undo"]') as HTMLButtonElement;
       const redo = () => document.querySelector('.yue-jp-editor [data-act="redo"]') as HTMLButtonElement;
       const text = () => document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
-      const abc = () => (editor as { currentAbc: () => string }).currentAbc();
+      const abc = () => editor.currentAbc();
       expect(undo().disabled).toBe(true);
       expect(redo().disabled).toBe(true);
       expect(undo().getAttribute('aria-label')).toBe('Undo (Ctrl+Z)');
@@ -445,7 +446,7 @@ C4D4E4F4|
     try {
       const undo = () => document.querySelector('.yue-jp-editor [data-act="undo"]') as HTMLButtonElement;
       const text = () => document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement;
-      const abc = () => (editor as { currentAbc: () => string }).currentAbc();
+      const abc = () => editor.currentAbc();
       const written = text().value;
 
       await commitText(`${written}\n???`);
