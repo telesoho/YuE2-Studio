@@ -297,6 +297,8 @@ abc2svg.diag = {
         "F#m7b5": "202210 ,0 203310",
         "F#m(maj7)": "203222 ,0 103222",
         G: "320003 ,0 230004",
+        // Bass is B: mute the low G. Same upper voices as G.
+        "G.B": "x20003 ,0 x10004",
         Gm: "033000 fr3 034000 barre=6-1",
         G7: "320001 ,0 320001",
         Gm7: "030000 fr3 030000 barre=6-1",
