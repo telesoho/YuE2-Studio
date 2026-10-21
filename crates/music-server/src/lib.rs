@@ -9097,7 +9097,8 @@ async fn hear_score_words(
                 let runtime = config.runtime;
                 let variant = config.whisper_model.clone();
                 let path = hear_path.clone();
-                tokio::task::spawn_blocking(move || sync.parakeet_words(runtime, variant.as_deref(), &path))
+                let language = language.map(str::to_owned);
+                tokio::task::spawn_blocking(move || sync.parakeet_words(runtime, variant.as_deref(), &path, language.as_deref()))
                     .await
                     .unwrap_or_else(|error| Err(anyhow::anyhow!(error.to_string())))
             }
