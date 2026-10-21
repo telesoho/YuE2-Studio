@@ -1599,6 +1599,13 @@
     });
   }
 
+  // One bar of rests in the score unit. The key is the one sounding at the barline.
+  function restBar(sample, units) {
+    const lengths = splitWritable(units);
+    if (!lengths) return null;
+    return lengths.map((n) => beatRest(sample, n));
+  }
+
   function breakOutgoing(fromBar, toBar) {
     if (!fromBar || !fromBar.length) return;
     const tail = fromBar[fromBar.length - 1];
@@ -1830,6 +1837,32 @@
     };
   }
 
+  // An empty bar of the same meter after this one, in both voices. The meter stays.
+  function insertBar(abc, voice, index, slice, command) {
+    const found = locateBar(abc, voice, index, slice);
+    if (found.error) return { abc: abc, error: found.error };
+    const perBar = perBarUnits(found.meter, found.walked.header.lDen);
+    if (!Number.isInteger(perBar) || perBar < 1) return { abc: abc, error: m("jpErrBadMeter") };
+    const bar = found.bar;
+    const vocalRest = restBar(found.vocalBars[bar][found.vocalBars[bar].length - 1], perBar);
+    const insRest = restBar(found.insBars[bar][found.insBars[bar].length - 1], perBar);
+    if (!vocalRest || !insRest) return { abc: abc, error: m("jpErrDuration") };
+    const vocalBars = found.vocalBars.slice();
+    const insBars = found.insBars.slice();
+    breakOutgoing(vocalBars[bar], vocalBars[bar + 1]);
+    breakOutgoing(insBars[bar], insBars[bar + 1]);
+    vocalBars.splice(bar + 1, 0, vocalRest);
+    insBars.splice(bar + 1, 0, insRest);
+    const meters = vocalBars.map(() => found.meter);
+    const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
+    const which = voice === "Ins" ? insBars : vocalBars;
+    return {
+      abc: written.abc,
+      error: null,
+      index: indexInBar(found.items, found.start, which, voice, bar + 1, false),
+    };
+  }
+
   // Remove this bar from both voices. The only bar in the score stays.
   function deleteBar(abc, voice, index, slice, command) {
     const found = locateBar(abc, voice, index, slice);
@@ -1864,6 +1897,9 @@
     }
     if (command.op === "add-beat") {
       return addBeat(abc, voice, command.index | 0, command.slice | 0, command);
+    }
+    if (command.op === "insert-bar") {
+      return insertBar(abc, voice, command.index | 0, command.slice | 0, command);
     }
     if (command.op === "delete-bar") {
       return deleteBar(abc, voice, command.index | 0, command.slice | 0, command);
@@ -5320,10 +5356,9 @@
         { label: m("jpDownbeat"), title: m("jpDownbeatTitle"), attrs: { act: "downbeat" } },
         { label: m("jpJoin"), title: m("jpJoinTitle"), attrs: { act: "join" } },
         { label: m("jpAddBeat"), title: m("jpAddBeatTitle"), attrs: { act: "add-beat" } },
+        { label: m("jpInsertBar"), title: m("jpInsertBarTitle"), attrs: { act: "insert-bar" } },
         { label: m("jpDeleteBar"), title: m("jpDeleteBarTitle"), attrs: { act: "delete-bar" } },
         { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
-        { label: m("jpInsert"), title: m("jpInsertTitle"), attrs: { act: "insert" } },
-        { label: m("jpDelete"), title: m("jpDeleteTitle"), attrs: { act: "delete" } },
       ],
     ];
     const lyricGroups = [
@@ -5479,9 +5514,9 @@
     if (act === "octave") return { op: "octave", delta: Number(button.getAttribute("data-delta")) };
     if (act === "accidental") return { op: "accidental", kind: button.getAttribute("data-kind") };
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
-    if (act === "tie" || act === "sustain" || act === "insert" || act === "delete"
+    if (act === "tie" || act === "sustain"
         || act === "downbeat" || act === "reflow" || act === "join"
-        || act === "add-beat" || act === "delete-bar") return { op: act };
+        || act === "add-beat" || act === "insert-bar" || act === "delete-bar") return { op: act };
     return null;
   }
 

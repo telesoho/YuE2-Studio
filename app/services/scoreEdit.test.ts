@@ -1194,4 +1194,94 @@ c B A G|
     expect(body).toContain('w:end');
     expect(removed.index).toBe(4);
   });
+
+  it('inserts an empty bar after the selected bar in both voices', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+"C"C D E F|"G"G A B c|
+w: do re mi fa so la ti do
+V: Ins
+C D E F|G A B c|
+`;
+    const inserted = editor.editScore(score, { op: 'insert-bar', index: 1, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(inserted.error).toBeFalsy();
+    const body = inserted.abc.replace(/\s+/g, '');
+    expect(body).toContain('M:4/4');
+    expect(body).not.toContain('M:5/4');
+    expect(body).toContain('"C"CDEF|z4|"G"GABc|');
+    expect(body).toContain('CDEF|z4|GABc|');
+    expect(body).toContain('w:doremifasolatido');
+    expect(inserted.index).toBe(4);
+  });
+
+  it('breaks a tie that crossed the inserted bar', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E-|F G A|
+V: Ins
+C D E-|F G A|
+`;
+    const inserted = editor.editScore(score, { op: 'insert-bar', index: 1, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(inserted.error).toBeFalsy();
+    const body = inserted.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDE|z3|FGA|');
+    expect(body).not.toContain('E-');
+    expect(inserted.index).toBe(3);
+  });
+
+  it('appends an empty bar after the last bar', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|G A B c|
+V: Ins
+C D E F|G A B c|
+`;
+    const inserted = editor.editScore(score, { op: 'insert-bar', index: 5, voice: 'Ins', minBars: 1, maxBars: 4 });
+    expect(inserted.error).toBeFalsy();
+    const body = inserted.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDEF|GABc|z4|');
+    expect(inserted.index).toBe(8);
+  });
+
+  it('splits a bar rest the score unit cannot write as one token', () => {
+    const score = `X:1
+T:
+M:5/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F G|
+V: Ins
+C D E F G|
+`;
+    const inserted = editor.editScore(score, { op: 'insert-bar', index: 2, voice: 'Vocal' });
+    expect(inserted.error).toBeFalsy();
+    const body = inserted.abc.replace(/\s+/g, '');
+    expect(body).toContain('CDEFG|z4z|');
+    expect(inserted.index).toBe(5);
+  });
 });
