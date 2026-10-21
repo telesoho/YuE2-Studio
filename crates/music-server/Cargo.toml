@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+# Dub Studio's vocal separator: Mel-Band RoFormer through BSRoFormer.cpp.
+dub-sep = { git = "https://github.com/timoncool/dub-studio", rev = "b8581e3555c2cab047b1b5d4418a7ec2f9c3095c" }
 # "today" and dates the agent names, in this computer's time zone.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The folder picker for "use models I already have", the same crate Dub Studio uses.
@@ -44,14 +46,14 @@ sha2.workspace = true
 symphonia.workspace = true
 sysinfo.workspace = true
 # Studio Hub: anonymous statistics and the news feed (telemetry only after the start screen showed its choice).
-studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "531327a64882580bd44f8e173908be0a046c7adc" }
+studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "365c2b757bfddd45fff67e7264b41f4f961a0032" }
 ort.workspace = true
 realfft = "3.5"
 regex = "1"
 encoding_rs = "0.8"
 unicode-normalization-alignments = "0.1.12"
 tempfile = "3"
-parakeet-rs.workspace = true
+dub-tcpp.workspace = true
 rusqlite.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
@@ -59,6 +61,8 @@ tower-http.workspace = true
 tower = { version = "0.5", features = ["util"] }
 uuid.workspace = true
 zip.workspace = true
+tar.workspace = true
+lzma-rust2.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
@@ -72,3 +76,4 @@ windows = { version = "0.58", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "0.58"
+windows-sys.workspace = true

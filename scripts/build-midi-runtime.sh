@@ -16,9 +16,14 @@ if [ ! -d "$worktree/.git" ]; then
 fi
 git -C "$worktree" fetch --quiet origin "$commit" || git -C "$worktree" fetch --quiet origin
 git -C "$worktree" checkout --quiet "$commit"
-git -C "$worktree" submodule update --init --recursive
+# ggml whole; of the VST3 SDK only what the engine's hosting library compiles -
+# its documentation and examples are submodules that do not always resolve
+git -C "$worktree" submodule update --init --recursive engine/ggml
+git -C "$worktree" submodule update --init engine/vendor/vst3sdk
+git -C "$worktree/engine/vendor/vst3sdk" submodule update --init base pluginterfaces public.sdk
 
 cmake -S "$worktree/engine" -B "$worktree/engine/build" -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH=@executable_path \
     -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
 cmake --build "$worktree/engine/build" --config Release --target ace-midi \
     -j "$(getconf _NPROCESSORS_ONLN)"
@@ -26,4 +31,13 @@ cmake --build "$worktree/engine/build" --config Release --target ace-midi \
 mkdir -p "$output"
 cp "$worktree/engine/build/ace-midi" "$output/music-midi"
 cp -a "$worktree"/engine/build/*.dylib "$output/"
+# the binaries look for their dylibs beside themselves: an absolute build-machine path would only resolve on the runner
+for binary in "$output"/*; do
+    [ -f "$binary" ] && [ ! -L "$binary" ] || continue
+    if otool -l "$binary" | grep -A2 LC_RPATH | grep -q ' path /'; then
+        echo "[ERROR] $binary keeps an absolute rpath:" >&2
+        otool -l "$binary" | grep -A2 LC_RPATH >&2
+        exit 1
+    fi
+done
 echo "music-midi ($commit) built into $output"

@@ -136,6 +136,9 @@ export interface YueRequest {
   /** With a supplied score, each section's words wait until the score reaches it; on unless false. */
   lyric_timing?: boolean;
   vocals_only?: boolean;
+  /** Seconds the studio fades the made song in and out over. */
+  fade_in?: number;
+  fade_out?: number;
   cot?: YueCot;
   /** Target length; the model may end the song earlier. */
   duration_seconds?: number;

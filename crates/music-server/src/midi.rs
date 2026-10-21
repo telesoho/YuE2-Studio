@@ -40,16 +40,14 @@ fn tool_folder() -> &'static str {
     FOLDER.get_or_init(|| leak(source().release_tag.clone()))
 }
 
-/// The transcriber that ships inside the macOS app bundle
-/// (`Contents/Resources/resources/music-midi/music-midi`); the downloadable
+/// The transcriber that ships inside the macOS app bundle and the Linux
+/// packages, in `resources/music-midi` beside the engine; the downloadable
 /// archive is a Windows build.
 fn bundled_tool() -> Option<PathBuf> {
-    if !cfg!(target_os = "macos") {
+    if cfg!(windows) {
         return None;
     }
-    let executable = std::env::current_exe().ok()?;
-    let contents = executable.parent()?.parent()?;
-    let tool = contents.join("Resources").join("resources").join(TOOL_FOLDER).join(TOOL_FOLDER);
+    let tool = crate::engine_bundle_root().parent()?.join(TOOL_FOLDER).join(TOOL_FOLDER);
     tool.is_file().then_some(tool)
 }
 
@@ -139,7 +137,7 @@ pub struct Transcriber {
 
 impl Transcriber {
     pub fn new(data_root: &Path) -> Self {
-        Self { downloader: Downloader::new(data_root.join("midi")) }
+        Self { downloader: Downloader::with_runtimes(data_root.join("midi"), crate::training::tools_root(data_root)) }
     }
 
     pub fn downloader(&self) -> &Downloader {
@@ -154,19 +152,9 @@ impl Transcriber {
             .unwrap_or_else(|| self.downloader.runtime_dir(tool_folder()).join(&source().shipped_as))
     }
 
-    /// The transcribers of earlier releases beside the current one; nothing runs them any more.
+    /// The transcribers of earlier releases; nothing runs them any more.
     pub fn remove_older_tools(&self) {
-        let current = self.downloader.runtime_dir(tool_folder());
-        let Some(runtime) = current.parent() else { return };
-        let Ok(entries) = std::fs::read_dir(runtime) else { return };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(TOOL_FOLDER) && entry.path() != current && entry.path().is_dir() {
-                if let Err(error) = std::fs::remove_dir_all(entry.path()) {
-                    eprintln!("[ERROR] could not remove the older transcriber {}: {error}", entry.path().display());
-                }
-            }
-        }
+        crate::training::remove_older_tool_folders(&self.downloader, tool_folder(), TOOL_FOLDER);
     }
 
     pub fn tool_installed(&self) -> bool {
@@ -243,6 +231,20 @@ pub struct Run {
     pub error: Option<String>,
     /// The MIDI file on this computer, once written.
     pub file: Option<String>,
+    /// The set this track belongs to, when several were asked for at once.
+    pub batch: Option<Batch>,
+}
+
+/// Several library tracks turned into MIDI one after another.
+#[derive(Debug, Clone, Serialize)]
+pub struct Batch {
+    /// How many of the set are finished, made or failed.
+    pub done: usize,
+    pub total: usize,
+    /// The tracks still waiting, in order.
+    pub queued: Vec<String>,
+    /// Each track that failed, by its title, with the reason.
+    pub failed: Vec<String>,
 }
 
 impl Run {

@@ -8,6 +8,9 @@ use std::{process::Command, sync::OnceLock};
 use serde::Serialize;
 use sysinfo::System;
 
+/// Bytes in the gigabyte memory is counted in: a "32 GB" computer has 32 × 2³⁰ bytes, not 32 × 10⁹.
+const GIB: f64 = (1u64 << 30) as f64;
+
 /// The set a clean install selects when no card fits any set: the lightest,
 /// so the model manager still names a concrete local target.
 const FALLBACK_PROFILE: &str = "light";
@@ -24,6 +27,12 @@ pub struct Hardware {
     /// The CUDA build of the engine this card and its driver run, none when
     /// neither does: such a card computes on Vulkan.
     pub cuda: Option<CudaBuild>,
+    /// Whether the card and its driver run CUDA at all - what the ONNX Runtime's
+    /// CUDA build needs - whichever build of the engine this platform ships.
+    pub runs_cuda: bool,
+    /// The CUDA build the card and its driver run, on every platform: what a trainer or a recogniser built for this
+    /// machine needs, whatever the engine computes on.
+    pub card_cuda: Option<CudaBuild>,
     /// The NVIDIA card's compute capability, `[7, 5]` for Turing.
     pub compute_capability: Option<(u32, u32)>,
     /// The model set id that fits this card, none when no set does.
@@ -91,7 +100,7 @@ fn probe() -> &'static Hardware {
     HARDWARE.get_or_init(|| {
         let mut system = System::new();
         system.refresh_memory();
-        let total_ram_gb = system.total_memory() as f64 / 1_000_000_000.0;
+        let total_ram_gb = system.total_memory() as f64 / GIB;
         let (gpu_name, total_vram_gb, nvidia) = match nvidia_smi() {
             Some((name, vram)) => (Some(name), vram, true),
             None => match display_adapter() {
@@ -102,7 +111,9 @@ fn probe() -> &'static Hardware {
         let device = if nvidia { nvidia_cuda_device() } else { None };
         // The CUDA builds of the engine and their cuBLAS ship for Windows only; the Linux package
         // carries the Vulkan engine and the macOS one Metal, whatever the card.
+        let runs_cuda = device.and_then(|(compute, driver)| cuda_build(compute, driver)).is_some();
         let cuda = if cfg!(windows) { device.and_then(|(compute, driver)| cuda_build(compute, driver)) } else { None };
+        let card_cuda = device.and_then(|(compute, driver)| cuda_build(compute, driver));
         let compute_capability = device.map(|(compute, _)| compute);
         Hardware {
             gpu_name,
@@ -110,6 +121,8 @@ fn probe() -> &'static Hardware {
             total_ram_gb,
             nvidia,
             cuda,
+            runs_cuda,
+            card_cuda,
             compute_capability,
             recommended: profile_for_machine(total_vram_gb, total_ram_gb, crate::model_manager::profile_weights_bytes),
         }
@@ -146,7 +159,7 @@ pub fn ram_needed_gb(profile: &str, weights_bytes: u64, total_vram_gb: f64) -> f
     if on_card {
         SYSTEM_RAM_GB + LOADING_RAM_GB
     } else {
-        weights_bytes as f64 / 1_000_000_000.0 + WORK_RAM_GB + SYSTEM_RAM_GB
+        weights_bytes as f64 / GIB + WORK_RAM_GB + SYSTEM_RAM_GB
     }
 }
 
@@ -264,7 +277,7 @@ fn display_adapter() -> Option<(String, f64)> {
     let ram = quiet("sysctl").args(["-n", "hw.memsize"]).output().ok().and_then(|output| {
         std::str::from_utf8(&output.stdout).ok().and_then(|value| value.trim().parse::<u64>().ok())
     })?;
-    Some((chip, ram as f64 / 1_000_000_000.0))
+    Some((chip, ram as f64 / GIB))
 }
 
 /// The chip name from `system_profiler -json SPDisplaysDataType`: the value of
@@ -435,7 +448,7 @@ mod tests {
     fn a_set_the_card_holds_needs_the_system_and_loading_memory_only() {
         assert_eq!(ram_needed_gb("quality-q8", weights("quality-q8"), 12.0), 6.0);
         let light_in_memory = ram_needed_gb("light", weights("light"), 0.0);
-        assert!((9.0..9.5).contains(&light_in_memory), "{light_in_memory}");
+        assert!((8.5..9.0).contains(&light_in_memory), "{light_in_memory}");
         assert!(profile_for_machine(8.0, 5.0, weights).is_none());
     }
 

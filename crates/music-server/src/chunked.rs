@@ -135,14 +135,20 @@ pub async fn probe(http: &reqwest::Client, url: &str) -> Result<Plan> {
     for attempt in 0..RETRIES {
         match probe_once(http, url).await {
             Ok(plan) => return Ok(plan),
-            Err(error) => last = error.to_string(),
+            Err(error) if error.is::<Refused>() => return Err(error),
+            Err(error) => last = format!("{error:#}"),
         }
         // Hugging Face answers 429 when it has had enough for the moment, and
         // a busy hour is not a broken download. Without this the whole install
         // died on the first refusal, with nothing to retry it.
         tokio::time::sleep(std::time::Duration::from_millis(500 << attempt.min(7))).await;
     }
-    Err(anyhow!("could not start {url} after {RETRIES} attempts: {last}"))
+    let mirror = if url.contains("://huggingface.co/") {
+        ". Hugging Face did not answer from this network: Settings - Network can take models from the HF-Mirror instead"
+    } else {
+        ""
+    };
+    Err(anyhow!("could not start {url} after {RETRIES} attempts: {last}{mirror}"))
 }
 
 /// Sends one request, waiting out a server that is only busy.
@@ -205,11 +211,26 @@ async fn probe_once(http: &reqwest::Client, url: &str) -> Result<Plan> {
             return Ok(Plan { total, ranged: true });
         }
     }
+    if response.status().is_client_error() {
+        return Err(Refused(format!("{url} answered {}", response.status())).into());
+    }
     if !response.status().is_success() {
         bail!("{url} answered {}", response.status());
     }
     Ok(Plan { total: response.content_length().unwrap_or(0), ranged: false })
 }
+
+/// A server that said no (a 4xx; "too many requests" is waited out in `send`): asking again gets the same answer.
+#[derive(Debug)]
+struct Refused(String);
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Refused {}
 
 /// The offsets already on disk, from the manifest beside the part file.
 fn manifest_path(part: &Path) -> PathBuf {

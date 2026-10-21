@@ -93,6 +93,25 @@ const BITRATES: &[(u32, Bitrate)] = &[
     (32, Bitrate::Kbps32),
 ];
 
+/// Linear fades at both ends, in seconds; zero leaves that end as it is.
+pub fn fade(audio: &mut Stereo, fade_in: f32, fade_out: f32) {
+    let frames = audio.frames();
+    let rate = audio.rate as f32;
+    let fade_in = ((fade_in.max(0.0) * rate) as usize).min(frames);
+    let fade_out = ((fade_out.max(0.0) * rate) as usize).min(frames);
+    for i in 0..fade_in {
+        let gain = i as f32 / fade_in as f32;
+        audio.left[i] *= gain;
+        audio.right[i] *= gain;
+    }
+    for i in 0..fade_out {
+        let gain = i as f32 / fade_out as f32;
+        let at = frames - 1 - i;
+        audio.left[at] *= gain;
+        audio.right[at] *= gain;
+    }
+}
+
 /// The standard rate a requested bitrate becomes: the highest one not above it.
 pub fn mp3_bitrate(kbps: u32) -> u32 {
     BITRATES.iter().find(|(rate, _)| *rate <= kbps).map_or(32, |(rate, _)| *rate)

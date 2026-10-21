@@ -322,11 +322,45 @@ struct TrainerSource {
     asset: String,
     /// Size of the released archive.
     bytes: u64,
+    /// Size of the captioner's archive in the same release.
+    caption_bytes: u64,
 }
 
 fn trainer_source() -> &'static TrainerSource {
     static SOURCE: OnceLock<TrainerSource> = OnceLock::new();
     SOURCE.get_or_init(|| serde_json::from_str(include_str!("../../../engines/music-train-source.json")).expect("engines/music-train-source.json is valid"))
+}
+
+/// Where HOT-Step's tools unpack: the trainer, the captioner and the MIDI
+/// transcriber are one build of one commit and share its ggml, so the training
+/// pack and Audio to MIDI download it once into the same folder.
+pub fn tools_root(data_root: &Path) -> PathBuf {
+    data_root.join("hotstep")
+}
+
+/// The prefix of a tools release's folder.
+pub const TOOLS_FOLDER_PREFIX: &str = "hotstep-tools";
+
+/// Removes the tools folders of earlier releases from the shared root, and
+/// the folders of before the tools were one build (`legacy_prefix` under the
+/// capability's own `runtime`): nothing runs them any more.
+pub fn remove_older_tool_folders(downloader: &Downloader, current_folder: &str, legacy_prefix: &str) {
+    let current = downloader.runtime_dir(current_folder);
+    let sweep = |directory: &Path, prefix: &str| {
+        let Ok(entries) = std::fs::read_dir(directory) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(prefix) && entry.path() != current && entry.path().is_dir() {
+                if let Err(error) = std::fs::remove_dir_all(entry.path()) {
+                    eprintln!("[ERROR] could not remove the older {} {}: {error}", prefix, entry.path().display());
+                }
+            }
+        }
+    };
+    if let Some(shared) = current.parent() {
+        sweep(shared, TOOLS_FOLDER_PREFIX);
+    }
+    sweep(&downloader.root().join("runtime"), legacy_prefix);
 }
 
 /// The folder the trainer archive unpacks into, named by its release: a
@@ -424,7 +458,7 @@ fn listen_pack() -> &'static [Asset] {
                 kind: AssetKind::Runtime,
                 url: leak(format!("https://github.com/timoncool/YuE2-Studio/releases/download/{}/ace-caption-windows-x64.zip", source.release_tag)),
                 relative_path: "ace-caption-windows-x64.zip",
-                bytes: 3_161_266,
+                bytes: source.caption_bytes,
                 unzip_into: Some(trainer_folder()),
                 marker: CAPTIONER,
                 pick: &CAPTIONER_PICK,
@@ -490,7 +524,7 @@ fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> Option<T> {
 impl Training {
     pub fn new(data_root: &Path, engine: &str) -> Self {
         let root = data_root.join("training");
-        Self { downloader: Downloader::new(root.clone()), root, engine: engine.to_string(), active: RwLock::new(None), edits: std::sync::Mutex::new(()) }
+        Self { downloader: Downloader::with_runtimes(root.clone(), tools_root(data_root)), root, engine: engine.to_string(), active: RwLock::new(None), edits: std::sync::Mutex::new(()) }
     }
 
     pub fn downloader(&self) -> &Downloader {
@@ -625,20 +659,9 @@ impl Training {
         Ok(())
     }
 
-    /// The trainers of earlier releases, each in its own folder beside the
-    /// current one; nothing runs them any more.
+    /// The trainers of earlier releases; nothing runs them any more.
     fn remove_older_trainers(&self) {
-        let current = self.downloader.runtime_dir(trainer_folder());
-        let Some(runtime) = current.parent() else { return };
-        let Ok(entries) = std::fs::read_dir(runtime) else { return };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("music-train") && entry.path() != current && entry.path().is_dir() {
-                if let Err(error) = std::fs::remove_dir_all(entry.path()) {
-                    eprintln!("[ERROR] could not remove the older trainer {}: {error}", entry.path().display());
-                }
-            }
-        }
+        remove_older_tool_folders(&self.downloader, trainer_folder(), "music-train");
     }
 
     // ── datasets ────────────────────────────────────────────────────────────
@@ -1225,6 +1248,9 @@ impl Training {
             }
             log.write_all(format!("==== {}\n", stage.id).as_bytes()).await?;
             let mut command = tokio::process::Command::new(trainer);
+            if let Some(path) = music_core::process::own_libraries_first(trainer) {
+                command.env("LD_LIBRARY_PATH", path);
+            }
             command
                 .args(&stage.args)
                 .current_dir(run_dir)
@@ -1656,6 +1682,18 @@ mod import_tests {
         assert!(is_plain_wav_name("01-song.wav"));
         for bad in ["C:evil.wav", "../x.wav", r"a\b.wav", "a/b.wav", ".wav", "song.mp3", ""] {
             assert!(!is_plain_wav_name(bad), "{bad}");
+        }
+    }
+
+    /// The trainer and Audio to MIDI each sweep the shared tools folder of every release but their own: two
+    /// releases would delete each other's folder on every start.
+    #[test]
+    fn the_trainer_and_the_transcriber_are_one_tools_release() {
+        let read = |text: &str| serde_json::from_str::<serde_json::Value>(text).unwrap();
+        let train = read(include_str!("../../../engines/music-train-source.json"));
+        let midi = read(include_str!("../../../engines/music-midi-source.json"));
+        for key in ["commit", "release_tag", "asset", "bytes"] {
+            assert_eq!(train[key], midi[key], "{key}");
         }
     }
 }

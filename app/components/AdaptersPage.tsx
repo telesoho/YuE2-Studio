@@ -1,3 +1,4 @@
+import { NumberField } from './NumberField';
 import { saveFile } from '../services/saveFile';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Check, CheckSquare, ChevronDown, Download, ExternalLink, FolderOpen, Heart, Layers, Loader2, Pencil, Search, Square, Trash2, X } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
   localized,
   megabytes,
   updateAdapter,
+  importAdapterFolder,
 } from '../services/adapters';
 
 /**
@@ -267,7 +269,7 @@ const InstalledCard: React.FC<{
                 <div key={slot} className="mt-2">
                   <div className="flex items-baseline justify-between text-[11px] text-zinc-600 dark:text-zinc-300">
                     <span>{slotLabel(tt, slots, slot)}</span>
-                    <span className="tabular-nums">{(scales[slot] ?? 1).toFixed(2)}</span>
+                    <NumberField value={scales[slot] ?? 1} min={range[0]} max={range[1]} step={0.05} label={slotLabel(tt, slots, slot)} onChange={value => setScales(current => ({ ...current, [slot]: value }))} />
                   </div>
                   <input
                     type="range"
@@ -493,6 +495,33 @@ export function AdaptersPage(): React.ReactElement {
     }
   }, [state]);
 
+  const importFolder = async () => {
+    setImporting(true);
+    setError(null);
+    try {
+      const answer = await importAdapterFolder();
+      if (!answer.picked) return;
+      setTab('installed');
+      const copied = answer.imported.filter(entry => entry.copied).map(entry => entry.name);
+      const taken = answer.imported.filter(entry => !entry.already).length;
+      const already = answer.imported.length - taken;
+      const message = answer.imported.length === 0
+        ? t('adaptersFolderNone')
+        : [
+          taken ? t('adaptersFolderImported').replace('{count}', String(taken)) : '',
+          already ? t('adaptersFolderAlready').replace('{count}', String(already)) : '',
+          copied.length ? t('adaptersFolderCopied').replace('{names}', copied.join(', ')) : '',
+        ].filter(Boolean).join(' ');
+      window.dispatchEvent(new CustomEvent('yue:toast', { detail: { message, type: answer.imported.length ? 'success' : 'info' } }));
+      window.dispatchEvent(new CustomEvent('yue:adapters-changed'));
+      await refresh();
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const importFiles = async (files: File[]) => {
     if (files.length === 0) return;
     setImporting(true);
@@ -624,6 +653,10 @@ export function AdaptersPage(): React.ReactElement {
                 <button type="button" onClick={() => filePicker.current?.click()} disabled={importing} className={`${PRIMARY} shrink-0`}>
                   {importing ? <Loader2 size={14} className="animate-spin" /> : <FolderOpen size={14} />}
                   {importing ? t('adaptersImporting') : t('adaptersImport')}
+                </button>
+                <button type="button" onClick={() => void importFolder()} disabled={importing} className={`${PRIMARY} shrink-0`} title={t('adaptersFolderHint')}>
+                  <FolderOpen size={14} />
+                  {t('adaptersFolder')}
                 </button>
                 <input
                   ref={filePicker}

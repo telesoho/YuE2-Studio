@@ -10,9 +10,11 @@ import { EngineSettings } from './EngineSettings';
 import { SetupGate } from './SetupGate';
 import { CoverTemplateSettings } from './CoverTemplateSettings';
 import { AgentPanel } from './AgentPanel';
+import { FileTagSettings } from './FileTagSettings';
 import { HubSettings } from './HubSettings';
 import { JianpuPublishSettings } from './JianpuPublishSettings';
-import { isDesktop } from '../services/externalLinks';
+import { issueReportUrl, type ReportFacts } from '../services/issueReport';
+import { useSetupStatus } from '../services/studioQueries';
 import { onSidebarExtras, setSidebarExtras, sidebarExtras, type SidebarExtras } from '../services/playerPanels';
 
 /**
@@ -46,6 +48,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
   const { user, setDisplayName } = useAuth();
   const { t, language, setLanguage } = useI18n();
   const [section, setSection] = useState<SectionId>('account');
+  const reportFacts = useSetupStatus<ReportFacts>().data;
   /// A part of the page to open at, after a colon: `models:assistant`.
   const [focus, setFocus] = useState<string | null>(null);
   // Opened from somewhere with a page in mind - the profile line, say.
@@ -82,7 +85,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
     { id: 'covers', label: t('coversSection'), hint: t('coversSectionHint'), icon: <ImageIcon size={16} /> },
     { id: 'jianpu', label: t('jianpuPublishSection'), hint: t('jianpuPublishSectionHint'), icon: <SiGithub size={16} /> },
     { id: 'interface', label: t('appearance'), hint: t('interfaceSectionHint'), icon: <Monitor size={16} /> },
-    { id: 'privacy', label: t('hubTelemetryTitle'), hint: t('hubSettingsHint'), icon: <BarChart3 size={16} /> },
+    { id: 'privacy', label: t('privacySection'), hint: t('privacySectionHint'), icon: <BarChart3 size={16} /> },
     { id: 'about', label: t('about'), hint: t('aboutSectionHint'), icon: <Info size={16} /> },
   ];
 
@@ -160,7 +163,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
             {section === 'engine' && <EngineSettings />}
             {section === 'cloud' && <ProviderSettings />}
             {section === 'agent' && <AgentPanel />}
-            {section === 'privacy' && <HubSettings />}
+            {section === 'privacy' && <div className="space-y-8"><HubSettings /><FileTagSettings /></div>}
 
             {section === 'interface' && (
               <div className="max-w-lg space-y-6">
@@ -214,7 +217,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
 
                 <SidebarExtrasSetting />
 
-                {isDesktop() && <NetworkAccessSetting />}
+                <NetworkAccessSetting />
               </div>
             )}
 
@@ -264,7 +267,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
                     <a href="https://github.com/timoncool/YuE2-Studio" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white dark:bg-zinc-700">
                       <SiGithub size={14} />YuE2 Studio
                     </a>
-                    <a href="https://github.com/timoncool/YuE2-Studio/issues" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:border-zinc-600 dark:text-zinc-200">{t('reportIssues')}</a>
+                    <a href={issueReportUrl('https://github.com/timoncool/YuE2-Studio', __APP_VERSION__, reportFacts)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:border-zinc-600 dark:text-zinc-200">{t('reportIssues')}</a>
                   </div>
                 </div>
               </div>
@@ -334,7 +337,8 @@ const NetworkAccessSetting: React.FC = () => {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
-  if (!status) return null;
+  // the key comes only to the studio's own computer, where the setting is changed
+  if (!status || status.key === null) return null;
   const links = status.key ? status.addresses.map(address => `http://${address}:${status.port}/?key=${status.key}`) : [];
   const restart = status.enabled !== status.listening;
   return (

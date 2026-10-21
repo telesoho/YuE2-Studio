@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useKaraokeStatus } from '../services/studioQueries';
 import { hasSungLines, karaokeReason } from '../services/karaoke';
 import { Song } from '../types';
@@ -16,6 +17,8 @@ import {
     Layers,
     Repeat,
     ListPlus,
+    ListStart,
+    ListEnd,
     Download,
     Trash2,
     Loader2,
@@ -34,6 +37,8 @@ interface SongDropdownMenuProps {
     onClose: () => void;
     position?: 'left' | 'right' | 'center';
     direction?: 'up' | 'down';
+    /** Opened by a right click: the menu stands at the pointer, kept inside the window. */
+    at?: { x: number; y: number };
 }
 
 /** The space between a menu and its button: mt-2 / mb-2. */
@@ -114,6 +119,7 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
     onClose,
     position = 'right',
     direction = 'down',
+    at,
 }) => {
     const { t } = useI18n();
     const { user } = useAuth();
@@ -123,8 +129,22 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
     // Near the bottom of its panel the menu opens upward; when it fits neither
     // way, the panel scrolls it into view instead of hiding it under the edge.
     const [up, setUp] = useState(direction === 'up');
+    const [spot, setSpot] = useState<{ left: number; top: number } | null>(null);
     useLayoutEffect(() => {
         const node = menuRef.current;
+        if (!isOpen || !at || !node) {
+            setSpot(null);
+            return;
+        }
+        const box = node.getBoundingClientRect();
+        setSpot({
+            left: Math.max(MENU_GAP, Math.min(at.x, window.innerWidth - box.width - MENU_GAP)),
+            top: Math.max(MENU_GAP, Math.min(at.y, window.innerHeight - box.height - MENU_GAP)),
+        });
+    }, [isOpen, at]);
+    useLayoutEffect(() => {
+        const node = menuRef.current;
+        if (at) return;
         if (!isOpen) {
             setUp(direction === 'up');
             return;
@@ -151,7 +171,7 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
         const watch = new ResizeObserver(place);
         watch.observe(node);
         return () => watch.disconnect();
-    }, [isOpen, direction]);
+    }, [isOpen, direction, at]);
     const { ready: karaokeReady, busy: karaokeBusy, make: makeKaraoke, failed: karaokeFailed } = useKaraoke(song, actions.update);
 
     useEffect(() => {
@@ -216,13 +236,16 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
         ? 'animate-in fade-in slide-in-from-bottom-2'
         : 'animate-in fade-in slide-in-from-top-2';
 
-    return (
+    const menu = (
         <div
             ref={menuRef}
-            className={`absolute ${positionClasses} ${directionClasses} w-52
-                bg-zinc-900 rounded-xl shadow-2xl border border-white/10 py-1.5 z-50
+            role="menu"
+            className={`${at ? 'fixed z-200 transition-none' : `absolute ${positionClasses} ${directionClasses} z-50`} w-52
+                bg-zinc-900 rounded-xl shadow-2xl border border-white/10 py-1.5
                 ${animationClasses} duration-150`}
+            style={at ? { left: spot?.left ?? at.x, top: spot?.top ?? at.y, visibility: spot ? 'visible' : 'hidden' } : undefined}
             onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
         >
             {/* Creative Actions */}
             {isOwner && (
@@ -278,6 +301,13 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
                     onClick={() => handleAction(() => actions.reusePrompt?.(song))}
                 />
             )}
+            {actions.reusePrompt && typeof (song.generationParams as Record<string, unknown> | undefined)?.abc === 'string' && (
+                <MenuItem
+                    icon={<Repeat size={14} />}
+                    label={t('resingNewLyrics' as never)}
+                    onClick={() => handleAction(() => window.dispatchEvent(new CustomEvent('yue:resing', { detail: { song } })))}
+                />
+            )}
             {actions.replay && song.nativeReplayAvailable && (
                 <MenuItem
                     icon={<Repeat size={14} />}
@@ -303,6 +333,22 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
             <MenuDivider />
 
             {/* Library Actions */}
+            {actions.queue && (
+                <>
+                    <MenuItem
+                        icon={<ListStart size={14} />}
+                        label={t('playNextMenu')}
+                        onClick={() => handleAction(() => actions.queue?.([song], true))}
+                        disabled={!song.audioUrl || song.isGenerating}
+                    />
+                    <MenuItem
+                        icon={<ListEnd size={14} />}
+                        label={t('addToQueueMenu')}
+                        onClick={() => handleAction(() => actions.queue?.([song], false))}
+                        disabled={!song.audioUrl || song.isGenerating}
+                    />
+                </>
+            )}
             <MenuItem
                 icon={<ListPlus size={14} />}
                 label={t('addToPlaylist')}
@@ -328,4 +374,6 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
             )}
         </div>
     );
+    // a menu at the pointer lives on the page itself, out of any scrolled or transformed panel
+    return at ? createPortal(menu, document.body) : menu;
 };

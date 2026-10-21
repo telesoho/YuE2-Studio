@@ -38,7 +38,9 @@ pub enum Found {
 const LENGTH_SLACK: f64 = 10.0;
 /// How many sources a song is asked of.
 pub const SOURCES: usize = 3;
-const USER_AGENT: &str = concat!("YuE2-Studio/", env!("CARGO_PKG_VERSION"), " (https://github.com/timoncool/YuE2-Studio)");
+fn user_agent() -> String {
+    format!("YuE2-Studio/{} (https://github.com/timoncool/YuE2-Studio)", crate::studio_version())
+}
 const BROWSER: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 
 /// One candidate a provider offered.
@@ -94,8 +96,8 @@ impl Sources {
             let list: Value = send(self
                 .http
                 .get("https://lrclib.net/api/search")
-                .header("User-Agent", USER_AGENT)
-                .header("Lrclib-Client", USER_AGENT)
+                .header("User-Agent", user_agent())
+                .header("Lrclib-Client", user_agent())
                 .query(&[("track_name", title.as_str()), ("artist_name", artist.as_str())])).await?                .error_for_status()?
                 .json()
                 .await?;

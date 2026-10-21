@@ -3,7 +3,7 @@ import { libraryChanged, useActivity, useAssistantStatus, useSetupStatus, type A
 import { hasSungLines, karaokeReason } from '../services/karaoke';
 import {
   AlertTriangle, AudioLines, ChevronDown, CircleAlert, Dices, Ear, Eye, EyeOff, FileMusic, FolderOpen, Loader2,
-  Grid2x2, ListChecks, Music2, Pause, Piano, Play, RotateCcw, Save, Sparkles, Square, Tags, Upload, Wand2, Settings2, X,
+  Grid2x2, Guitar, ListChecks, Music2, Pause, Piano, Play, RotateCcw, Save, Sparkles, Square, Tags, Upload, Wand2, Settings2, X,
 } from 'lucide-react';
 import { AudioWaveform } from './AudioWaveform';
 import type { Playlist, Song, YueCot, YueHarmony, YueOutputFormat, YueRequest, YueSampling } from '../types';
@@ -18,18 +18,22 @@ import { MidiImportDialog } from './MidiImportDialog';
 import { isMidiFile } from '../services/midiFiles';
 import { trackMidiBase64 } from '../services/midiEditor';
 import { composePlans, composeScore, transcribe, type ScorePlan } from '../services/transcription';
-import { chordBed, failed, matchSections, type SectionProposal } from '../services/scoreApi';
+import { chordBed, failed, instrumentalScore, matchSections, type SectionProposal } from '../services/scoreApi';
+import { sectionTagsOnly } from '../services/instrumental';
+import { lyricSyllables, syllableChangesOf, type SyllableChange } from '../services/syllables';
 import { profileLabel as setLabel } from '../services/modelCatalog';
 import { REQUEST_FILE_ACCEPT, parseRequestFile, requestFileTitle, serializeRequest, type RequestFileFormat } from '../services/requestFile';
 import { AdapterPicker } from './AdapterPicker';
 import { CreatePlaylistModal } from './PlaylistModals';
 import { SlideToEnable } from './SlideToEnable';
-import { usesFromSettings, type AdapterUse } from '../services/adapters';
+import { fetchAdapters, installCatalogAdapters, startingScales, usesFromSettings, type AdapterUse } from '../services/adapters';
 import { engineParityLabels, planLabels } from '../i18n/engineParity';
 import { midiImportOptions } from '../i18n/midiImportOptions';
 import { SongTextParts } from './SongTextParts';
 import { writerInstruction } from '../services/songWriting';
 import { songWritingStrings } from '../i18n/songWriting';
+import { NumberField } from './NumberField';
+import { explainCliFailure } from '../services/cliFailure';
 
 /**
  * The YuE2 request form.
@@ -48,6 +52,7 @@ import { songWritingStrings } from '../i18n/songWriting';
 export type CreateRequest =
   | { id: number; kind: 'transcribe'; song: Song; melodyOnly: boolean }
   | { id: number; kind: 'midi'; song: Song }
+  | { id: number; kind: 'resing'; song: Song }
   | { id: number; kind: 'score'; abc: string; cot?: YueCot; lyrics?: string; title?: string; edit?: boolean };
 
 interface CreatePanelProps {
@@ -99,12 +104,30 @@ const SEMANTIC_CODES_PER_SECOND = 25;
 const MAX_DURATION_SECONDS = 600;
 /** A new prompt's ceiling: 2:10. Examples and prompt files keep their own. */
 const DEFAULT_DURATION_SECONDS = 130;
+/** The file format last chosen by hand, kept between sessions like the duration. */
+/** The words of the form (name, style, lyrics), kept across restarts until Reset clears them. */
+const DRAFT_KEY = 'studio.createDraft';
+function keptDraft(): Record<string, string> {
+  try {
+    const kept: unknown = JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? '{}');
+    return kept && typeof kept === 'object' ? (kept as Record<string, string>) : {};
+  } catch { return {}; }
+}
+
+const keptFormat = (): YueOutputFormat => {
+  try {
+    const kept = window.localStorage.getItem('studio.createFormat');
+    return kept === 'mp3' || kept === 'wav32' ? kept : 'flac';
+  } catch { return 'flac'; }
+};
 const SAMPLING_KEYS: (keyof YueSampling)[] = ['temperature', 'top_p', 'top_k', 'repetition_penalty', 'penalty_window', 'min_tokens', 'max_tokens'];
 /** A quoted chord symbol in ABC: "Am", "F/C", "G7". */
 const CHORD_SYMBOL = /"[^"\n]+"/;
 const CHORD_SYMBOLS = /"[^"\n]+"/g;
 const BED_KEYS = ['C', 'G', 'D', 'A', 'E', 'B', 'F#', 'Db', 'Ab', 'Eb', 'Bb', 'F', 'Am', 'Em', 'Bm', 'F#m', 'C#m', 'G#m', 'Ebm', 'Bbm', 'Fm', 'Cm', 'Gm', 'Dm'];
 const BED_METERS = ['4/4', '3/4', '6/8', '2/4'];
+/** The catalogue LoRA an instrumental takes along. */
+const INSTRUMENTAL_LORA = 'yue2-instrumental';
 const SECTION_TAGS = ['[Intro]', '[Verse 1]', '[Pre-Chorus]', '[Chorus]', '[Verse 2]', '[Bridge]', '[Instrumental Break]', '[Outro]'];
 
 const PROFILE_LABEL: Record<string, string> = {
@@ -225,8 +248,8 @@ const SliderRow: React.FC<{
     <div className={disabled ? 'opacity-50' : undefined}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{label}</span>
-        <span className="text-[11px] tabular-nums text-zinc-600 dark:text-zinc-300">
-          {format ? format(shown) : `${shown.toFixed(decimals)}${suffix ?? ''}`}
+        <span className="flex items-center text-[11px] tabular-nums text-zinc-600 dark:text-zinc-300">
+          <NumberField value={shown} min={min} max={max} step={step} label={label} disabled={disabled} format={format ?? (number => `${number.toFixed(decimals)}${suffix ?? ''}`)} onChange={number => onChange(String(number))} />
           {value.trim() === '' && <span className="ml-1 text-zinc-400" title="engine default">·</span>}
         </span>
       </div>
@@ -310,9 +333,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const writingText = songWritingStrings[language];
   const tt = t as unknown as (key: string) => string;
 
-  const [name, setName] = useState('');
-  const [style, setStyle] = useState('');
-  const [lyrics, setLyrics] = useState('');
+  const [name, setName] = useState(() => keptDraft().name ?? '');
+  const [style, setStyle] = useState(() => keptDraft().style ?? '');
+  const [lyrics, setLyrics] = useState(() => keptDraft().lyrics ?? '');
+  useEffect(() => {
+    try { window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ name, style, lyrics })); } catch { /* kept until a reload */ }
+  }, [name, style, lyrics]);
   const [abc, setAbc] = useState('');
   const [cot, setCot] = useState<YueCot | ''>('');
   const [showNotation, setShowNotation] = useState(true);
@@ -347,12 +373,18 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const harmonyField = (key: keyof HarmonyText) => (value: string) => setHarmony(current => ({ ...current, [key]: key === 'follow_lyrics' ? value === 'true' : value }));
   const [transpose, setTranspose] = useState('0');
   const [vocalsOnly, setVocalsOnly] = useState(false);
+  const [fadeIn, setFadeIn] = useState('');
+  const [fadeOut, setFadeOut] = useState('');
   const [lyricTiming, setLyricTiming] = useState(true);
   // the decoder companion: auto leaves it to the service (on only under a LoRA trained in the studio)
   const [realaudio, setRealaudio] = useState<'auto' | 'on' | 'off'>('auto');
   // The engine default of 128 kbps throws away what the VAE produced.
   const [mp3Bitrate, setMp3Bitrate] = useState('320');
-  const [format, setFormat] = useState<YueOutputFormat>('flac');
+  const [format, setFormat] = useState<YueOutputFormat>(keptFormat);
+  const chooseFormat = (value: YueOutputFormat) => {
+    setFormat(value);
+    try { window.localStorage.setItem('studio.createFormat', value); } catch { /* kept until a reload */ }
+  };
 
   const setupQuery = useSetupStatus<SetupStatus>();
   const setup = setupQuery.isError ? null : setupQuery.data ?? null;
@@ -487,6 +519,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
   /** Fills the form from a stored request: a reused track, a file, an example. */
   const applyRequest = useCallback((request: Record<string, unknown>, title?: string) => {
+    setResingFrom(null);
+    instrumentalChange.current = null;
     if (title !== undefined) setName(title);
     if (typeof request.style === 'string') setStyle(request.style);
     if (typeof request.lyrics === 'string') setLyrics(request.lyrics);
@@ -512,6 +546,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
     setContinueScore(request.abc_continue === true);
     setTranspose(asText(request.transpose) || '0');
     setVocalsOnly(request.vocals_only === true);
+    setFadeIn(request.fade_in ? asText(request.fade_in) : '');
+    setFadeOut(request.fade_out ? asText(request.fade_out) : '');
     setLyricTiming(request.lyric_timing !== false);
     setRealaudio(request.companion_scale === undefined ? 'auto' : request.companion_scale === 0 ? 'off' : 'on');
     if (request.mp3_bitrate !== undefined) setMp3Bitrate(asText(request.mp3_bitrate));
@@ -554,6 +590,16 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       if (song.lyrics?.trim()) setLyrics(current => (current.trim() ? current : song.lyrics));
       setMode('cover');
       void runTranscription({ songId: song.id }, melodyOnly);
+    } else if (request.kind === 'resing') {
+      // the song again with other words: its score and seeds stay, its sung take goes, as the take would
+      // sing the old words whatever the lyrics say
+      const { song } = request;
+      const settings = (song.generationParams ?? {}) as Record<string, unknown>;
+      applyRequest({ style: song.style, lyrics: song.lyrics, ...settings }, song.title || '');
+      setAdapters(usesFromSettings(settings));
+      setSemanticTokens('');
+      setMode('studio');
+      setResingFrom({ title: song.title, lyrics: song.lyrics ?? '' });
     } else if (request.kind === 'midi') {
       // a track made or edited in the MIDI editor: its MIDI becomes the score,
       // through the MIDI import, where the voice's part is chosen
@@ -586,19 +632,24 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   }, [request]);
 
   const reset = () => {
+    setResingFrom(null);
+    instrumentalChange.current = null;
     setName(''); setStyle(''); setLyrics(''); setAbc(''); setCot(''); setContinueScore(false);
     setPlans([]); setSelectedPlan(0);
-    resetParameters();
+    resetParameters(true);
     setCoverPrompt('');
     setAdapters([]);
     setError(null);
   };
 
-  const resetParameters = () => {
-    chooseDuration(String(DEFAULT_DURATION_SECONDS)); setLmBatch(''); setSynthBatch(''); setSteps(''); setSolver(''); setCfgScale('');
+  /** The settings back to their defaults; `keepChoices` (a new prompt) leaves the length and the file format the
+   *  user keeps for every song. */
+  const resetParameters = (keepChoices = false) => {
+    if (!keepChoices) { chooseDuration(String(DEFAULT_DURATION_SECONDS)); chooseFormat('flac'); }
+    setLmBatch(''); setSynthBatch(''); setSteps(''); setSolver(''); setCfgScale('');
     setRandomizeSeed(true); setLmSeed(''); setSeed(''); setSemanticTokens('');
     setAbcSampling(emptySampling()); setSemanticSampling(emptySampling()); setHarmony(emptyHarmony());
-    setMp3Bitrate('320'); setFormat('flac');
+    setMp3Bitrate('320');
     setTranspose('0'); setVocalsOnly(false); setLyricTiming(true); setRealaudio('auto');
   };
 
@@ -621,6 +672,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
     if (abc.trim() && effectiveCot !== 'off' && !lyricTiming) request.lyric_timing = false;
     if (realaudio !== 'auto') request.companion_scale = realaudio === 'on' ? 1 : 0;
     if (vocalsOnly) request.vocals_only = true;
+    const fadeInValue = numberOrUndefined(fadeIn);
+    if (fadeInValue !== undefined && fadeInValue > 0) request.fade_in = fadeInValue;
+    const fadeOutValue = numberOrUndefined(fadeOut);
+    if (fadeOutValue !== undefined && fadeOutValue > 0) request.fade_out = fadeOutValue;
     if (cot) request.cot = cot;
     const durationValue = numberOrUndefined(duration);
     if (durationValue !== undefined) request.duration_seconds = Math.min(Math.max(durationValue, 1), MAX_DURATION_SECONDS);
@@ -853,7 +908,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       }
     } catch (reason) {
       const cancelled = reason instanceof DOMException && reason.name === 'AbortError';
-      if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
+      if (!cancelled) setError(explainCliFailure(reason instanceof Error ? reason.message : String(reason), t));
     } finally {
       assistRun.current = null;
       setAssisting(null);
@@ -882,7 +937,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       setLyrics(body.lyrics);
     } catch (reason) {
       const cancelled = reason instanceof DOMException && reason.name === 'AbortError';
-      if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
+      if (!cancelled) setError(explainCliFailure(reason instanceof Error ? reason.message : String(reason), t));
     } finally {
       assistRun.current = null;
       setAssisting(null);
@@ -918,10 +973,86 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   // snapshot, so editing the form meanwhile does not change the next songs.
   const [forever, setForever] = useState(false);
   const foreverRequest = useRef<YueRequest | null>(null);
+  // the voice of the score becomes rests before anything is sung, so the model plays without singing
+  const [instrumental, setInstrumental] = useState(false);
+  // the model was trained to sing: the Instrumental LoRA is what keeps it from it, so the switch takes it along
+  const [instrumentalLoraLoading, setInstrumentalLoraLoading] = useState(false);
+  // the latest press of the switch: a LoRA download outlives a click, and only the latest press acts on its result
+  const instrumentalRun = useRef(0);
+  useEffect(() => () => { instrumentalRun.current += 1; }, []);
+  // what the switch did to the form's LoRAs, so switching it off undoes that and nothing the user chose
+  const instrumentalChange = useRef<{ id: string; added: boolean } | null>(null);
+  // the song being sung again with new words, and the sung lines whose syllable counts left the old ones
+  const [resingFrom, setResingFrom] = useState<{ title: string; lyrics: string } | null>(null);
+  const [syllableChanges, setSyllableChanges] = useState<SyllableChange[]>([]);
+  useEffect(() => {
+    if (!resingFrom) { setSyllableChanges([]); return; }
+    const timer = window.setTimeout(() => {
+      void Promise.all([lyricSyllables(resingFrom.lyrics), lyricSyllables(lyrics)])
+        .then(([before, after]) => setSyllableChanges(syllableChangesOf(before, after)))
+        .catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [resingFrom, lyrics]);
+  const switchInstrumental = async (on: boolean) => {
+    setInstrumental(on);
+    const run = ++instrumentalRun.current;
+    const latest = () => instrumentalRun.current === run;
+    if (!on) {
+      setInstrumentalLoraLoading(false);
+      const change = instrumentalChange.current;
+      instrumentalChange.current = null;
+      if (change) {
+        setAdapters(current => change.added
+          ? current.filter(use => use.id !== change.id)
+          : current.map(use => (use.id === change.id ? { ...use, disabled: true } : use)));
+      }
+      return;
+    }
+    try {
+      const installed = async () => {
+        const state = await fetchAdapters();
+        return { state, lora: state.installed.find(adapter => adapter.origin.catalog_id === INSTRUMENTAL_LORA && !adapter.error) };
+      };
+      let { state, lora } = await installed();
+      if (!lora) {
+        setInstrumentalLoraLoading(true);
+        // a download an earlier press started is waited for, not asked for again
+        if (!state.installing.includes(INSTRUMENTAL_LORA)) await installCatalogAdapters([INSTRUMENTAL_LORA]);
+        for (;;) {
+          await new Promise(resolve => window.setTimeout(resolve, 1000));
+          if (!latest()) return;
+          ({ state, lora } = await installed());
+          if (lora) break;
+          if (state.download?.error) throw new Error(state.download.error);
+          if (!state.installing.includes(INSTRUMENTAL_LORA) && !state.download) throw new Error(tt('instrumentalLoraFailed'));
+        }
+        window.dispatchEvent(new CustomEvent('yue:adapters-changed'));
+      }
+      if (!latest()) return;
+      const chosen = lora;
+      setAdapters(current => {
+        const present = current.find(use => use.id === chosen.id);
+        if (present && !present.disabled) return current;
+        instrumentalChange.current = { id: chosen.id, added: !present };
+        return present
+          ? current.map(use => (use.id === chosen.id ? { ...use, disabled: false } : use))
+          : [...current, { id: chosen.id, scales: startingScales(chosen, state.slots) }];
+      });
+    } catch (reason) {
+      if (latest()) setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      if (latest()) setInstrumentalLoraLoading(false);
+    }
+  };
   useEffect(() => {
     const stop = () => setForever(false);
     window.addEventListener('yue:cancel-all', stop);
-    return () => window.removeEventListener('yue:cancel-all', stop);
+    window.addEventListener('yue:generation-failed', stop);
+    return () => {
+      window.removeEventListener('yue:cancel-all', stop);
+      window.removeEventListener('yue:generation-failed', stop);
+    };
   }, []);
   const generate = (request: YueRequest) => {
     if (forever) foreverRequest.current = { ...request };
@@ -935,10 +1066,38 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forever, activeJobCount]);
 
+  /** An instrumental: the score - the form's, or one written now - with its voice moved to the
+   *  instrument, and the lyrics' section tags without their words, so nothing is left to sing. */
+  const createInstrumental = async () => {
+    setComposing(true);
+    const controller = new AbortController();
+    composeRun.current = controller;
+    try {
+      if (effectiveCot === 'off') setCot('full');
+      const written = abc.trim() || await writeScoreAlone(controller.signal);
+      const answer = await instrumentalScore(written);
+      if (failed(answer)) throw new Error(answer.error);
+      setAbc(answer.abc.trimEnd());
+      setSemanticTokens('');
+      const request = buildRequest();
+      request.abc = answer.abc.trim();
+      request.cot = effectiveCot === 'off' ? 'full' : effectiveCot;
+      request.lyrics = sectionTagsOnly(lyrics);
+      delete request.semantic_tokens;
+      generate(request);
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      composeRun.current = null;
+      setComposing(false);
+    }
+  };
+
   const submit = () => {
     if (!ready) { setError(t('downloadProfileFirst')); return; }
     if (!style.trim() && !lyrics.trim() && !semanticTokens.trim()) { setError(tt('styleOrLyricsRequired')); return; }
     setError(null);
+    if (instrumental) { void createInstrumental(); return; }
     // Audio codes hold a performance already sung: ask whether to render that
     // take again or perform the prompt anew, as the engine's own WebUI does.
     if (semanticTokens.trim()) { setTakeChoiceOpen(true); return; }
@@ -977,6 +1136,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
     mp3_bitrate: [mp3Bitrate, setMp3Bitrate],
     transpose: [transpose, setTranspose],
     vocals_only: [vocalsOnly, value => setVocalsOnly(value === 'true')],
+    instrumental: [instrumental, value => void switchInstrumental(value === 'true')],
+    fade_in: [fadeIn, setFadeIn],
+    fade_out: [fadeOut, setFadeOut],
     lyric_timing: [lyricTiming, value => setLyricTiming(value !== 'false')],
     chord_strength: [harmony.strength, harmonyField('strength')],
     chord_identity: [harmony.identity, harmonyField('identity')],
@@ -1426,6 +1588,25 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               aria-label={t('lyrics')}
               className={`${CONTROL} resize-none overflow-y-auto font-mono text-xs leading-5 custom-scrollbar`}
             />
+            {resingFrom && (
+              <div className="mt-2 rounded-lg border border-pink-500/25 bg-pink-500/5 p-2 text-[11px] leading-5 text-zinc-600 dark:text-zinc-300">
+                <div className="flex items-start justify-between gap-2">
+                  <span>{tt('resingNote').replace('{title}', resingFrom.title)}</span>
+                  <button type="button" onClick={() => setResingFrom(null)} className={ICON} title={t('close')}><X size={12} /></button>
+                </div>
+                {syllableChanges.length > 0 && (
+                  <ul className="mt-1 space-y-0.5 text-amber-700 dark:text-amber-300">
+                    {syllableChanges.map(change => (
+                      <li key={change.line}>
+                        {change.before === null ? tt('resingLineAdded').replace('{line}', String(change.line)).replace('{after}', String(change.after))
+                          : change.after === null ? tt('resingLineDropped').replace('{line}', String(change.line)).replace('{before}', String(change.before))
+                          : tt('resingLineChanged').replace('{line}', String(change.line)).replace('{before}', String(change.before)).replace('{after}', String(change.after))}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <p className="mt-2 text-[11px] leading-4 text-zinc-500">{tt('lyricsHintYue')}</p>
             <SongTextParts kind="lyrics" value={lyrics} onChange={setLyrics} style={style} cot={effectiveCot} />
           </Card>
@@ -1636,7 +1817,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           <Card
             title={t('quality')}
             actions={
-              <button type="button" onClick={resetParameters} className="rounded-md px-2 py-1 text-[10px] font-semibold text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-black dark:hover:bg-white/10 dark:hover:text-white">
+              <button type="button" onClick={() => resetParameters()} className="rounded-md px-2 py-1 text-[10px] font-semibold text-zinc-500 transition-colors hover:bg-zinc-200 hover:text-black dark:hover:bg-white/10 dark:hover:text-white">
                 {t('resetToDefaults')}
               </button>
             }
@@ -1798,6 +1979,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                       </Field>
                     </div>
                     <div className="mb-3"><Switch checked={vocalsOnly} onChange={setVocalsOnly} label={engineParityLabels[language].vocals} hint={engineParityLabels[language].vocalsHint} /></div>
+                    <div className="mb-3 grid grid-cols-2 gap-2">
+                      <Field label={t('fadeInLabel')}><input value={fadeIn} onChange={event => setFadeIn(event.target.value)} placeholder="0" inputMode="decimal" className={CONTROL} /></Field>
+                      <Field label={t('fadeOutLabel')}><input value={fadeOut} onChange={event => setFadeOut(event.target.value)} placeholder="0" inputMode="decimal" className={CONTROL} /></Field>
+                    </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <Field label={t('mp3Bitrate')}>
                         <select value={mp3Bitrate || String(defaults.mp3_bitrate ?? 128)} onChange={event => setMp3Bitrate(event.target.value)} disabled={format !== 'mp3'} className={CONTROL}>
@@ -1805,7 +1990,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                         </select>
                       </Field>
                       <Field label={t('outputFormat')}>
-                        <select value={format} onChange={event => setFormat(event.target.value as YueOutputFormat)} className={CONTROL}>
+                        <select value={format} onChange={event => chooseFormat(event.target.value as YueOutputFormat)} className={CONTROL}>
                           <option value="flac">FLAC</option>
                           <option value="mp3">MP3</option>
                           <option value="wav32">WAV (32-bit float)</option>
@@ -1865,6 +2050,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           onClose={() => setNewPlaylistOpen(false)}
           onCreate={(name, description) => void onCreatePlaylist(name, description).then(playlist => { if (playlist) choosePlaylist(playlist.id); })}
         />
+        <label className="mb-2 flex cursor-pointer items-start gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-xs dark:border-white/10">
+          <input type="checkbox" checked={instrumental} onChange={event => void switchInstrumental(event.target.checked)} className="mt-0.5 h-4 w-4 accent-pink-500" />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-semibold text-zinc-900 dark:text-white"><Guitar size={13} />{tt('instrumentalOnly')}</span>
+            {instrumental && <span className="mt-0.5 block leading-5 text-zinc-500 dark:text-zinc-400">{tt('instrumentalOnlyHint')}</span>}
+            {instrumentalLoraLoading && <span className="mt-1 flex items-center gap-1.5 leading-5 text-pink-600 dark:text-pink-300"><Loader2 size={12} className="animate-spin" />{tt('instrumentalLoraLoading')}</span>}
+          </span>
+        </label>
         {/* songs without end are switched on by a deliberate slide, never by a stray click */}
         <div className="mb-2">
           <SlideToEnable
@@ -1880,8 +2073,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           onClick={submit}
           className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-orange-500 to-pink-600 text-base font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isGenerating ? <Square size={18} /> : <Sparkles size={18} />}
-          {t('create')}
+          {isGenerating ? <Square size={18} /> : instrumental ? <Guitar size={18} /> : <Sparkles size={18} />}
+          {composing && instrumental ? tt('composingScore') : instrumental ? tt('createInstrumental') : t('create')}
           {activeJobCount > 0 && <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">{activeJobCount}</span>}
         </button>
       </footer>

@@ -38,6 +38,8 @@ pub struct ModelManager {
     http: reqwest::Client,
     state: Arc<RwLock<PersistentState>>,
     cancelled: Arc<AtomicBool>,
+    /// Where a download's outcome is counted, once the hub is up.
+    hub: Arc<std::sync::OnceLock<studio_hub_client::Hub>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,9 +161,10 @@ impl ModelManager {
         Ok(Self {
             root,
             state_path,
-            http: crate::net::client(),
+            http: crate::net::download_client(),
             state: Arc::new(RwLock::new(state)),
             cancelled: Arc::new(AtomicBool::new(false)),
+            hub: Arc::default(),
         })
     }
 
@@ -187,11 +190,15 @@ impl ModelManager {
     pub async fn status(&self, target: Option<InstallRequest>) -> ManagerStatus {
         let active = self.state.read().await.active.clone();
         let root = self.root.clone();
+        let components = self.catalog().components;
         // SHA-256 over a GGUF can take seconds. Keep it off the Tokio request
         // workers so setup polling and cancellation remain available.
-        tokio::task::spawn_blocking(move || status_snapshot(root, active, target))
-            .await
-            .unwrap_or_else(|_| status_snapshot(PathBuf::from("."), None, None))
+        tokio::task::spawn_blocking(move || {
+            link_from_neighbors(&root, &components);
+            status_snapshot(root, active, target)
+        })
+        .await
+        .unwrap_or_else(|_| status_snapshot(PathBuf::from("."), None, None))
     }
 
     /// Deletes the files of the named components, freeing the disk they take.
@@ -298,6 +305,11 @@ impl ModelManager {
         self.state.read().await.active.as_ref().filter(|job| job.id == id).cloned()
     }
 
+    /// From now on every download that ends is counted in the hub: models ready, or failed with its reason.
+    pub fn report_to(&self, hub: studio_hub_client::Hub) {
+        let _ = self.hub.set(hub);
+    }
+
     pub fn installed_profile_files(&self, profile_id: &str) -> Result<ProfileModelFiles> {
         let selection = resolve_install(InstallRequest { profile_id: Some(profile_id.into()), component_ids: vec![] })?;
         self.installed_files_from_selection(selection, &format!("selected profile '{profile_id}'"))
@@ -377,6 +389,13 @@ impl ModelManager {
                     job.error = Some(error.to_string());
                 }
             }
+            if let Some(hub) = self.hub.get() {
+                match job.status {
+                    DownloadStatus::Completed => hub.setup_ready(),
+                    DownloadStatus::Failed => hub.setup_failed(job.error.as_deref().unwrap_or_default()),
+                    _ => {}
+                }
+            }
             let _ = self.persist_locked(&state);
         }
     }
@@ -399,6 +418,24 @@ impl ModelManager {
             "https://huggingface.co/{}/resolve/{}/{}?download=true",
             component.repository, component.revision, component.filename
         ));
+
+        // another program of timoncool's has this file: taken through the same checksum a download passes
+        let name = Path::new(component.filename).file_name().unwrap_or_default();
+        if let Some((source, app)) = studio_hub_client::neighbors::find_file(name, component.bytes, None) {
+            let (checked, staged_target) = (component.clone(), target.clone());
+            let taken = tokio::task::spawn_blocking(move || {
+                studio_hub_client::neighbors::take_file(&source, &staged_target, true, |staged| verified_file(staged, &checked).unwrap_or(false))
+            })
+            .await
+            .unwrap_or_else(|error| Err(std::io::Error::other(error.to_string())));
+            match taken {
+                Ok(()) => {
+                    crate::downloads::note_taken(component.id, &target, &app);
+                    return Ok(());
+                }
+                Err(error) => crate::downloads::report_take_failure(&target, &app, &error),
+            }
+        }
 
         let plan = crate::chunked::probe(&self.http, &url).await?;
         let written = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -677,7 +714,7 @@ async fn verified_file_async(path: PathBuf, component: Component) -> Result<bool
         .context("join GGUF SHA-256 verification task")?
 }
 
-fn verified_file(path: &Path, component: &Component) -> Result<bool> {
+pub(crate) fn verified_file(path: &Path, component: &Component) -> Result<bool> {
     if fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0) == 0 {
         return Ok(false);
     }
@@ -694,6 +731,25 @@ fn verified_file(path: &Path, component: &Component) -> Result<bool> {
     }
     let hex: String = digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
     Ok(hex == component.sha256)
+}
+
+/// Components another program of timoncool's already has (the same name and size) are linked in as the setup
+/// screen looks: a hard link costs neither disk nor download, and the status check that follows verifies them as it
+/// does a download. A copy (another drive) waits for the person to install.
+fn link_from_neighbors(root: &Path, components: &[Component]) {
+    for component in components {
+        let target = root.join(component.filename);
+        if target.exists() {
+            continue;
+        }
+        let Some(name) = Path::new(component.filename).file_name() else { continue };
+        if let Some((source, app)) = studio_hub_client::neighbors::find_file(name, component.bytes, None) {
+            match studio_hub_client::neighbors::take_file(&source, &target, false, |staged| verified_file(staged, component).unwrap_or(false)) {
+                Ok(()) => crate::downloads::note_taken(component.id, &target, &app),
+                Err(error) => crate::downloads::report_take_failure(&target, &app, &error),
+            }
+        }
+    }
 }
 
 fn validate_model_root(root: &Path) -> Result<()> {
@@ -899,6 +955,7 @@ mod tests {
             http: reqwest::Client::new(),
             state: Arc::new(RwLock::new(PersistentState::default())),
             cancelled: Arc::new(AtomicBool::new(false)),
+            hub: Arc::default(),
         };
         for component in components().iter().filter(|component| ["backbone-q8", "vae-f32", COMPANION].contains(&component.id)) {
             fs::File::create(root.join(component.filename)).unwrap().set_len(component.bytes).unwrap();
@@ -943,6 +1000,7 @@ mod tests {
             http: reqwest::Client::new(),
             state: Arc::new(RwLock::new(PersistentState::default())),
             cancelled: Arc::new(AtomicBool::new(false)),
+            hub: Arc::default(),
         };
         let picked = vec!["backbone-q6".to_string(), "vae-f32".to_string()];
         assert!(!manager.picked_components_installed(&picked));

@@ -3,6 +3,7 @@ import { assistantStatusChanged } from '../services/studioQueries';
 import { Check, Loader2, Square } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import { AgentPanel } from './AgentPanel';
+import { CliAgentPanel } from './CliAgentPanel';
 import { loadNativeOpenRouterCatalog, refreshNativeOpenRouterCatalog, type NativeOpenRouterModel } from '../services/nativeOpenRouter';
 
 /**
@@ -195,9 +196,9 @@ export const AssistantExtras: React.FC<{ engine: string }> = ({ engine }) => {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              selections: selections.map((selection: { capability: string; cloud_model: string | null }) =>
+              selections: selections.map((selection: { capability: string; mode: string; cloud_model: string | null }) =>
                 selection.capability === 'prompt_enhancement'
-                  ? { ...selection, execution_mode: 'open_router', cloud_model: openRouterModel.trim() || null }
+                  ? { ...selection, mode: 'open_router', cloud_model: openRouterModel.trim() || null }
                   : selection,
               ),
             }),
@@ -213,6 +214,7 @@ export const AssistantExtras: React.FC<{ engine: string }> = ({ engine }) => {
   };
 
   if (engine === 'agent') return <AgentPanel />;
+  if (engine === 'cli') return <CliAgentPanel />;
 
   return (
     <div className="space-y-2">

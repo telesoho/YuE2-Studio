@@ -5,6 +5,7 @@ import { Song } from '../types';
 import { useI18n } from '../context/I18nContext';
 import { apiUrl } from '../services/apiBase';
 import { activeVersionLabel } from '../services/songDownload';
+import { NumberField } from './NumberField';
 
 /**
  * Processing a finished track: noise reduction, the Spectral Lifter, vocal
@@ -76,7 +77,7 @@ const Slider: React.FC<{ label: string; value: number; min: number; max: number;
   <div className="mt-2">
     <div className="flex items-baseline justify-between text-[11px] text-zinc-600 dark:text-zinc-300">
       <span>{label}</span>
-      <span className="tabular-nums">{format ? format(value) : value.toFixed(2)}</span>
+      <NumberField value={value} min={min} max={max} step={step} label={label} format={format ?? (number => number.toFixed(2))} onChange={onChange} />
     </div>
     <input type="range" min={min} max={max} step={step} value={value} aria-label={label} onChange={event => onChange(Number(event.target.value))} className="mt-1 h-1 w-full cursor-pointer accent-pink-500" />
   </div>

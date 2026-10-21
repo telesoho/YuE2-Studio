@@ -5,6 +5,7 @@ import { EQ_BANDS, EQ_RANGE_DB, equalizer, equalizerResponse, onEqualizer, setEq
 import { BAND_LABELS, OWN_CHANGED, SITUATION_PRESETS, WINAMP_PRESETS, ownPresets, readEqf, storeOwnPresets, writeEqf, type EqPreset } from '../../services/equalizerPresets';
 import { saveFile } from '../../services/saveFile';
 import { useFloatable } from '../../services/useFloatable';
+import { NumberField } from '../NumberField';
 
 /**
  * The ten-band equalizer, as a panel over the studio: Winamp's bands and
@@ -24,7 +25,7 @@ const FREQUENCIES = (() => {
 
 const Slider: React.FC<{ value: number; label: string; title: string; onChange: (value: number) => void; disabled: boolean }> = ({ value, label, title, onChange, disabled }) => (
   <label className="flex flex-col items-center gap-1" title={title}>
-    <span className="text-[9px] tabular-nums text-zinc-400">{value > 0 ? `+${value.toFixed(0)}` : value.toFixed(0)}</span>
+    <NumberField value={value} min={-EQ_RANGE_DB} max={EQ_RANGE_DB} step={0.5} label={title} disabled={disabled} format={number => (number > 0 ? `+${number.toFixed(0)}` : number.toFixed(0))} onChange={onChange} className="w-8 px-0 !text-center !text-[9px]" />
     <input
       type="range"
       min={-EQ_RANGE_DB}

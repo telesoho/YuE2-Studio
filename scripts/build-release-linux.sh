@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds YuE2 Studio for Linux x86-64: a .deb and an AppImage with the pinned
-# yue2.cpp engine on Vulkan bundled. Model weights are downloaded in the app.
+# yue2.cpp engine on Vulkan and the audio-to-MIDI transcriber bundled. Model weights are downloaded in the app.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,6 +10,13 @@ commit="$(sed -n 's/.*"commit": "\(.*\)".*/\1/p' "$root/engines/yue2-cpp-source.
 if [ ! -x "$engine/yue-server" ] || ! grep -q "$commit" "$engine/runtime.json" 2>/dev/null; then
     rm -rf "$engine"
     "$root/scripts/build-yue-runtime-linux.sh" "$engine"
+fi
+
+midi="$root/desktop/src-tauri/resources/music-midi"
+midi_commit="$(sed -n 's/.*"commit": "\(.*\)".*/\1/p' "$root/engines/music-midi-source.json")"
+if [ ! -x "$midi/music-midi" ] || [ "$(cat "$midi/runtime.commit" 2>/dev/null)" != "$midi_commit" ]; then
+    rm -rf "$midi"
+    "$root/scripts/build-midi-runtime-linux.sh" "$midi"
 fi
 
 cd "$root"

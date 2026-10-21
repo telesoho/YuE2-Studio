@@ -474,7 +474,9 @@ async fn run(state: &AppState, job: &Job) -> anyhow::Result<()> {
     settle_pending(&state.training, job, &shared, can_listen, Passed::Nothing);
 
     // Binds the machine's ONNX Runtime before anything loads a session
-    state.lyrics_sync.bind_ort();
+    if let Err(error) = state.lyrics_sync.bind_ort() {
+        eprintln!("[ERROR] preparation runs without ONNX Runtime: {error:#}");
+    }
 
     // One model on the card at a time: Whisper, then MOSS, then the assistant
     let lyric_items: Vec<&training::DatasetItem> = items.iter().filter(|item| job.lyrics && item.lyrics_state == LyricsState::Wanted).collect();
@@ -633,7 +635,7 @@ async fn lyrics_branch(state: &AppState, job: &Job, lyric_items: &[&training::Da
             match crate::vocal_separator(state).await {
                 Some(separator) if !to_separate.is_empty() => {
                     // the processor was chosen for separation on a machine with a card that runs it
-                    if matches!(state.separation_config.read().await.runtime, lyrics_sync::OnnxFlavour::Cpu) && crate::hardware::hardware().cuda.is_some() {
+                    if matches!(state.separation_config.read().await.runtime, lyrics_sync::OnnxFlavour::Cpu) && crate::hardware::hardware().runs_cuda {
                         update(&shared, |status| status.notices.push("separator_on_cpu"));
                     }
                     stage(&shared, "vocals", to_separate.iter().map(|(item, ..)| item.clone()).collect());
@@ -793,7 +795,7 @@ async fn listen_branch(state: &AppState, job: &Job, style_items: &[&training::Da
                 let _finished = Finished(finished);
                 let mut measurer = audio_facts::Measurer::load(&facts_dir, card).map_err(|error| format!("{error:#}"));
                 if matches!(&measurer, Ok(measurer) if !measurer.on_gpu) {
-                    update(&facts_shared, |status| status.notices.push("facts_on_cpu"));
+                    update(&facts_shared, |status| status.notices.push(if crate::lyrics_sync::OnnxFlavour::Auto.card() == Some(crate::lyrics_sync::OnnxCard::DirectMl) { "facts_on_cpu_directml" } else { "facts_on_cpu" }));
                 }
                 for (index, mono) in decoded {
                     let measured = match (&mut measurer, mono) {

@@ -340,12 +340,14 @@ fn proxy_for(settings: &ProxySettings, system: &Matcher, url: &reqwest::Url) -> 
     }
 }
 
-const USER_AGENT: &str = concat!("YuE2-Studio/", env!("CARGO_PKG_VERSION"));
+fn user_agent() -> String {
+    format!("YuE2-Studio/{}", crate::studio_version())
+}
 
 /// A client builder that goes out as the settings say, with the studio's
 /// name: Hugging Face is stricter with clients that send none.
 pub fn builder() -> reqwest::ClientBuilder {
-    with_proxy(reqwest::Client::builder().user_agent(USER_AGENT))
+    with_proxy(reqwest::Client::builder().user_agent(user_agent()))
 }
 
 /// Any client builder routed as the settings say.
@@ -360,6 +362,16 @@ pub fn client() -> reqwest::Client {
     builder().build().expect("an HTTP client with a proxy callback builds")
 }
 
+/// The client of the downloads: a connection that goes silent fails and is retried, instead of holding the bar
+/// at the same byte for ever.
+pub fn download_client() -> reqwest::Client {
+    builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .read_timeout(std::time::Duration::from_secs(60))
+        .build()
+        .expect("an HTTP client with a proxy callback builds")
+}
+
 /// Whether Hugging Face, where the models come from, and OpenRouter answer
 /// through `settings`, before they are kept. An answer of any status counts;
 /// a connection that fails does not.
@@ -368,7 +380,7 @@ pub async fn test(settings: ProxySettings) -> Result<serde_json::Value> {
     let hub_url = model_url_with(&settings, "https://huggingface.co/api/models?limit=1");
     let system = Matcher::from_system();
     let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+        .user_agent(user_agent())
         .proxy(reqwest::Proxy::custom(move |url| proxy_for(&settings, &system, url)))
         .timeout(std::time::Duration::from_secs(15))
         .build()?;

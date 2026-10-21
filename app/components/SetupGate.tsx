@@ -7,6 +7,7 @@ import { AssistantExtras } from './AssistantSettings';
 import { KaraokeExtras } from './KaraokeSettings';
 import { HubTelemetryPreview } from './HubTelemetryPreview';
 import { setTelemetry } from '../services/studioHub';
+import { programName } from '../services/programs';
 import type { TranslationKey } from '../i18n/translations';
 import {
   componentKindLabel,
@@ -53,6 +54,8 @@ type SetupStatus = {
   installed_components: string[];
   data_directory?: string | null;
   portable?: boolean;
+  /** Models taken from another program of timoncool's in this run instead of being downloaded, by id. */
+  taken_from?: Record<string, { app: string; file: string }>;
 };
 
 type Profile = {
@@ -68,8 +71,8 @@ type Profile = {
 
 type Catalog = { engine_id: string; recommended_profile_id: string; profiles: Profile[]; components: ModelComponent[] };
 
-// variant_bytes: what choosing this model downloads with it (a Parakeet encoder's decoder and weights, a Whisper folder).
-type OptionalAsset = { id: string; label: string; bytes: number; note: string; installed: boolean; kind: 'model' | 'runtime'; vram_gb?: number | null; variant_bytes?: number };
+// variant_bytes: what choosing this model downloads with it (a Parakeet's one file, a Whisper folder).
+type OptionalAsset = { id: string; label: string; bytes: number; note: string; installed: boolean; kind: 'model' | 'runtime'; vram_gb?: number | null; variant_bytes?: number; taken_from?: string | null };
 // with_model: the chosen model's files are already in bytes, as the karaoke set counts them.
 type SetProgress = { bytes: number; installed_bytes: number; ready: boolean; files: number; with_model?: boolean };
 type OptionalStatus = {
@@ -97,7 +100,7 @@ type EngineChoice = { id: string; label: string; device?: boolean; byAddress?: b
  * One optional capability.
  *
  * A capability is a choice of engine and a choice of what it runs on - not a
- * list of files. Parakeet is six downloads and a runtime, Whisper is two, and
+ * list of files. Parakeet is a model and an engine build, Whisper is two, and
  * which two depends on the card; nobody should have to work that out from file
  * names. `engines` turns the group into that choice, and the whole set is
  * installed and removed by one button.
@@ -168,9 +171,10 @@ export const OptionalGroup: React.FC<{
     if (response.ok) {
       const body = await response.json();
       setStatus(body);
-      if (!choiceRead.current && body.provider && engines?.some((choice) => choice.id === body.provider)) {
+      const savedEngine = body.provider ?? body.settings?.engine;
+      if (!choiceRead.current && savedEngine && engines?.some((choice) => choice.id === savedEngine)) {
         choiceRead.current = true;
-        setEngine(body.provider);
+        setEngine(savedEngine);
       }
       if (body.runtime) setDevice(body.runtime);
       if (body.whisper_model) setModel(body.whisper_model);
@@ -195,7 +199,7 @@ export const OptionalGroup: React.FC<{
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
         settingsUrl.endsWith('/separation/settings')
-          ? { ...(status as unknown as { settings?: object })?.settings, runtime: next.device ?? device }
+          ? { ...(status as unknown as { settings?: object })?.settings, runtime: next.device ?? device, engine: next.engine ?? engine }
           : settingsUrl.endsWith('/assistant/status')
             ? { provider: next.engine ?? engine }
             : { provider: next.engine ?? engine, runtime: next.device ?? device },
@@ -260,9 +264,8 @@ export const OptionalGroup: React.FC<{
     // vocabulary - and only the weights are a choice. The rest carry no VRAM
     // figure, which is how they are told apart here.
     if (engine === 'whisper') return asset.id.startsWith('whisper-') && asset.vram_gb != null;
-    // Parakeet comes in several variants; the rest of their files come with them, so
-    // only the encoders are a choice.
-    if (engine === 'parakeet') return asset.id === 'parakeet-tdt-int8' || asset.id === 'parakeet-ultra-int8' || asset.id === 'parakeet-tdt-fp32';
+    // Parakeet comes as v3 and Ultra; the engine build follows the card, so only the models are a choice.
+    if (engine === 'parakeet') return asset.id === 'parakeet-tdt-int8' || asset.id === 'parakeet-ultra-int8';
     if (engine === 'open_router') return false;
     return true;
   });
@@ -339,8 +342,8 @@ export const OptionalGroup: React.FC<{
                 if (serverField && engine === 'local') {
                   return null;
                 }
-                // the connected agent needs neither a key nor a download
-                if (engine === 'agent') {
+                // the connected agent and an agent CLI need neither a key nor a download
+                if (engine === 'agent' || engine === 'cli') {
                   return null;
                 }
                 return (
@@ -414,9 +417,9 @@ export const OptionalGroup: React.FC<{
                           // ready by reading it back. Saving it only for Whisper
                           // is why a downloaded Gemma still counted as no
                           // assistant at all.
-                          // Parakeet's two precisions are chosen through the
-                          // same field the recogniser reads for Whisper - which
-                          // is how the server decides which encoder to fetch.
+                          // Parakeet's two models are chosen through the same
+                          // field the recogniser reads for Whisper - which is
+                          // how the server decides which model to fetch.
                           const field =
                             engine === 'whisper' || engine === 'parakeet'
                               ? 'whisper_model'
@@ -531,7 +534,7 @@ export const OptionalGroup: React.FC<{
                     <span className="text-xs tabular-nums text-zinc-500">{bytes(asset.bytes)}</span>
                     {asset.installed ? (
                       <>
-                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">{t('installed')}</span>
+                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-300">{asset.taken_from ? t('takenFrom').replace('{app}', programName(asset.taken_from)) : t('installed')}</span>
                         {removeUrl && (
                           <button
                             type="button"
@@ -612,7 +615,7 @@ type Path = 'cuda' | 'vulkan' | 'directml' | 'cpu' | 'none';
 
 /**
  * What runs where in this studio, as the code decides it: the engine walks
- * CUDA, Vulkan and the processor; the ONNX parts take CUDA or DirectML;
+ * CUDA, Vulkan and the processor, and so does transcribe.cpp; the ONNX parts take CUDA or DirectML;
  * the rest has a CUDA build and a processor one.
  */
 const WHERE_IT_RUNS: { part: TranslationKey; name: string; nvidia: Path; other: Path; none: Path }[] = [
@@ -621,7 +624,7 @@ const WHERE_IT_RUNS: { part: TranslationKey; name: string; nvidia: Path; other: 
   { part: 'hubPartListen', name: 'MOSS-Music', nvidia: 'cuda', other: 'cpu', none: 'cpu' },
   { part: 'hubPartTempo', name: 'Beat This!', nvidia: 'cuda', other: 'directml', none: 'cpu' },
   { part: 'hubPartStems', name: 'HT-Demucs', nvidia: 'cuda', other: 'cpu', none: 'cpu' },
-  { part: 'hubPartKaraoke', name: 'Parakeet', nvidia: 'cuda', other: 'directml', none: 'cpu' },
+  { part: 'hubPartKaraoke', name: 'Parakeet', nvidia: 'cuda', other: 'vulkan', none: 'cpu' },
   { part: 'hubPartKaraoke', name: 'Whisper', nvidia: 'cuda', other: 'cpu', none: 'cpu' },
   { part: 'hubPartAssistant', name: 'llama.cpp', nvidia: 'cuda', other: 'vulkan', none: 'cpu' },
   { part: 'hubPartMidi', name: 'MuScriptor', nvidia: 'cuda', other: 'cpu', none: 'cpu' },
@@ -969,7 +972,11 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
                   </label>
                   <div className="mb-2 flex shrink-0 items-center gap-2">
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isInstalled ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'bg-zinc-200/70 text-zinc-500 dark:bg-white/10 dark:text-zinc-400'}`}>
-                      {isInstalled ? t('installed') : t('missingBadge')}
+                      {isInstalled
+                        ? selectedId && status?.taken_from?.[selectedId]
+                          ? t('takenFrom').replace('{app}', programName(status.taken_from[selectedId].app))
+                          : t('installed')
+                        : t('missingBadge')}
                     </span>
                     {isInstalled && (
                       <button
@@ -987,6 +994,16 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
               );
             })}
             {!chosenIds && <p className="text-xs text-amber-600 dark:text-amber-300">{t('incompleteSet')}</p>}
+            {status?.taken_from && Object.keys(status.taken_from).length > 0 && (
+              <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-[11px] leading-5 text-emerald-700 dark:text-emerald-300">
+                <p className="font-semibold">{t('takenNotice')}</p>
+                {Object.entries(status.taken_from).map(([id, taken]) => (
+                  <p key={id} className="font-mono">
+                    {taken.file} — {t('takenFrom').replace('{app}', programName(taken.app))}
+                  </p>
+                ))}
+              </div>
+            )}
             {/* Where the weights actually are. People asked for this after
                 hunting through their profile folder for ten gigabytes. */}
             {status?.data_directory && (
@@ -1117,6 +1134,7 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
                 { id: 'local', label: t('assistantLocal'), device: false, byAddress: true },
                 { id: 'open_router', label: 'OpenRouter', device: false },
                 { id: 'agent', label: t('assistantAgent'), device: false },
+                { id: 'cli', label: t('assistantCli'), device: false },
                 { id: 'none', label: t('assistantDisabled'), device: false },
               ]}
               settingsUrl="/v1/assistant/status"
@@ -1134,7 +1152,7 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
               settingsUrl="/v1/separation/settings"
               removeUrl="/v1/separation/remove"
               cancelUrl="/v1/separation/runtime/cancel"
-              engines={[{ id: 'htdemucs', label: 'HT-Demucs' }]}
+              engines={[{ id: 'htdemucs', label: 'HT-Demucs' }, { id: 'roformer', label: 'Mel-Band RoFormer' }]}
             />
             <OptionalGroup
               title={t('karaokeSection')}

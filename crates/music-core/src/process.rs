@@ -39,6 +39,23 @@ pub fn adopt(child: &Child) {
 #[cfg(not(windows))]
 pub fn adopt(_child: &Child) {}
 
+/// `adopt` for a raw handle, for children a tokio spawn owns.
+#[cfg(windows)]
+pub fn adopt_handle(handle: isize) {
+    use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+
+    let job = job();
+    if job == 0 || handle == 0 {
+        return;
+    }
+    unsafe {
+        AssignProcessToJobObject(job as _, handle as _);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn adopt_handle(_handle: isize) {}
+
 /// Wires up the spawn so the child cannot outlive this process.
 ///
 /// Call this on the `Command` immediately before `spawn`. On Linux it is the
@@ -80,6 +97,20 @@ pub fn ensure_dies_with_parent(command: &mut std::process::Command) {
     {
         let _ = command;
     }
+}
+
+/// The library search path a bundled program starts with on Linux: its own folder first, so it loads the libraries
+/// beside it and not another version of the same name an AppImage put on the inherited path (the MIDI tool's older
+/// ggml in `usr/lib`). None on other systems, where nothing is inherited this way.
+pub fn own_libraries_first(program: impl AsRef<std::path::Path>) -> Option<std::ffi::OsString> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let mut paths = vec![program.as_ref().parent()?.to_path_buf()];
+    if let Some(inherited) = std::env::var_os("LD_LIBRARY_PATH") {
+        paths.extend(std::env::split_paths(&inherited));
+    }
+    std::env::join_paths(paths).ok()
 }
 
 /// One job for the whole process, created the first time a child needs it.

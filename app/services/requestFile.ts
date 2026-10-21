@@ -13,7 +13,7 @@ const ENGINE_FIELDS = [
   'style', 'lyrics', 'abc', 'cot', 'duration', 'lm_seed', 'seed', 'steps',
   'lm_batch_size', 'synth_batch_size', 'cfg_scale', 'semantic_tokens',
   'abc_sampling', 'semantic_sampling', 'output_format', 'mp3_bitrate',
-  'adapters', 'transpose', 'vocals_only', 'companion_scale',
+  'adapters', 'transpose', 'vocals_only', 'fade_in', 'fade_out', 'companion_scale',
 ] as const;
 
 export function toEngineRequest(request: YueRequest): Record<string, unknown> {

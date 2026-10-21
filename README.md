@@ -178,7 +178,7 @@ Code, save [docs/mcp-skill.md](docs/mcp-skill.md) as `~/.claude/skills/yue2-stud
   shown as JSON or saved to a file; the engine's stage, step and time left on the card while it
   renders; video export from 1080p to 240p with AAC from 128 to 320 kbps; quitting while a song is
   made asks first, and a song the studio was closed on starts again; karaoke can recognise words
-  with Parakeet Ultra int8, Moondream's fine-tune of Parakeet.
+  with Parakeet Ultra, Moondream's fine-tune of Parakeet.
 
 ## Compose and edit MIDI
 
@@ -273,7 +273,7 @@ the fixes back as a pull request.** The studio keeps its data in `~/.local/share
 | Style by ear · MOSS-Music | CUDA | processor | processor |
 | Tempo · Beat This! | CUDA | DirectML | processor |
 | Stems · HT-Demucs | CUDA | processor | processor |
-| Karaoke timing · Parakeet | CUDA | DirectML | processor |
+| Karaoke timing · Parakeet | CUDA | Vulkan | processor |
 | Karaoke timing · Whisper | CUDA | processor | processor |
 | Writing assistant · llama.cpp | CUDA | Vulkan | processor |
 | Audio to MIDI · MuScriptor | CUDA | processor | processor |
@@ -288,9 +288,11 @@ The main, tested path is an NVIDIA card.
 - On AMD and Intel cards stems are separated on the processor: the HT-Demucs model does not
   run through DirectML (out of memory on a 2 GB integrated card, over 20 GB and minutes for
   30 seconds of audio on a 24 GB one).
-- Karaoke's Parakeet and the tempo model reach any DirectX 12 card through DirectML. Its
-  runtime - ONNX Runtime 1.24.4 DirectML and DirectML 1.15.4, about 215 MB - comes with the
-  card path; the studio loads its own DirectML rather than the older copy inside Windows.
+- Karaoke's Parakeet runs on transcribe.cpp, the engine Dub Studio and Speech Studio use: its
+  CUDA build on an NVIDIA card with a CUDA 13 driver (on Linux when the system has CUDA 13's
+  cuBLAS), its Vulkan build on any other card, its processor build without one; on a Mac, Metal
+  on Apple silicon and the processor on Intel. The tempo model reaches any DirectX 12 card through
+  DirectML, whose runtime comes with karaoke's card path.
 - "Auto" in a device choice takes the card when its runtime is installed, and the processor
   otherwise. The same table is in the studio, under Settings → Models.
 
@@ -431,7 +433,9 @@ the exact name in the listed folder is recognised and not downloaded again.
 | Files | What for | Size | Put in `data\` |
 | --- | --- | --- | --- |
 | [faster-whisper-large-v3](https://huggingface.co/Systran/faster-whisper-large-v3/tree/main): `config.json`, `model.bin`, `preprocessor_config.json`, `tokenizer.json`, `vocabulary.json` | Whisper large-v3 | 2.9 GB | `karaoke\models\whisper\faster-whisper-large-v3\` |
-| [parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/tree/main): `config.json`, `encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`, `nemo128.onnx`, `vocab.txt` | Parakeet, European languages | 0.7 GB | `karaoke\models\parakeet\` |
+| [`parakeet-tdt-0.6b-v3-Q8_0.gguf`](https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/d8d8c32cb2017c57e5307767343e97870f8a7f53/parakeet-tdt-0.6b-v3-Q8_0.gguf) | Parakeet TDT v3, European languages | 0.7 GB | `karaoke\models\asr-gguf-parakeet-v3\` |
+| [`parakeet-ultra-Q8_0.gguf`](https://huggingface.co/handy-computer/parakeet-ultra-gguf/resolve/a1539be1b849ea7463b88343e5277b373d0c4ea9/parakeet-ultra-Q8_0.gguf) | Parakeet Ultra, fewer wrong words in Russian and in noise | 0.7 GB | `karaoke\models\asr-gguf-parakeet-ultra\` |
+| [`transcribe_engine.dll`](https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine.dll) (CUDA), [`transcribe_engine-vulkan.dll`](https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-vulkan.dll), [`transcribe_engine-cpu.dll`](https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-cpu.dll) | transcribe.cpp, the engine Parakeet runs on: one build, the one for your card | 3.7-145 MB | `karaoke\models\transcribe-engine\`, `transcribe-engine-vulkan\`, `transcribe-engine-cpu\`, each as `transcribe_engine.dll` |
 
 **Stems and vocals for recognition**
 

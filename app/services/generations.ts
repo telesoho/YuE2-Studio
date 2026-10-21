@@ -71,6 +71,11 @@ async function stopJob(jobId: string): Promise<void> {
   if (!response.ok) throw new Error(`The engine did not stop the job (${response.status})`);
 }
 
+/** "Without stopping" sends the same request again: one that failed would fail on every round. */
+function generationFailed(): void {
+  window.dispatchEvent(new CustomEvent('yue:generation-failed'));
+}
+
 /** Removes a stopped or failed job for good; a job still running is left (409). */
 async function removeEnded(jobId: string): Promise<void> {
   try {
@@ -166,6 +171,7 @@ export function useGenerations({ enabled, notify, onFinished }: GenerationOption
       .sort((a, b) => (a.id < b.id ? 1 : -1));
     if (made.length === 0) {
       remove(finished.id);
+      generationFailed();
       notify(job.message || t('generationFailed'), 'error');
       return;
     }
@@ -194,6 +200,7 @@ export function useGenerations({ enabled, notify, onFinished }: GenerationOption
         // the card leaves with the running jobs and comes back from the ended ones
         remove(running.id);
         void queryClient.invalidateQueries({ queryKey: endedJobsKey });
+        if (job.status === 'failed') generationFailed();
         notify(job.message || t('generationFailed'), job.status === 'failed' ? 'error' : 'info');
       }
       // still queued or running: the list was read before this job was sent
@@ -284,6 +291,7 @@ export function useGenerations({ enabled, notify, onFinished }: GenerationOption
       }
     } catch (error) {
       remove(id);
+      generationFailed();
       notify(error instanceof Error ? error.message : t('generationFailed'), 'error');
     }
   }, [follow, remove, notify, t]);
