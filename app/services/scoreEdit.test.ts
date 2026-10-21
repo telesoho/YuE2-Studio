@@ -1308,7 +1308,7 @@ describe('chord shape preferences', () => {
 
   function installTables() {
     editor.resetChordShapePrefs();
-    const globals = globalThis as {
+    const globals = globalThis as unknown as {
       abc2svg?: {
         diag: { cd6: Record<string, string>; cd4: Record<string, string> };
         chordPositions: {
