@@ -1731,21 +1731,91 @@
     return { abc: written.abc, error: null, beats: beats };
   }
 
-  // This bar's numerator grows by one. Both voices gain a rest of one beat at the end.
+  function noteEnd(bar, index) {
+    let cursor = 0;
+    for (const ev of bar) {
+      cursor += ev.units;
+      if (ev.sourceIndex === index) return cursor;
+    }
+    return -1;
+  }
+
+  function untieAt(bar, offset, nextBar) {
+    let cursor = 0;
+    for (let i = 0; i < bar.length; i++) {
+      const ev = bar[i];
+      const end = cursor + ev.units;
+      if (end === offset && ev.tie) {
+        ev.tie = false;
+        const next = bar[i + 1];
+        if (next && next.continuesTie) next.continuesTie = false;
+        else if (nextBar && nextBar.length && nextBar[0].continuesTie) nextBar[0].continuesTie = false;
+      }
+      cursor = end;
+    }
+  }
+
+  // A rest of `gap` units at `offset`. A note that crosses the cut is split, and the tie across the rest is dropped.
+  function insertGap(bar, offset, gap) {
+    if (!bar.length) return null;
+    const out = [];
+    let cursor = 0;
+    let done = false;
+    for (const ev of bar) {
+      const end = cursor + ev.units;
+      if (done) {
+        out.push(ev);
+      } else if (offset <= cursor) {
+        out.push(beatRest(ev, gap), ev);
+        done = true;
+      } else if (offset < end) {
+        const head = splitWritable(offset - cursor);
+        const tail = splitWritable(end - offset);
+        if (!head || !tail) return null;
+        const heads = tiePieces(ev, head);
+        const tails = tiePieces(ev, tail);
+        heads[heads.length - 1].tie = false;
+        tails[0].continuesTie = false;
+        tails[0].lyric = "*";
+        tails[0].chord = "";
+        for (const piece of tails) piece.sourceIndex = -1;
+        out.push(...heads, beatRest(ev, gap), ...tails);
+        done = true;
+      } else {
+        out.push(ev);
+      }
+      cursor = end;
+    }
+    if (!done) {
+      if (offset !== cursor) return null;
+      out.push(beatRest(bar[bar.length - 1], gap));
+    }
+    return out;
+  }
+
+  // One beat of rest after the selected note, in both voices. The bar's numerator grows by one.
   function addBeat(abc, voice, index, slice, command) {
-    const found = locateBar(abc, voice, index, slice);
+    if (slice != null) {
+      const expanded = expandSlicedRest(abc, voice, index, slice | 0);
+      if (!expanded.error && expanded.abc !== abc) {
+        return addBeat(expanded.abc, voice, expanded.index | 0, null, command);
+      }
+    }
+    const found = locateBar(abc, voice, index, 0);
     if (found.error) return { abc: abc, error: found.error };
     const beat = oneBeatUnits(found.meter, found.walked.header.lDen);
     if (beat.error) return { abc: abc, error: beat.error };
     const vocalBars = found.vocalBars.slice();
     const insBars = found.insBars.slice();
     const bar = found.bar;
-    breakOutgoing(vocalBars[bar], vocalBars[bar + 1]);
-    breakOutgoing(insBars[bar], insBars[bar + 1]);
-    const vBar = vocalBars[bar].slice();
-    const iBar = insBars[bar].slice();
-    vBar.push(beatRest(vBar[vBar.length - 1], beat.units));
-    iBar.push(beatRest(iBar[iBar.length - 1], beat.units));
+    const chosen = voice === "Ins" ? insBars : vocalBars;
+    const offset = noteEnd(chosen[bar], index);
+    if (offset < 0) return { abc: abc, error: m("jpErrNoSuchNote") };
+    untieAt(vocalBars[bar], offset, vocalBars[bar + 1]);
+    untieAt(insBars[bar], offset, insBars[bar + 1]);
+    const vBar = insertGap(vocalBars[bar], offset, beat.units);
+    const iBar = insertGap(insBars[bar], offset, beat.units);
+    if (!vBar || !iBar) return { abc: abc, error: m("jpErrVoicesBars") };
     vocalBars[bar] = vBar;
     insBars[bar] = iBar;
     const next = [found.meter[0] + 1, found.meter[1]];

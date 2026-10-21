@@ -986,7 +986,7 @@ C D|E F|G|
     expect(stayed.abc).toBe(score);
   });
 
-  it('adds one beat to the selected bar and restores the following meter', () => {
+  it('inserts one beat after the selected note and restores the following meter', () => {
     const score = `X:1
 T:
 M:3/4
@@ -1013,8 +1013,8 @@ E F G|
     const body = added.abc.replace(/\s+/g, '');
     expect(body).toContain('CDE|');
     expect(body).toContain('M:4/4');
-    expect(body).toContain('"G"FGAz|');
-    expect(body).toContain('FGAz|');
+    expect(body).toContain('"G"FzGA|');
+    expect(body).toContain('FzGA|');
     expect(body).toMatch(/M:4\/4[\s\S]*M:3\/4/);
     expect(body).toContain('Bcd|');
     expect(body).toContain('w:doremi');
@@ -1045,7 +1045,7 @@ C2 D2 E2|F2 G2 A2|
     expect(added.error).toBeFalsy();
     const body = added.abc.replace(/\s+/g, '');
     expect(body).toContain('M:4/4');
-    expect(body).toContain('C2D2E2z2|');
+    expect(body).toContain('C2z2D2E2|');
     expect(body).toContain('M:3/4');
     expect(body).toContain('F2G2A2|');
   });
@@ -1064,12 +1064,59 @@ C D E-|F G A|
 V: Ins
 C D E-|F G A|
 `;
-    const added = editor.editScore(score, { op: 'add-beat', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    const added = editor.editScore(score, { op: 'add-beat', index: 2, voice: 'Vocal', minBars: 1, maxBars: 4 });
     expect(added.error).toBeFalsy();
     const body = added.abc.replace(/\s+/g, '');
     expect(body).toContain('CDEz|');
     expect(body).not.toContain('CDE-');
     expect(body).toContain('FGA|');
+  });
+
+  it('inserts the beat after the clicked part of a rest', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C z2 D E|
+V: Ins
+C z2 D E|
+`;
+    const added = editor.editScore(score, { op: 'add-beat', index: 1, slice: 0, voice: 'Vocal' });
+    expect(added.error).toBeFalsy();
+    const body = added.abc.replace(/\s+/g, '');
+    expect(body).toContain('M:5/4');
+    expect(body).toContain('CzzzDE|');
+    expect(body).not.toContain('z2');
+  });
+
+  it('splits the other voice where the inserted beat lands', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C3|
+w: do
+V: Ins
+C D E|
+`;
+    const added = editor.editScore(score, { op: 'add-beat', index: 0, voice: 'Ins' });
+    expect(added.error).toBeFalsy();
+    const body = added.abc.replace(/\s+/g, '');
+    expect(body).toContain('M:4/4');
+    expect(body).toContain('CzC2|');
+    expect(body).toContain('CzDE|');
+    expect(body).toContain('w:do');
+    expect(body).not.toContain('C3');
   });
 
   it('refuses a beat the score unit cannot write', () => {
