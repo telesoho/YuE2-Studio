@@ -376,6 +376,27 @@ Z|
     expect(capo).toBeLessThan(original);
   });
 
+  it('keeps space for the score while the editor is open', async () => {
+    const mounted = await mountEditor(ABC);
+    try {
+      let leaked = 0;
+      const leak = () => { leaked += 1; };
+      window.addEventListener('keydown', leak);
+      const onScore = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+      document.querySelector('.yue-jp-card')?.dispatchEvent(onScore);
+      expect(onScore.defaultPrevented).toBe(true);
+      expect(leaked).toBe(0);
+
+      const typed = new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true, cancelable: true });
+      (document.querySelector('#yue-jp-score-text') as HTMLTextAreaElement).dispatchEvent(typed);
+      expect(typed.defaultPrevented).toBe(false);
+      expect(leaked).toBe(1);
+      window.removeEventListener('keydown', leak);
+    } finally {
+      await mounted.close();
+    }
+  });
+
   it('undoes and redoes text and note edits', async () => {
     const vocal = `X:1
 T:

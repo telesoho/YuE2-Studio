@@ -4881,6 +4881,20 @@
             return;
           }
         }
+        // The studio maps Space to the library player on window. This overlay
+        // sits in the same document, so an unhandled Space starts that player
+        // under the score. Own the key here, except while typing.
+        if (event.code === "Space" && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          const target = event.target;
+          const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA"
+            || target.tagName === "SELECT" || target.isContentEditable);
+          if (!typing) {
+            event.preventDefault();
+            event.stopPropagation();
+            togglePlay();
+            return;
+          }
+        }
         if (ui.text && event.target === ui.text) return;
         if (ui.split && event.target === ui.split) return;
         onKey(event);

@@ -799,6 +799,8 @@ function AppContent() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable) return;
       e.preventDefault();
+      // The jianpu editor is an overlay in this window and uses Space itself.
+      if (document.querySelector('.yue-jp-editor:not([hidden])')) return;
       if (currentSong) {
         if (currentSong.audioUrl) {
           setIsPlaying(prev => !prev);
