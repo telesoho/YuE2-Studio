@@ -2825,12 +2825,10 @@
     return "T:\nT:" + line + "\n" + src;
   }
 
-  // Guitar shape key for %%diagram 6, same spelling rules as diag-1.js.
-  function resolveGuitarShape(symbol) {
+  // Guitar / ukulele shape key, same spelling rules as diag-1.js.
+  function chordShapeKey(symbol) {
     const raw = String(symbol || "").trim();
-    const empty = { symbol: raw, shapeKey: "", frets: "" };
-    if (!raw) return empty;
-    const table = typeof abc2svg !== "undefined" && abc2svg.diag && abc2svg.diag.cd6;
+    if (!raw) return "";
     let t = raw.replace(/<[^>]*>/g, "");
     const parts = t.match(/([A-G][#♯b♭]?)([^/]*)\/?/);
     if (parts && parts[2] && typeof abc2svg !== "undefined" && abc2svg.ch_alias) {
@@ -2847,7 +2845,26 @@
     if (rootMatch && roots[rootMatch[1]] != null) {
       spelled = roots[rootMatch[1]] + rootMatch[2];
     }
-    spelled = spelled.replace(/m\+7/g, "m(maj7)");
+    return spelled.replace(/m\+7/g, "m(maj7)");
+  }
+
+  function diagramInstrument(kind) {
+    return normalizeDiagram(kind) === "ukulele" ? "ukulele" : "guitar";
+  }
+
+  function diagramTableName(instrument) {
+    return instrument === "ukulele" ? "cd4" : "cd6";
+  }
+
+  function diagramStringCount(instrument) {
+    return instrument === "ukulele" ? 4 : 6;
+  }
+
+  function resolveShapeInTable(symbol, table) {
+    const raw = String(symbol || "").trim();
+    const empty = { symbol: raw, shapeKey: "", frets: "" };
+    if (!raw) return empty;
+    const spelled = chordShapeKey(raw);
     if (!table) return { symbol: raw, shapeKey: spelled, frets: "" };
     if (table[spelled]) return { symbol: raw, shapeKey: spelled, frets: table[spelled] };
     const root = spelled.split(".")[0];
@@ -2855,22 +2872,34 @@
     return { symbol: raw, shapeKey: "", frets: "" };
   }
 
-  function guitarDiagramSvg(frets) {
-    const n = 6;
+  function resolveGuitarShape(symbol) {
+    const table = typeof abc2svg !== "undefined" && abc2svg.diag && abc2svg.diag.cd6;
+    return resolveShapeInTable(symbol, table);
+  }
+
+  function guitarDiagramSvg(frets, strings) {
+    const n = strings === 4 ? 4 : 6;
     const d = String(frets || "").split(" ");
     if (d.length < 3) return "";
     const x0 = 2 - 2 * n;
-    let dc = '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24h20m0 6h-20m0 6h20m0 6h-20m0 6h20"/>'
-      + '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24v24m4 0v-24m4 0v24m4 0v-24m4 0v24m4 0v-24"/>';
+    let dc = n === 4
+      ? '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-6 -24h12m0 6h-12m0 6h12m0 6h-12m0 6h12"/>'
+        + '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-6 -24v24m4 0v-24m4 0v24m4 0v-24"/>'
+      : '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24h20m0 6h-20m0 6h20m0 6h-20m0 6h20"/>'
+        + '<path stroke="currentColor" fill="none" stroke-width="0.8" d="M-10 -24v24m4 0v-24m4 0v24m4 0v-24m4 0v24m4 0v-24"/>';
     const l = d[1].split(",");
     if (!l[0] || l[0].slice(-1) == l[1]) {
-      dc += '<path stroke="currentColor" fill="none" stroke-width="1.6" d="M-10.2 -24.5h20.4"/>';
+      dc += n === 4
+        ? '<path stroke="currentColor" fill="none" stroke-width="1.6" d="M-6.2 -24.5h12.4"/>'
+        : '<path stroke="currentColor" fill="none" stroke-width="1.6" d="M-10.2 -24.5h20.4"/>';
     }
     if (l[0]) {
       dc += '<text x="' + (x0 - 10) + '" y="' + ((l[1] || 1) * 6 - 25)
-        + '" font-size="7" font-style="italic" fill="currentColor">' + l[0] + "</text>";
+        + '" font-size="7" font-style="italic" fill="currentColor">'
+        + l[0].replace(/^fr/i, "") + "</text>";
     }
-    dc += '<text x="-12,-8,-4,0,4,8" y="-26" font-size="6" fill="currentColor">'
+    dc += '<text x="' + (n === 6 ? "-12,-8,-4,0,4,8" : "-8,-4,0,4")
+      + '" y="-26" font-size="6" fill="currentColor">'
       + d[2].replace(/[y0]/g, "\u00a0") + "</text>";
     for (let i = 0; i < n; i++) {
       const f = d[0][i];
@@ -2886,7 +2915,8 @@
           + ((Number(barre[1]) - Number(barre[2])) * 4 + 4) + '"/>';
       }
     }
-    return '<svg class="yue-jp-lead-diag" viewBox="-22 -36 44 44" width="56" height="56" aria-hidden="true">'
+    const vb = n === 4 ? "-14 -36 28 44" : "-22 -36 44 44";
+    return '<svg class="yue-jp-lead-diag" viewBox="' + vb + '" width="56" height="56" aria-hidden="true">'
       + dc + "</svg>";
   }
 
@@ -4374,6 +4404,10 @@
   const TEXT_WIDTH_DEFAULT = 420;
   const TEXT_VISIBLE_KEY = "yue-jp-text-visible";
   const DIAGRAM_KEY = "yue-jp-chord-diagram";
+  const SHAPE_KEY = "yue-jp-chord-shapes";
+
+  // Stock cd6 / cd4 entries, copied once before user preferences overwrite them.
+  const stockShapes = { guitar: null, ukulele: null };
 
   function readSavedDiagram() {
     try {
@@ -4391,6 +4425,196 @@
     } catch (_err) {
       /* private mode and file pages can reject storage */
     }
+  }
+
+  function readSavedShapes() {
+    try {
+      if (typeof localStorage === "undefined") return { guitar: {}, ukulele: {} };
+      const raw = localStorage.getItem(SHAPE_KEY);
+      if (!raw) return { guitar: {}, ukulele: {} };
+      const parsed = JSON.parse(raw);
+      return {
+        guitar: parsed && typeof parsed.guitar === "object" && parsed.guitar ? parsed.guitar : {},
+        ukulele: parsed && typeof parsed.ukulele === "object" && parsed.ukulele ? parsed.ukulele : {},
+      };
+    } catch (_err) {
+      return { guitar: {}, ukulele: {} };
+    }
+  }
+
+  function writeSavedShapes(data) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(SHAPE_KEY, JSON.stringify({
+        guitar: (data && data.guitar) || {},
+        ukulele: (data && data.ukulele) || {},
+      }));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  function ensureStockShapes() {
+    if (typeof abc2svg === "undefined" || !abc2svg.diag) return;
+    if (!stockShapes.guitar && abc2svg.diag.cd6) {
+      stockShapes.guitar = Object.assign({}, abc2svg.diag.cd6);
+    }
+    if (!stockShapes.ukulele && abc2svg.diag.cd4) {
+      stockShapes.ukulele = Object.assign({}, abc2svg.diag.cd4);
+    }
+  }
+
+  function positionsFor(instrument, shapeKey) {
+    const key = String(shapeKey || "");
+    if (!key) return [];
+    const bag = typeof abc2svg !== "undefined"
+      && abc2svg.chordPositions
+      && abc2svg.chordPositions[instrument];
+    if (bag && Array.isArray(bag[key]) && bag[key].length) return bag[key].slice();
+    ensureStockShapes();
+    const stock = stockShapes[instrument];
+    if (stock && stock[key]) return [stock[key]];
+    const table = typeof abc2svg !== "undefined"
+      && abc2svg.diag
+      && abc2svg.diag[diagramTableName(instrument)];
+    if (table && table[key]) return [table[key]];
+    return [];
+  }
+
+  function listChordShapes(instrument, symbolOrKey) {
+    const inst = instrument === "ukulele" ? "ukulele" : "guitar";
+    const raw = String(symbolOrKey || "");
+    ensureStockShapes();
+    const table = (typeof abc2svg !== "undefined" && abc2svg.diag
+      && abc2svg.diag[diagramTableName(inst)])
+      || stockShapes[inst]
+      || {};
+    let key = raw;
+    const inPositions = typeof abc2svg !== "undefined"
+      && abc2svg.chordPositions
+      && abc2svg.chordPositions[inst]
+      && abc2svg.chordPositions[inst][raw];
+    if (!table[raw] && !inPositions) {
+      const resolved = resolveShapeInTable(raw, table);
+      key = resolved.shapeKey || chordShapeKey(raw);
+    }
+    const list = positionsFor(inst, key);
+    const current = table[key] || list[0] || "";
+    return { instrument: inst, shapeKey: key, frets: list, current: current };
+  }
+
+  function setChordShape(instrument, symbolOrKey, frets) {
+    const listed = listChordShapes(instrument, symbolOrKey);
+    const key = listed.shapeKey;
+    const want = String(frets || "");
+    if (!key || !want || listed.frets.indexOf(want) < 0) return false;
+    ensureStockShapes();
+    if (typeof abc2svg === "undefined" || !abc2svg.diag) return false;
+    const table = abc2svg.diag[diagramTableName(listed.instrument)];
+    if (!table) return false;
+    table[key] = want;
+    const saved = readSavedShapes();
+    if (!saved[listed.instrument]) saved[listed.instrument] = {};
+    const stock = stockShapes[listed.instrument] && stockShapes[listed.instrument][key];
+    if (stock && want === stock) delete saved[listed.instrument][key];
+    else saved[listed.instrument][key] = want;
+    writeSavedShapes(saved);
+    return true;
+  }
+
+  function applySavedShapes() {
+    if (typeof abc2svg === "undefined" || !abc2svg.diag) return;
+    ensureStockShapes();
+    const saved = readSavedShapes();
+    for (const instrument of ["guitar", "ukulele"]) {
+      const table = abc2svg.diag[diagramTableName(instrument)];
+      const stock = stockShapes[instrument];
+      if (!table || !stock) continue;
+      for (const key of Object.keys(stock)) table[key] = stock[key];
+      const prefs = saved[instrument] || {};
+      for (const key of Object.keys(prefs)) {
+        const frets = prefs[key];
+        const list = positionsFor(instrument, key);
+        if (list.indexOf(frets) >= 0) table[key] = frets;
+      }
+    }
+  }
+
+  /** Clears remembered shapes and stock snapshots (tests only). */
+  function resetChordShapePrefs() {
+    stockShapes.guitar = null;
+    stockShapes.ukulele = null;
+    try {
+      if (typeof localStorage !== "undefined") localStorage.removeItem(SHAPE_KEY);
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+
+  function closeShapePicker() {
+    if (!ui.shapePop) return;
+    ui.shapePop.hidden = true;
+    ui.shapeChord = "";
+    ui.shapeInstrument = "";
+  }
+
+  function diagGroupAt(target) {
+    let el = target;
+    while (el && el !== ui.paper) {
+      const cls = el.getAttribute && el.getAttribute("class");
+      if (cls && (" " + cls + " ").indexOf(" diag ") >= 0) return el;
+      el = el.parentNode;
+    }
+    return null;
+  }
+
+  function openShapePicker(shapeKey, anchorEl) {
+    if (!ui.shapePop || !ui.shapeList || !ui.shapeTitle) return;
+    const instrument = diagramInstrument(currentDiagram());
+    const listed = listChordShapes(instrument, shapeKey);
+    if (!listed.shapeKey || !listed.frets.length) return;
+    ui.shapeChord = listed.shapeKey;
+    ui.shapeInstrument = listed.instrument;
+    const label = listed.shapeKey.replace(/\./g, "/");
+    ui.shapeTitle.textContent = m("jpShapePick", { chord: label });
+    const closeBtn = ui.shapePop.querySelector("[data-shape-close]");
+    if (closeBtn) closeBtn.textContent = m("jpShapeClose");
+    const strings = diagramStringCount(listed.instrument);
+    ui.shapeList.innerHTML = listed.frets.map((frets, index) => {
+      const on = frets === listed.current ? " on" : "";
+      const svg = guitarDiagramSvg(frets, strings);
+      return '<button type="button" class="yue-jp-shape-opt' + on
+        + '" data-shape-frets="' + escapeHtml(frets) + '" aria-pressed="'
+        + (on ? "true" : "false") + '">' + (svg || ("#" + (index + 1))) + "</button>";
+    }).join("");
+    ui.shapePop.hidden = false;
+    // Place near the clicked diagram, inside the card.
+    const cardBox = ui.card.getBoundingClientRect();
+    const anchorBox = anchorEl && anchorEl.getBoundingClientRect
+      ? anchorEl.getBoundingClientRect()
+      : null;
+    ui.shapePop.style.left = "16px";
+    ui.shapePop.style.top = "72px";
+    ui.shapePop.style.right = "auto";
+    if (anchorBox && cardBox) {
+      const left = Math.max(12, Math.min(
+        anchorBox.left - cardBox.left,
+        cardBox.width - 220,
+      ));
+      const top = Math.max(56, Math.min(
+        anchorBox.bottom - cardBox.top + 8,
+        cardBox.height - 120,
+      ));
+      ui.shapePop.style.left = left.toFixed(0) + "px";
+      ui.shapePop.style.top = top.toFixed(0) + "px";
+    }
+  }
+
+  function pickShapeFrets(frets) {
+    if (!ui.shapeChord || !ui.shapeInstrument) return;
+    if (!setChordShape(ui.shapeInstrument, ui.shapeChord, frets)) return;
+    closeShapePicker();
+    renderScore();
   }
 
   function readSavedTextVisible() {
@@ -4495,6 +4719,8 @@
   const ui = {
     abc: "",
     chordKey: "",
+    shapeChord: "",
+    shapeInstrument: "",
     index: -1,
     voice: "Vocal",
     slice: 0,
@@ -4681,7 +4907,7 @@
       "display:flex;align-items:stretch;justify-content:center;padding:12px;",
       "font-family:Inter,system-ui,Segoe UI,sans-serif;}",
       ".yue-jp-editor[hidden]{display:none;}",
-      ".yue-jp-card{width:100%;height:100%;max-height:100%;min-height:0;",
+      ".yue-jp-card{position:relative;width:100%;height:100%;max-height:100%;min-height:0;",
       "background:#fff;color:#18181b;border-radius:16px;",
       "box-shadow:0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden;}",
       "html.dark .yue-jp-card{background:#18181b;color:#fafafa;}",
@@ -4782,6 +5008,25 @@
       ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
       "user-select:none;-webkit-user-select:none;}",
       ".yue-jp-paper svg path,.yue-jp-paper svg line{pointer-events:none;}",
+      ".yue-jp-paper svg g.diag,.yue-jp-paper svg g.diag *{pointer-events:auto;cursor:pointer;}",
+      ".yue-jp-shape-pop{position:absolute;z-index:5;min-width:200px;max-width:min(420px,92%);",
+      "max-height:min(360px,70%);overflow:auto;padding:10px 12px 12px;",
+      "border:1px solid #e4e4e7;border-radius:12px;background:#fff;",
+      "box-shadow:0 16px 40px rgba(0,0,0,.2);color:#18181b;}",
+      "html.dark .yue-jp-shape-pop{background:#18181b;color:#fafafa;border-color:rgba(255,255,255,.12);}",
+      ".yue-jp-shape-pop[hidden]{display:none;}",
+      ".yue-jp-shape-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;}",
+      ".yue-jp-shape-title{flex:1;font-size:14px;font-weight:650;}",
+      ".yue-jp-shape-close{font:inherit;cursor:pointer;border:1px solid #d4d4d8;border-radius:8px;",
+      "background:transparent;color:inherit;padding:2px 8px;}",
+      "html.dark .yue-jp-shape-close{border-color:rgba(255,255,255,.15);}",
+      ".yue-jp-shape-list{display:flex;flex-wrap:wrap;gap:10px;}",
+      ".yue-jp-shape-opt{display:flex;flex-direction:column;align-items:center;gap:4px;",
+      "padding:6px;border:1px solid #e4e4e7;border-radius:10px;background:transparent;",
+      "color:inherit;cursor:pointer;font:inherit;}",
+      "html.dark .yue-jp-shape-opt{border-color:rgba(255,255,255,.12);}",
+      ".yue-jp-shape-opt:hover,.yue-jp-shape-opt.on{border-color:#ec4899;background:rgba(236,72,153,.12);}",
+      ".yue-jp-shape-opt svg{display:block;color:inherit;}",
       ".yue-sel-box{fill:rgba(224,49,49,.16);stroke:#e03131;pointer-events:none;}",
       ".yue-join-box{fill:rgba(224,49,49,.1);stroke:#e03131;pointer-events:none;}",
       "text[data-lyric].yue-sel{fill:#c22525;}",
@@ -4862,6 +5107,13 @@
       ' data-i18n-aria="jpSplitAria" aria-valuemin="220" aria-valuemax="420" aria-valuenow="420" tabindex="0"></div>',
       '<div class="yue-jp-paper"></div>',
       "</div>",
+      '<div class="yue-jp-shape-pop" hidden role="dialog" aria-modal="false">',
+      '<div class="yue-jp-shape-head">',
+      '<span class="yue-jp-shape-title"></span>',
+      '<button type="button" class="yue-jp-shape-close" data-shape-close data-i18n="jpShapeClose"></button>',
+      "</div>",
+      '<div class="yue-jp-shape-list"></div>',
+      "</div>",
       "</div>",
     ].join("");
     document.body.appendChild(root);
@@ -4878,6 +5130,9 @@
     ui.textPane = root.querySelector(".yue-jp-text");
     ui.split = root.querySelector(".yue-jp-split");
     ui.paper = root.querySelector(".yue-jp-paper");
+    ui.shapePop = root.querySelector(".yue-jp-shape-pop");
+    ui.shapeTitle = root.querySelector(".yue-jp-shape-title");
+    ui.shapeList = root.querySelector(".yue-jp-shape-list");
     ui.clock = root.querySelector(".yue-jp-clock");
     ui.tools = root.querySelector(".yue-jp-tools");
     ui.text = root.querySelector("#yue-jp-score-text");
@@ -4954,10 +5209,19 @@
     ui.paper.addEventListener("pointerdown", (ev) => {
       ui.pointerPicked = false;
       if (ev.button != null && ev.button !== 0) return;
+      const diag = diagGroupAt(ev.target);
+      if (diag) {
+        ev.preventDefault();
+        ui.pointerPicked = true;
+        const key = diag.getAttribute("data-chord") || "";
+        if (key && currentDiagram() !== DIAGRAM_OFF) openShapePicker(key, diag);
+        return;
+      }
       const picked = headAt(ev.target, ev.clientX, ev.clientY);
       if (!picked) return;
       ev.preventDefault();
       ui.pointerPicked = true;
+      closeShapePicker();
       applyPicked(picked);
     });
     ui.paper.addEventListener("click", (ev) => {
@@ -4965,14 +5229,43 @@
         ui.pointerPicked = false;
         return;
       }
+      const diag = diagGroupAt(ev.target);
+      if (diag) {
+        const key = diag.getAttribute("data-chord") || "";
+        if (key && currentDiagram() !== DIAGRAM_OFF) openShapePicker(key, diag);
+        return;
+      }
       const picked = headAt(ev.target, ev.clientX, ev.clientY);
       if (!picked) return;
+      closeShapePicker();
       applyPicked(picked);
     });
+    if (ui.shapePop) {
+      ui.shapePop.addEventListener("click", (ev) => {
+        if (ev.target.closest && ev.target.closest("[data-shape-close]")) {
+          closeShapePicker();
+          return;
+        }
+        const opt = ev.target.closest && ev.target.closest("[data-shape-frets]");
+        if (!opt) return;
+        pickShapeFrets(opt.getAttribute("data-shape-frets"));
+      });
+    }
+    ui.card.addEventListener("pointerdown", (ev) => {
+      if (!ui.shapePop || ui.shapePop.hidden) return;
+      if (ui.shapePop.contains(ev.target)) return;
+      if (diagGroupAt(ev.target)) return;
+      closeShapePicker();
+    }, true);
     if (!ui.keysBound) {
       ui.keysBound = true;
       document.addEventListener("keydown", (event) => {
         if (!ui.root || ui.root.hidden) return;
+        if (event.key === "Escape" && ui.shapePop && !ui.shapePop.hidden) {
+          event.preventDefault();
+          closeShapePicker();
+          return;
+        }
         if ((event.ctrlKey || event.metaKey) && !event.altKey) {
           const key = String(event.key).toLowerCase();
           if (key === "s") {
@@ -6151,6 +6444,7 @@
   const ABC2SVG_SRC = "/score/abc2svg/abc2svg-1.js";
   const JIANPU_SRC = "/score/abc2svg/jianpu-1.js";
   const DIAG_SRC = "/score/abc2svg/diag-1.js";
+  const POSITIONS_SRC = "/score/abc2svg/chord-positions.js";
 
   function jianpuReady() {
     return typeof abc2svg !== "undefined" && !!abc2svg.Abc && !!abc2svg.jianpu;
@@ -6171,8 +6465,16 @@
     return typeof abc2svg !== "undefined" && !!abc2svg.diag;
   }
 
+  function positionsReady() {
+    return typeof abc2svg !== "undefined" && !!abc2svg.chordPositions;
+  }
+
   function ensureJianpu() {
-    if (jianpuReady() && diagReady()) return Promise.resolve(true);
+    const shapesReady = !diagReady() || !abc2svg.diag.cd6 || positionsReady();
+    if (jianpuReady() && diagReady() && shapesReady) {
+      applySavedShapes();
+      return Promise.resolve(true);
+    }
     if (jianpuLoading) return jianpuLoading;
     jianpuLoading = (async () => {
       if (typeof abc2svg === "undefined" || !abc2svg.Abc) {
@@ -6196,6 +6498,16 @@
           }
         }
       }
+      // Only fetch positions when a real diag table is present (not a test stub).
+      if (typeof abc2svg !== "undefined" && abc2svg.diag && abc2svg.diag.cd6
+          && !abc2svg.chordPositions) {
+        try {
+          await loadScript(POSITIONS_SRC);
+        } catch (_err) {
+          /* Shape picker falls back to the single stock diagram. */
+        }
+      }
+      applySavedShapes();
       return jianpuReady();
     })().finally(() => {
       jianpuLoading = null;
@@ -6206,7 +6518,8 @@
   function fitDiagramSvg(svg) {
     return String(svg || "").replace(/<svg\b[\s\S]*?<\/svg>/g, (doc) => {
       if (doc.indexOf('class="diag"') < 0) return doc;
-      const re = /<g(?: class="diag")? transform="translate\(([-\d.]+),([-\d.]+)\)"|<\/g>/g;
+      // Walk every <g>; diag groups may carry data-chord before transform.
+      const re = /<g\b([^>]*)>|<\/g>/g;
       let match;
       let ty = 0;
       const stack = [];
@@ -6216,9 +6529,11 @@
           ty = stack.length ? stack.pop() : 0;
           continue;
         }
+        const attrs = match[1] || "";
+        const tr = /transform="translate\(([-\d.]+),([-\d.]+)\)"/.exec(attrs);
         stack.push(ty);
-        ty += Number(match[2]);
-        if (match[0].indexOf("diag") >= 0) tops.push(ty - 34);
+        ty += tr ? Number(tr[2]) : 0;
+        if (/\bclass="diag"/.test(attrs)) tops.push(ty - 34);
       }
       if (!tops.length) return doc;
       const minTop = Math.min.apply(null, tops);
@@ -6299,6 +6614,7 @@
   function renderScore() {
     stopEaseScroll();
     clearSourceScroll();
+    applySavedShapes();
     ui.marks = playMarks(ui.abc);
     ui.playhead = null;
     ui.playKey = "";
@@ -7424,6 +7740,12 @@
     keyLegend: keyLegend,
     withKeyLegend: withKeyLegend,
     diagramDirective: diagramDirective,
+    chordShapeKey: chordShapeKey,
+    listChordShapes: listChordShapes,
+    setChordShape: setChordShape,
+    applySavedShapes: applySavedShapes,
+    resetChordShapePrefs: resetChordShapePrefs,
+    resolveGuitarShape: resolveGuitarShape,
     noteMidi: noteMidi,
     jianpuAbcWithDirective: jianpuAbcWithDirective,
     ensureJianpu: ensureJianpu,

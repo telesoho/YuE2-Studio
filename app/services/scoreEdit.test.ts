@@ -68,6 +68,17 @@ const editor = (globalThis as { yueScoreEditor?: {
   ) => number | null;
   setStrings?: (next: Record<string, string>) => void;
   open?: (abc: string, audio: string | null, options?: { strings?: Record<string, string> }) => Promise<string | null>;
+  chordShapeKey: (symbol: string) => string;
+  listChordShapes: (instrument: string, symbolOrKey: string) => {
+    instrument: string;
+    shapeKey: string;
+    frets: string[];
+    current: string;
+  };
+  setChordShape: (instrument: string, symbolOrKey: string, frets: string) => boolean;
+  applySavedShapes: () => void;
+  resetChordShapePrefs: () => void;
+  resolveGuitarShape: (symbol: string) => { symbol: string; shapeKey: string; frets: string };
 } }).yueScoreEditor!;
 
 const ABC = `X:1
@@ -1283,5 +1294,89 @@ C D E F G|
     const body = inserted.abc.replace(/\s+/g, '');
     expect(body).toContain('CDEFG|z4z|');
     expect(inserted.index).toBe(5);
+  });
+});
+
+describe('chord shape preferences', () => {
+  const stockC = 'x32010 ,0 x32010';
+  const altC = 'x13331 fr3 x12341';
+  const highC = 'xx1114 fr5 xx1114';
+  const stockCG = '332010 ,0 342010';
+  const altCG = '113331 fr3 112341';
+  const stockAsharp = 'x13331 ,0 x12341';
+  const altAsharp = 'x13331 fr6 x12341';
+
+  function installTables() {
+    editor.resetChordShapePrefs();
+    const globals = globalThis as {
+      abc2svg?: {
+        diag: { cd6: Record<string, string>; cd4: Record<string, string> };
+        chordPositions: {
+          guitar: Record<string, string[]>;
+          ukulele: Record<string, string[]>;
+        };
+      };
+    };
+    globals.abc2svg = {
+      diag: {
+        cd6: {
+          C: stockC,
+          'C.G': stockCG,
+          'A#': stockAsharp,
+        },
+        cd4: { C: '0003 ,0 0003' },
+      },
+      chordPositions: {
+        guitar: {
+          C: [stockC, altC, highC],
+          'C.G': [stockCG, altCG],
+          'A#': [stockAsharp, altAsharp],
+        },
+        ukulele: {
+          C: ['0003 ,0 0003', '0433 ,0 0211'],
+        },
+      },
+    };
+  }
+
+  it('lists every shape for a chord and remembers the chosen default', () => {
+    installTables();
+    const listed = editor.listChordShapes('guitar', 'C');
+    expect(listed.shapeKey).toBe('C');
+    expect(listed.frets).toEqual([stockC, altC, highC]);
+    expect(listed.current).toBe(stockC);
+    expect(editor.setChordShape('guitar', 'C', altC)).toBe(true);
+    expect(editor.resolveGuitarShape('C').frets).toBe(altC);
+    expect(editor.listChordShapes('guitar', 'C').current).toBe(altC);
+    // Slash chords stay on their own key.
+    expect(editor.resolveGuitarShape('C/G').frets).toBe(stockCG);
+    expect(editor.listChordShapes('guitar', 'C/G').shapeKey).toBe('C.G');
+  });
+
+  it('shares a preference between Bb and A# spellings', () => {
+    installTables();
+    expect(editor.chordShapeKey('Bb')).toBe('A#');
+    expect(editor.setChordShape('guitar', 'Bb', altAsharp)).toBe(true);
+    expect(editor.resolveGuitarShape('Bb').frets).toBe(altAsharp);
+    expect(editor.resolveGuitarShape('A#').frets).toBe(altAsharp);
+  });
+
+  it('ignores unknown frets and reapplies saved shapes', () => {
+    installTables();
+    expect(editor.setChordShape('guitar', 'C', 'not-a-shape')).toBe(false);
+    expect(editor.resolveGuitarShape('C').frets).toBe(stockC);
+    expect(editor.setChordShape('guitar', 'C', highC)).toBe(true);
+    // Wipe the live table back to stock, then reapply from storage.
+    const globals = globalThis as { abc2svg: { diag: { cd6: Record<string, string> } } };
+    globals.abc2svg.diag.cd6.C = stockC;
+    editor.applySavedShapes();
+    expect(globals.abc2svg.diag.cd6.C).toBe(highC);
+  });
+
+  it('keeps guitar and ukulele preferences apart', () => {
+    installTables();
+    expect(editor.setChordShape('ukulele', 'C', '0433 ,0 0211')).toBe(true);
+    expect(editor.listChordShapes('ukulele', 'C').current).toBe('0433 ,0 0211');
+    expect(editor.resolveGuitarShape('C').frets).toBe(stockC);
   });
 });

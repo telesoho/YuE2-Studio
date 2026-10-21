@@ -22,6 +22,10 @@ Files in this directory:
   never registered `mhooks`). `cd4` holds GCEA ukulele shapes; the
   upstream table is empty. Load after the core; `%%diagram` is
   injected only for the jianpu editor preview.
+- `chord-positions.js` — every guitar / ukulele fingering from
+  tombatossals/chords-db (MIT) in the same frets encoding as `diag-1.js`.
+  The jianpu editor loads it so a click on a diagram can pick another
+  shape and remember it as the default for that chord.
 
 abc2svg is invoked with `%%jianpu true` on each voice to switch from
 Western staff notation to JiǎnPǔ. YuE ABC uses named voices (`Vocal`,
