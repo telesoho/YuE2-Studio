@@ -918,7 +918,13 @@ pub async fn serve() -> anyhow::Result<()> {
         eprintln!("[ERROR] the saved proxy cannot be used, requests go straight out until it is fixed in Settings: {error:#}");
     }
     net::set(proxy);
-    let hub = persisted.as_ref().and_then(|settings| settings.hub.clone()).unwrap_or_default();
+    // Older builds kept "use HF-Mirror" on the proxy. When Hub is still the
+    // official site, that flag becomes the Hub endpoint so downloads keep the
+    // mirror the user already chose.
+    let mut hub = persisted.as_ref().and_then(|settings| settings.hub.clone()).unwrap_or_default();
+    if migrate_proxy_huggingface_mirror(&settings_path) && hub.base() == net::OFFICIAL_HUB {
+        hub = net::HubSettings { endpoint: Some("https://hf-mirror.com".into()) };
+    }
     match hub.clone().validated() {
         Ok(hub) => net::set_hub(hub),
         Err(error) => eprintln!("[ERROR] the saved Hugging Face mirror cannot be used, downloads use huggingface.co until it is fixed in Settings: {error:#}"),
@@ -5248,6 +5254,15 @@ pub fn saved_proxy() -> net::ProxySettings {
 
 fn load_studio_settings(path: &PathBuf) -> Option<PersistedStudioSettings> {
     fs::read_to_string(path).ok().and_then(|body| serde_json::from_str(&body).ok())
+}
+
+/// Whether a pre-unification settings file asked the proxy to rewrite Hugging
+/// Face onto hf-mirror.com. Read from the raw JSON because the field no longer
+/// exists on `ProxySettings`.
+fn migrate_proxy_huggingface_mirror(path: &PathBuf) -> bool {
+    let Ok(body) = fs::read_to_string(path) else { return false };
+    let Ok(value) = serde_json::from_str::<Value>(&body) else { return false };
+    value.pointer("/proxy/huggingface_mirror").and_then(Value::as_bool) == Some(true)
 }
 
 async fn persist_studio_settings(state: &AppState) -> anyhow::Result<()> {

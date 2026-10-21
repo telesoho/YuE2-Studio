@@ -887,7 +887,7 @@ impl AdapterLibrary {
         let query = query.trim();
         let words: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_owned).collect();
         let url = |tags: &[String], search: &str| -> Result<reqwest::Url> {
-            let mut url = reqwest::Url::parse(&crate::net::model_url(&format!("{HUB}/api/models")))?;
+            let mut url = reqwest::Url::parse(&format!("{HUB}/api/models"))?;
             {
                 let mut pairs = url.query_pairs_mut();
                 for tag in tags {

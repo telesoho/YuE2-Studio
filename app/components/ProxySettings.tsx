@@ -8,7 +8,8 @@ import { useI18n } from '../context/I18nContext';
  * The service routes each request by what is saved here, at once and without a
  * restart; the address is written in whatever form the proxy seller gave it,
  * and the service reads it. "Check" asks Hugging Face and OpenRouter through
- * the proxy on the form before anything is saved.
+ * the proxy on the form before anything is saved. Hugging Face mirrors are
+ * chosen in HubMirrorSettings, not here.
  */
 
 type Mode = 'system' | 'custom' | 'off';
@@ -18,7 +19,6 @@ interface Settings {
   mode: Mode;
   address: string | null;
   kind: Kind;
-  huggingface_mirror: boolean;
 }
 
 interface Probe {
@@ -43,7 +43,6 @@ export const ProxySettings: React.FC = () => {
   const [mode, setMode] = useState<Mode>('system');
   const [kind, setKind] = useState<Kind>('http');
   const [address, setAddress] = useState('');
-  const [huggingfaceMirror, setHuggingfaceMirror] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState<'test' | 'save' | null>(null);
   const [probe, setProbe] = useState<Probe | null>(null);
@@ -57,14 +56,13 @@ export const ProxySettings: React.FC = () => {
         setMode(body.mode);
         setKind(body.kind);
         setAddress(body.address ?? '');
-        setHuggingfaceMirror(body.huggingface_mirror === true);
         // a saved address the studio cannot read: requests go straight out until it is fixed here
         if (body.problem) setError(body.problem);
       })
       .catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
 
-  const form = (): Settings => ({ mode, kind, address: address.trim() || null, huggingface_mirror: huggingfaceMirror });
+  const form = (): Settings => ({ mode, kind, address: address.trim() || null });
 
   const send = async (path: string, method: 'PUT' | 'POST') => {
     const response = await fetch(path, {
@@ -128,20 +126,6 @@ export const ProxySettings: React.FC = () => {
         <Globe size={16} className="text-pink-500" /> {t('proxyTitle')}
       </h4>
       <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">{t('proxyIntro')}</p>
-
-      <label className="mt-3 block text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-        {t('modelDownloadSource')}
-        <select
-          value={huggingfaceMirror ? 'mirror' : 'official'}
-          disabled={busy !== null}
-          onChange={event => { setHuggingfaceMirror(event.target.value === 'mirror'); setProbe(null); setSaved(false); }}
-          className={`${CONTROL} mt-1`}
-        >
-          <option value="official">{t('modelDownloadOfficial')}</option>
-          <option value="mirror">HF-Mirror · hf-mirror.com</option>
-        </select>
-      </label>
-      <p className="mt-1 text-[11px] leading-4 text-zinc-500">{t('modelDownloadSourceHint')}</p>
 
       <div className="mt-3 flex w-fit rounded-lg border border-zinc-200 p-0.5 dark:border-white/10">
         {modes.map(choice => (
@@ -225,7 +209,7 @@ export const ProxySettings: React.FC = () => {
 
       {probe && (
         <div className="mt-3 space-y-1.5 rounded-lg bg-zinc-50 p-3 dark:bg-black/20">
-          {target(huggingfaceMirror ? 'HF-Mirror' : 'Hugging Face', probe.huggingface, probe.huggingface_error)}
+          {target('Hugging Face', probe.huggingface, probe.huggingface_error)}
           {target('OpenRouter', probe.openrouter, probe.openrouter_error)}
         </div>
       )}

@@ -204,7 +204,7 @@ move around. Check the result with `ui_screenshot`.
 
 - **studio**: `studio_status`, `studio_wait`, `studio_system`, `studio_capabilities`, `studio_open_data_folder` (in Explorer, for the user), `runtime_status` (midi, training pack, training listen), `system_gpus` (the cards and the one in use).
 - **settings**: `settings_get`, `settings_set`.
-- **network**: `network_proxy_get`, `network_proxy_set` (no proxy, the system's or your own, and the HF-Mirror), `network_proxy_test`, `network_access_get`, `network_access_set` (opening the studio from other computers, a new key).
+- **network**: `network_proxy_get`, `network_proxy_set` (no proxy, the system's or your own), `network_proxy_test`, `network_hub_get`, `network_hub_set` (official Hugging Face or a mirror base), `network_hub_test`, `network_access_get`, `network_access_set` (opening the studio from other computers, a new key).
 - **journal**: `journal_read` (the Activity page), `journal_clear`, `journal_remove`.
 - **models**: `models_status`, `models_catalog`, `models_download`, `models_adopt` (files already on disk), `models_select`, `models_cancel_download`, `models_remove`.
 - **engine**: `engine_options_get`, `engine_options_set`, `engine_restart`, `engine_logs`.

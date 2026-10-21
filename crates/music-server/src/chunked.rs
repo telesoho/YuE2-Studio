@@ -144,7 +144,7 @@ pub async fn probe(http: &reqwest::Client, url: &str) -> Result<Plan> {
         tokio::time::sleep(std::time::Duration::from_millis(500 << attempt.min(7))).await;
     }
     let mirror = if url.contains("://huggingface.co/") {
-        ". Hugging Face did not answer from this network: Settings - Network can take models from the HF-Mirror instead"
+        ". Hugging Face did not answer from this network: Settings - Providers can use a Hugging Face mirror instead"
     } else {
         ""
     };
