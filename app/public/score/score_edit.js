@@ -4158,42 +4158,25 @@
     return null;
   }
 
-  function textSpanBox(textarea, start, end) {
+  // Scroll coordinates of the logical lines covering [start, end). A wrapped
+  // line counts as its whole height, the same rows the gutter paints.
+  function textLineBox(textarea, start, end) {
     if (!textarea || typeof document === "undefined" || !document.body) return null;
-    if (!textarea.clientHeight || !textarea.clientWidth) return null;
-    const view = typeof getComputedStyle === "function" ? getComputedStyle(textarea) : null;
-    if (!view) return null;
-    const mirror = document.createElement("div");
-    mirror.setAttribute("aria-hidden", "true");
-    mirror.style.position = "absolute";
-    mirror.style.visibility = "hidden";
-    mirror.style.overflow = "hidden";
-    mirror.style.boxSizing = "border-box";
-    mirror.style.width = textarea.clientWidth + "px";
-    mirror.style.height = "auto";
-    mirror.style.whiteSpace = "pre-wrap";
-    mirror.style.wordWrap = "break-word";
-    mirror.style.overflowWrap = "break-word";
-    mirror.style.border = "0";
-    [
-      "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight",
-      "letterSpacing", "wordSpacing", "textIndent",
-      "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-    ].forEach((name) => {
-      mirror.style[name] = view[name];
-    });
     const value = String(textarea.value || "");
     const from = Math.max(0, Math.min(start, value.length));
     const to = Math.max(from, Math.min(end == null ? from : end, value.length));
-    mirror.appendChild(document.createTextNode(value.slice(0, from)));
-    const mark = document.createElement("span");
-    mark.textContent = value.slice(from, to) || "\u200b";
-    mirror.appendChild(mark);
-    document.body.appendChild(mirror);
-    const boxTop = mark.offsetTop;
-    const boxBottom = boxTop + mark.offsetHeight;
-    mirror.remove();
-    return { top: boxTop, bottom: Math.max(boxTop, boxBottom) };
+    const lines = value.split("\n");
+    const lineAt = (offset) => value.slice(0, offset).split("\n").length - 1;
+    const first = lineAt(from);
+    const last = lineAt(to > from ? to - 1 : from);
+    const heights = measureWrappedHeights(textarea, lines);
+    if (!heights) return null;
+    const pad = parseFloat(getComputedStyle(textarea).paddingTop) || 0;
+    let top = pad;
+    for (let i = 0; i < first && i < heights.length; i++) top += heights[i];
+    let bottom = top;
+    for (let i = first; i <= last && i < heights.length; i++) bottom += heights[i];
+    return { top: top, bottom: Math.max(top, bottom) };
   }
 
   // ponytail: one mirror pass per paint. Div wrap can drift a pixel from the textarea; switch the editor to per-line blocks if a row no longer sits on its number.
@@ -4686,7 +4669,8 @@
       "white-space:pre-wrap;overflow-wrap:break-word;word-wrap:break-word;",
       "color:#18181b;}",
       "html.dark .yue-jp-text textarea{color:#fafafa;background:transparent;}",
-      ".yue-jp-text textarea::selection{background:rgba(236,72,153,.28);}",
+      ".yue-jp-text textarea::selection{background:#ec4899;color:#fff;}",
+      ".yue-jp-text textarea::-moz-selection{background:#ec4899;color:#fff;}",
       ".yue-jp-text textarea:focus{outline:none;}",
       ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#71717a;}",
       ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
@@ -5531,6 +5515,7 @@
             ui.text.focus({ preventScroll: true });
           }
           ui.text.setSelectionRange(mark.start, mark.end);
+          revealTextRange(mark.start, mark.end);
         } catch (_err) {
           /* textarea may be detached */
         }
@@ -6452,6 +6437,19 @@
     paintLineNumbers();
   }
 
+  function revealTextRange(start, end) {
+    if (!ui.text) return;
+    const box = textLineBox(ui.text, start, end);
+    if (!box) return;
+    const top = ui.text.scrollTop || 0;
+    const height = ui.text.clientHeight;
+    if (textScrollTarget(top, height, box.top, box.bottom, TEXT_SCROLL_MARGIN) == null) return;
+    const next = centerScroll(top, top, height, box.top, Math.max(0, box.bottom - box.top), 1);
+    if (next == null) return;
+    ui.text.scrollTop = next;
+    placeLineNumbers();
+  }
+
   function showTextMark(locate) {
     if (!ui.text) return;
     const editing = typeof document !== "undefined" && document.activeElement === ui.text;
@@ -6459,8 +6457,6 @@
     if (ui.textBlocked || ui.index < 0) return;
     const span = textSpanFor(ui.text.value, ui.textMarks, ui.voice || "Vocal", ui.index, ui.slice || 0);
     if (!span) return;
-    const box = locate ? textSpanBox(ui.text, span.start, span.end) : null;
-    const before = ui.text.scrollTop;
     try {
       if (document.activeElement !== ui.text && ui.text.focus) {
         ui.text.focus({ preventScroll: true });
@@ -6470,11 +6466,7 @@
     } catch (_err) {
       /* the textarea can be detached while the editor is closing */
     }
-    if (!locate || !box) return;
-    const next = textScrollTarget(
-      before, ui.text.clientHeight, box.top, box.bottom, TEXT_SCROLL_MARGIN);
-    ui.text.scrollTop = next == null ? before : next;
-    placeLineNumbers();
+    if (locate) revealTextRange(span.start, span.end);
   }
 
   function syncCaret() {

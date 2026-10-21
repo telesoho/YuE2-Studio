@@ -44,6 +44,21 @@ const editor = (globalThis as { yueScoreEditor?: {
     tau: number,
     snap: number,
   ) => number;
+  textScrollTarget: (
+    scrollTop: number,
+    clientHeight: number,
+    spanTop: number,
+    spanBottom: number,
+    margin: number,
+  ) => number | null;
+  centerScroll: (
+    scroll: number,
+    frameStart: number,
+    frameSize: number,
+    boxStart: number,
+    boxSize: number,
+    slack: number,
+  ) => number | null;
   playMarks: (abc: string) => Array<{ voice: string; index: number; slice: number; start: number }>;
   markTime: (
     marks: Array<{ voice: string; index: number; slice: number; start: number }>,
@@ -75,6 +90,16 @@ function zeros(voice: string, count: number): string {
 }
 
 describe('vendored jianpu editScore', () => {
+  it('scrolls a text span into view only when it sits outside', () => {
+    const height = 200;
+    const margin = 8;
+    expect(editor.textScrollTarget(100, height, 40, 60, margin)).toBe(32);
+    expect(editor.textScrollTarget(0, height, 300, 320, margin)).toBe(128);
+    expect(editor.textScrollTarget(0, height, 40, 60, margin)).toBeNull();
+    expect(editor.centerScroll(0, 0, height, 300, 20, 1)).toBe(210);
+    expect(editor.centerScroll(210, 210, height, 300, 20, 1)).toBeNull();
+  });
+
   it('keeps a mid-score meter when only the lyric text changes', () => {
     const score = `X:1
 T:
