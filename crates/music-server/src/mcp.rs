@@ -367,7 +367,7 @@ fn annotations(name: &str) -> Value {
     // a verb that changes something outweighs a noun that reads
     const CHANGES: &[&str] = &["install", "import", "remove", "delete", "refresh", "create", "update", "start", "cancel", "select", "download", "apply", "restart"];
     // reads whose names the rules above miss: create_form names the create page
-    const READ_NAMES: &[&str] = &["lyrics_syllables", "assistant_cli_agents", "system_gpus", "cover_scenes", "cover_photos_search", "video_backgrounds_search", "network_proxy_test", "journal_read", "score_to_midi", "score_instrumental", "score_vocal_octave", "score_from_midi", "score_mark", "lyrics_find", "cover_prompt_render", "studio_wait", "engine_presets_get", "assistant_requests_wait", "ui_console", "song_defaults", "create_form_get", "library_liked", "score_chord_bed", "song_tokenize", "score_match_sections"];
+    const READ_NAMES: &[&str] = &["lyrics_syllables", "assistant_cli_agents", "system_gpus", "cover_scenes", "cover_photos_search", "video_backgrounds_search", "network_proxy_test", "network_hub_test", "journal_read", "score_to_midi", "score_instrumental", "score_vocal_octave", "score_from_midi", "score_mark", "lyrics_find", "cover_prompt_render", "studio_wait", "engine_presets_get", "assistant_requests_wait", "ui_console", "song_defaults", "create_form_get", "library_liked", "score_chord_bed", "song_tokenize", "score_match_sections"];
     // writes over what was stored, so the earlier content is gone: a client asks first
     const OVERWRITES: &[&str] = &["library_song_update", "playlist_update", "dataset_update", "dataset_song_update", "dataset_prepare", "lora_update", "stems_split", "karaoke_make", "midi_transcribe", "cover_draw", "cover_set_from_file", "openrouter_set_key"];
     let changes = CHANGES.iter().any(|verb| name.split('_').any(|word| word == *verb));
@@ -386,6 +386,7 @@ fn annotations(name: &str) -> Value {
 /// a test holds every other tool to this list.
 const JOURNAL: &[(&str, &str, &str)] = &[
     ("network_proxy_set", "updated", "settings"),
+    ("network_hub_set", "updated", "settings"),
     ("network_access_set", "updated", "settings"),
     ("cover_look_set", "updated", "settings"),
     ("midi_set", "updated", "midi"),

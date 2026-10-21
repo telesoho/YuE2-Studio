@@ -1367,7 +1367,7 @@ describe('chord shape preferences', () => {
     expect(editor.resolveGuitarShape('C').frets).toBe(stockC);
     expect(editor.setChordShape('guitar', 'C', highC)).toBe(true);
     // Wipe the live table back to stock, then reapply from storage.
-    const globals = globalThis as { abc2svg: { diag: { cd6: Record<string, string> } } };
+    const globals = globalThis as unknown as { abc2svg: { diag: { cd6: Record<string, string> } } };
     globals.abc2svg.diag.cd6.C = stockC;
     editor.applySavedShapes();
     expect(globals.abc2svg.diag.cd6.C).toBe(highC);
