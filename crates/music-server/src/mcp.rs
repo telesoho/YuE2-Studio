@@ -369,12 +369,12 @@ fn annotations(name: &str) -> Value {
     // reads whose names the rules above miss: create_form names the create page
     const READ_NAMES: &[&str] = &["lyrics_syllables", "assistant_cli_agents", "system_gpus", "cover_scenes", "cover_photos_search", "video_backgrounds_search", "network_proxy_test", "network_hub_test", "journal_read", "score_to_midi", "score_instrumental", "score_vocal_octave", "score_from_midi", "score_mark", "lyrics_find", "cover_prompt_render", "studio_wait", "engine_presets_get", "assistant_requests_wait", "ui_console", "song_defaults", "create_form_get", "library_liked", "score_chord_bed", "song_tokenize", "score_match_sections"];
     // writes over what was stored, so the earlier content is gone: a client asks first
-    const OVERWRITES: &[&str] = &["library_song_update", "playlist_update", "dataset_update", "dataset_song_update", "dataset_prepare", "lora_update", "stems_split", "karaoke_make", "midi_transcribe", "cover_draw", "cover_set_from_file", "openrouter_set_key"];
+    const OVERWRITES: &[&str] = &["library_song_update", "library_song_score_set", "score_align_lyrics", "playlist_update", "dataset_update", "dataset_song_update", "dataset_prepare", "lora_update", "stems_split", "karaoke_make", "midi_transcribe", "cover_draw", "cover_set_from_file", "openrouter_set_key"];
     let changes = CHANGES.iter().any(|verb| name.split('_').any(|word| word == *verb));
     let read_only = READ_NAMES.contains(&name) || !changes && (READS.iter().any(|part| name.ends_with(part) || name.contains(&format!("{part}_"))) || name.starts_with("writing_"));
     let destructive = name.ends_with("_delete") || name.ends_with("_remove") || name == "processing_discard" || name.ends_with("_cancel") || name.contains("_cancel_") || OVERWRITES.contains(&name);
     // what reaches the internet: OpenRouter, Hugging Face, the lyric databases and every download
-    let open_world = name.starts_with("openrouter_") || name.contains("_hf") || name == "lyrics_find" || name == "models_download" || name == "lora_install_catalog" || name.ends_with("_install") && name != "training_checkpoint_install";
+    let open_world = name.starts_with("openrouter_") || name.contains("_hf") || name == "lyrics_find" || name == "models_download" || name == "lora_install_catalog" || name == "score_publish" || name.ends_with("_install") && name != "training_checkpoint_install";
     let title = name.replace('_', " ");
     json!({ "title": title, "readOnlyHint": read_only, "destructiveHint": destructive, "idempotentHint": read_only || name.ends_with("_set") || name.contains("_select"), "openWorldHint": open_world })
 }
@@ -413,7 +413,14 @@ const JOURNAL: &[(&str, &str, &str)] = &[
     ("midi_delete", "deleted", "midi"),
     ("score_compose", "started", "score"),
     ("score_transcribe", "started", "score"),
+    ("score_read", "started", "score"),
     ("score_job_cancel", "cancelled", "score"),
+    ("score_reading_cancel", "cancelled", "score"),
+    ("library_song_score_set", "updated", "song"),
+    ("score_align_lyrics", "updated", "song"),
+    ("score_publish", "exported", "score"),
+    ("capture_start", "started", "capture"),
+    ("capture_stop", "kept", "capture"),
     ("processing_start", "started", "processing"),
     ("processing_keep", "kept", "processing"),
     ("processing_discard", "discarded", "processing"),
@@ -1510,6 +1517,101 @@ fn tools() -> &'static [Tool] {
                     }
                     Ok(Call { method: Method::POST, path: "/v1/score/sections".into(), payload: Payload::Form { fields, files } })
                 },
+            },
+            Tool {
+                name: "score_read",
+                description: "Listen to a recording and write a full score with lyrics (SheetSage2, then vocals, recognised words, alignment), saved as a library track. Pass song_id of a library track, or path of an audio file on this computer. language of the words (zh by default). lyrics, when given, are aligned instead of recognised. fit_timing scales recognised times onto note onsets. Poll score_reading_get.",
+                schema: || object(json!({ "song_id": { "type": "string" }, "path": { "type": "string" }, "language": { "type": "string" }, "lyrics": { "type": "string" }, "fit_timing": { "type": "boolean" } }), &[]),
+                call: |args| {
+                    let mut fields = Vec::new();
+                    let mut files = Vec::new();
+                    if let Some(path) = args.get("path").and_then(Value::as_str).filter(|path| !path.trim().is_empty()) {
+                        let path = PathBuf::from(path.trim());
+                        files.push(("audio".to_string(), path.clone(), file_name(&path)));
+                    } else {
+                        fields.push(("song_id".to_string(), text(args, "song_id").map_err(|_| "song_id or path is required".to_string())?));
+                    }
+                    if let Some(language) = args.get("language").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
+                        fields.push(("language".into(), language.trim().to_string()));
+                    }
+                    if let Some(lyrics) = args.get("lyrics").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
+                        fields.push(("lyrics".into(), lyrics.to_string()));
+                    }
+                    if args.get("fit_timing").and_then(Value::as_bool).unwrap_or(false) {
+                        fields.push(("fit_timing".into(), "1".into()));
+                    }
+                    Ok(Call { method: Method::POST, path: "/v1/score-readings".into(), payload: Payload::Form { fields, files } })
+                },
+            },
+            Tool {
+                name: "score_reading_get",
+                description: "A score_read job's status; when done it holds the ABC, lyrics and the library song_id.",
+                schema: || id_only("job_id", "from score_read"),
+                call: |args| get(format!("/v1/score-readings/{}", segment(&text(args, "job_id")?))),
+            },
+            Tool {
+                name: "score_reading_cancel",
+                description: "Stop a score_read job.",
+                schema: || id_only("job_id", "the job to stop"),
+                call: |args| post(format!("/v1/score-readings/{}", segment(&text(args, "job_id")?)), json!({})),
+            },
+            Tool {
+                name: "library_song_score_set",
+                description: "Save edited ABC onto a library song that has a score (a score_read track, or one whose details already hold a score).",
+                schema: || object(json!({ "song_id": { "type": "string" }, "abc": { "type": "string" } }), &["song_id", "abc"]),
+                call: |args| send(Method::PUT, format!("/v1/library/songs/{}/score", segment(&text(args, "song_id")?)), json!({ "abc": text(args, "abc")? })),
+            },
+            Tool {
+                name: "score_align_lyrics",
+                description: "Put written lyrics on an existing score_read library track. An empty sheet hears the track again. fit_timing scales recognised times onto note onsets.",
+                schema: || object(json!({ "song_id": { "type": "string" }, "lyrics": { "type": "string" }, "fit_timing": { "type": "boolean" } }), &["song_id", "lyrics"]),
+                call: |args| {
+                    let mut body = json!({ "lyrics": text(args, "lyrics")? });
+                    if args.get("fit_timing").and_then(Value::as_bool).unwrap_or(false) {
+                        body["fit_timing"] = json!(true);
+                    }
+                    post(format!("/v1/library/songs/{}/score-align", segment(&text(args, "song_id")?)), body)
+                },
+            },
+            Tool {
+                name: "score_publish",
+                description: "Publish a library song's score to the GitHub Pages site the person configured in Settings. Returns the public url. The person must have stored a GitHub token first.",
+                schema: || id_only("song_id", "the library song whose score to publish"),
+                call: |args| post(format!("/v1/library/songs/{}/score-publish", segment(&text(args, "song_id")?)), json!({})),
+            },
+            Tool {
+                name: "capture_windows_list",
+                description: "Windows on this computer that are playing audio, as the score page's capture list shows: pid, label, process_name, value. capture_start takes pid.",
+                schema: nothing,
+                call: |_| get("/v1/capture/windows".into()),
+            },
+            Tool {
+                name: "capture_start",
+                description: "Start recording a playing window's audio (pid from capture_windows_list). capture_stop ends it and keeps the wav.",
+                schema: || object(json!({ "pid": { "type": "integer" }, "label": { "type": "string" }, "process_name": { "type": "string" } }), &["pid"]),
+                call: |args| {
+                    let pid = args.get("pid").and_then(Value::as_i64).filter(|pid| *pid > 0).ok_or_else(|| "'pid' is required".to_string())?;
+                    let mut body = json!({ "value": pid.to_string() });
+                    if let Some(label) = args.get("label").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
+                        body["label"] = json!(label);
+                    }
+                    if let Some(process_name) = args.get("process_name").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) {
+                        body["process_name"] = json!(process_name);
+                    }
+                    post("/v1/capture/start".into(), body)
+                },
+            },
+            Tool {
+                name: "capture_stop",
+                description: "Stop the window capture and return the recording's path (and audio as base64). Silent recordings say so.",
+                schema: nothing,
+                call: |_| post("/v1/capture/stop".into(), json!({})),
+            },
+            Tool {
+                name: "capture_status",
+                description: "Whether a window capture is recording, and for how long.",
+                schema: nothing,
+                call: |_| get("/v1/capture/status".into()),
             },
             // ---------------------------------------------------------------- how to write for the model
             Tool {
@@ -3032,7 +3134,7 @@ mod tests {
 
     #[test]
     fn a_tool_that_writes_over_what_was_stored_is_destructive() {
-        for name in ["library_song_update", "playlist_update", "stems_split", "karaoke_make", "midi_transcribe", "dataset_prepare", "cover_set_from_file", "library_song_delete"] {
+        for name in ["library_song_update", "library_song_score_set", "playlist_update", "stems_split", "karaoke_make", "midi_transcribe", "dataset_prepare", "cover_set_from_file", "library_song_delete"] {
             assert_eq!(annotations(name)["destructiveHint"], true, "{name}");
         }
         for name in ["song_create", "playlist_create", "library_song_like", "library_version_select", "settings_set"] {
@@ -3205,6 +3307,10 @@ mod tests {
         ("GET", "/v1/library/songs/{id}/cover/placeholder", "the picture the page shows while a song has no cover"),
         ("GET", "/v1/transcriptions/{job_id}", "the same score job score_job_get reads"),
         ("POST", "/v1/transcriptions/{job_id}", "the same cancel as score_job_cancel"),
+        ("POST", "/v1/library/songs/{id}/score-share", "a zip for the page to download: the score's share package"),
+        ("GET", "/v1/score/publish-settings", "the person's GitHub publish target; agents are not given tokens"),
+        ("PUT", "/v1/score/publish-settings", "the person's GitHub token and repo; agents are not given keys"),
+        ("POST", "/v1/score/publish-settings/test", "probes the token the person typed"),
         ("GET", "/v1/music/jobs/ended", "the page's cards after a reload: song_jobs_list and song_job_get"),
     ];
 

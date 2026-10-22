@@ -68,7 +68,7 @@ connected and the address to paste.
   from, `stems_split` on a song that has stems replaces the ones it makes again, and a stem
   itself is not split.
 - **Files on this computer are passed by path**: `dataset_add_folder`,
-  `library_import_audio`, `score_transcribe`, `cover_set_from_file`, `video_set`.
+  `library_import_audio`, `score_transcribe`, `score_read`, `cover_set_from_file`, `video_set`.
   `library_song_files` and `dataset_song_files` give the paths of the studio's own files.
 - **You write, not the studio's assistant.** The studio has a small local model (Gemma)
   for users without an agent. You write better: read `writing_guide` and
@@ -209,7 +209,8 @@ move around. Check the result with `ui_screenshot`.
 - **models**: `models_status`, `models_catalog`, `models_download`, `models_adopt` (files already on disk), `models_select`, `models_cancel_download`, `models_remove`.
 - **engine**: `engine_options_get`, `engine_options_set`, `engine_restart`, `engine_logs`.
 - **song**: `song_defaults` (what a field left out becomes), `song_create` (playlist_id puts the made songs into a playlist), `song_job_get`, `song_jobs_list`, `song_job_cancel`, `song_replay`, `song_tokenize`, `song_job_dismiss` (an ended job's card off the page).
-- **score**: `score_compose`, `score_chord_bed`, `score_job_get`, `score_job_cancel`, `score_transcribe`, `score_match_sections`, `score_to_midi` (base64 .mid), `score_instrumental` (the voice's melody to the instrument), `score_vocal_octave`, `score_from_midi` (a .mid path), `score_mark` (sections from style and lyrics).
+- **score**: `score_compose`, `score_chord_bed`, `score_job_get`, `score_job_cancel`, `score_transcribe`, `score_match_sections`, `score_read` (full score with lyrics from a recording; poll `score_reading_get`, stop with `score_reading_cancel`), `library_song_score_set`, `score_align_lyrics`, `score_publish` (GitHub Pages, token the person stored), `score_to_midi` (base64 .mid), `score_instrumental` (the voice's melody to the instrument), `score_vocal_octave`, `score_from_midi` (a .mid path), `score_mark` (sections from style and lyrics).
+- **capture**: `capture_windows_list` (playing windows), `capture_start` (pid), `capture_stop`, `capture_status`.
 - **writing**: `writing_guide`, `writing_examples`.
 - **assistant**: `assistant_requests_wait`, `assistant_request_answer` (when you are the assistant), `assistant_sections`, `assistant_write`, `assistant_status`, `assistant_set`, `assistant_local_models`, `assistant_cli_agents` (Claude Code, Codex, opencode, Antigravity, Muse Code: installed or how to install), `assistant_runtime`, `assistant_model_install`, `assistant_model_remove`, `assistant_cancel_download`, `assistant_start`, `assistant_stop`.
 - **library**: `library_songs_list` (since/until), `library_liked`, `library_song_like`, `library_song_get`, `library_song_update`, `library_song_delete`, `library_import_audio`, `library_file_tags_get`, `library_file_tags_set`, `library_song_files`, `library_version_select`, `library_version_delete`, `library_song_describe_style` (by ear, for a cover of a recording without one), `library_song_note_set` (the song's note).
