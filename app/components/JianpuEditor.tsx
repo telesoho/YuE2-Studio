@@ -17,6 +17,7 @@ declare global {
           saveNote?: HTMLElement | null;
           strings?: Record<string, string>;
           title?: string | null;
+          songKey?: string | null;
         },
       ) => Promise<string | null>;
       currentAbc: () => string;
@@ -67,11 +68,13 @@ export const JianpuEditor: React.FC<{
   abc: string;
   audioUrl?: string | null;
   songId?: string | null;
+  /** Persists the lead-sheet key choice across opens for this song. */
+  songKey?: string | null;
   /** Library / form song name for blank T: display (not written into ABC). */
   title?: string | null;
   onClose: (edited: string | null) => void;
   onSaved?: () => void;
-}> = ({ abc, audioUrl, songId, title, onClose, onSaved }) => {
+}> = ({ abc, audioUrl, songId, songKey, title, onClose, onSaved }) => {
   const { language, t } = useI18n();
   const strings = useMemo(() => catalog(language), [language]);
   const saveButton = useRef<HTMLButtonElement | null>(null);
@@ -84,6 +87,8 @@ export const JianpuEditor: React.FC<{
   stringsRef.current = strings;
   const titleRef = useRef(title);
   titleRef.current = title;
+  const songKeyRef = useRef(songKey);
+  songKeyRef.current = songKey;
   const abcRef = useRef(abc);
   abcRef.current = abc;
   const audioRef = useRef(audioUrl);
@@ -95,6 +100,7 @@ export const JianpuEditor: React.FC<{
     committed.current = null;
     const abcNow = abcRef.current;
     const audioNow = audioRef.current;
+    const songKeyNow = songKeyRef.current;
     void (async () => {
       try {
         await loadEditor();
@@ -110,6 +116,7 @@ export const JianpuEditor: React.FC<{
           saveNote: saveNote.current,
           strings: stringsRef.current,
           title: titleRef.current,
+          songKey: songKeyNow,
         });
         if (alive) onCloseRef.current(edited ?? committed.current);
       } catch {

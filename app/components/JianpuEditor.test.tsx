@@ -287,6 +287,63 @@ describe('JianpuEditor', () => {
     }
   });
 
+  it('remembers the selected lead key for a song across opens', async () => {
+    localStorage.setItem('language', 'en');
+    localStorage.removeItem('yue-jp-chord-keys');
+    const globals = globalThis as { abc2svg?: unknown };
+    const previous = globals.abc2svg;
+    globals.abc2svg = { Abc() {}, jianpu: {}, diag: {} };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let root: Root | undefined;
+    try {
+      await act(async () => {
+        root = createRoot(host);
+        root.render(
+          <StrictMode>
+            <I18nProvider>
+              <JianpuEditor abc={ABC} songKey="song-1" onClose={() => {}} />
+            </I18nProvider>
+          </StrictMode>,
+        );
+      });
+      const keySelect = document.querySelector('.yue-jp-chord-key') as HTMLSelectElement;
+      expect(keySelect.value).toBe('C');
+      await act(async () => {
+        keySelect.value = 'G';
+        keySelect.dispatchEvent(new Event('change'));
+      });
+      expect(keySelect.value).toBe('G');
+      expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 5');
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="cancel"]') as HTMLButtonElement).click();
+        root?.unmount();
+      });
+      await act(async () => {
+        root = createRoot(host);
+        root.render(
+          <StrictMode>
+            <I18nProvider>
+              <JianpuEditor abc={ABC} songKey="song-1" onClose={() => {}} />
+            </I18nProvider>
+          </StrictMode>,
+        );
+      });
+      const restored = document.querySelector('.yue-jp-chord-key') as HTMLSelectElement;
+      expect(restored.value).toBe('G');
+      expect(document.querySelector('.yue-jp-orig-key')?.textContent).toBe('1=C');
+      expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 5');
+    } finally {
+      await act(async () => {
+        root?.unmount();
+      });
+      host.remove();
+      document.querySelector('.yue-jp-editor')?.remove();
+      localStorage.removeItem('yue-jp-chord-keys');
+      globals.abc2svg = previous;
+    }
+  });
+
   it('puts rest-line chords on beats and lyric chords on syllables', () => {
     const sheet = editor.leadSheet(LEAD_ABC);
     expect(sheet.error).toBeFalsy();

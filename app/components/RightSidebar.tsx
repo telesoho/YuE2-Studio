@@ -997,6 +997,7 @@ const SongScore: React.FC<{ song: Song; onSongUpdate?: (song: Song) => void }> =
                     abc={abc}
                     audioUrl={song.audioUrl ?? null}
                     songId={isScoreReading ? song.id : null}
+                    songKey={song.id}
                     title={song.title}
                     onClose={edited => {
                         setJianpuOpen(false);

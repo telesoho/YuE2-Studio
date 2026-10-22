@@ -131,52 +131,10 @@ function positionToDiag(pos, strings) {
     for (let i = 0; i < strings; i++) {
       if (frets[i] === barreFret && fingers[i] === 1) idxs.push(i);
     }
+    // Outer span of finger-1 at the barre fret (gaps from other fingers ok).
     if (idxs.length < 2) continue;
-    // Require a contiguous block of finger-1 strings at the barre fret.
-    idxs.sort((a, b) => a - b);
-    let lo = idxs[0];
-    let hi = idxs[0];
-    for (let k = 1; k < idxs.length; k++) {
-      if (idxs[k] === hi + 1) hi = idxs[k];
-      else break;
-    }
-    // Grow to the longest contiguous run starting at lo.
-    for (let k = 1; k < idxs.length; k++) {
-      if (idxs[k] === idxs[k - 1] + 1) hi = idxs[k];
-      else if (idxs[k] > hi + 1) break;
-    }
-    // Prefer the longest contiguous span among finger-1 strings.
-    let bestLo = idxs[0];
-    let bestHi = idxs[0];
-    let runLo = idxs[0];
-    for (let k = 1; k < idxs.length; k++) {
-      if (idxs[k] === idxs[k - 1] + 1) {
-        if (idxs[k] - runLo > bestHi - bestLo) {
-          bestLo = runLo;
-          bestHi = idxs[k];
-        }
-      } else {
-        runLo = idxs[k];
-      }
-    }
-    // Final contiguous: walk all runs
-    bestLo = idxs[0];
-    bestHi = idxs[0];
-    runLo = idxs[0];
-    let runHi = idxs[0];
-    for (let k = 1; k < idxs.length; k++) {
-      if (idxs[k] === runHi + 1) {
-        runHi = idxs[k];
-        if (runHi - runLo > bestHi - bestLo) {
-          bestLo = runLo;
-          bestHi = runHi;
-        }
-      } else {
-        runLo = idxs[k];
-        runHi = idxs[k];
-      }
-    }
-    if (bestHi - bestLo < 1) continue;
+    const bestLo = Math.min(...idxs);
+    const bestHi = Math.max(...idxs);
     // String numbers: 1 = highest (rightmost), strings = lowest (leftmost).
     const highNum = strings - bestHi;
     const lowNum = strings - bestLo;
@@ -184,6 +142,29 @@ function positionToDiag(pos, strings) {
     break;
   }
   return out;
+}
+
+// Self-check (no chords-db): Bm7 open barre + A E-shape at fr5.
+{
+  const bm7 = positionToDiag(
+    { frets: [2, 2, 4, 2, 3, 2], fingers: [1, 1, 3, 1, 2, 1], barres: 2 },
+    6,
+  );
+  const aBarre = positionToDiag(
+    {
+      frets: [1, 3, 3, 2, 1, 1],
+      fingers: [1, 3, 4, 2, 1, 1],
+      barres: 1,
+      baseFret: 5,
+    },
+    6,
+  );
+  if (bm7 !== "224232 ,0 113121 barre=6-1") {
+    throw new Error("barre self-check Bm7: got " + bm7);
+  }
+  if (aBarre !== "133211 fr5 134211 barre=6-1") {
+    throw new Error("barre self-check A: got " + aBarre);
+  }
 }
 
 function buildInstrument(json, strings) {

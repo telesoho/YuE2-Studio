@@ -2910,9 +2910,24 @@
     if (d[3]) {
       const barre = d[3].match(/barre=(\d)-(\d)/);
       if (barre) {
+        // Expand to every finger-1 string at the barre fret; place at that fret.
+        let lo = Number(barre[1]);
+        let hi = Number(barre[2]);
+        const iLo = n - lo;
+        const fretCh = d[0][iLo];
+        const fretNum = fretCh >= "1" && fretCh <= "9" ? Number(fretCh) : 1;
+        if (d[2] && d[2].length === n && fretCh && fretCh !== "x" && fretCh !== "0") {
+          for (let i = 0; i < n; i++) {
+            if (d[0][i] === fretCh && d[2][i] === "1") {
+              const s = n - i;
+              if (s > lo) lo = s;
+              if (s < hi) hi = s;
+            }
+          }
+        }
         dc += '<path stroke="currentColor" fill="none" stroke-width="1.4" d="M'
-          + ((n - Number(barre[1])) * 4 + x0 - 2) + " -21h"
-          + ((Number(barre[1]) - Number(barre[2])) * 4 + 4) + '"/>';
+          + ((n - lo) * 4 + x0 - 2) + " " + (fretNum * 6 - 27) + "h"
+          + ((lo - hi) * 4 + 4) + '"/>';
       }
     }
     const vb = n === 4 ? "-14 -36 28 44" : "-22 -36 44 44";
@@ -4405,6 +4420,53 @@
   const TEXT_VISIBLE_KEY = "yue-jp-text-visible";
   const DIAGRAM_KEY = "yue-jp-chord-diagram";
   const SHAPE_KEY = "yue-jp-chord-shapes";
+  const CHORD_KEYS_KEY = "yue-jp-chord-keys";
+
+  function readSavedChordKeys() {
+    try {
+      if (typeof localStorage === "undefined") return {};
+      const raw = localStorage.getItem(CHORD_KEYS_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  function writeSavedChordKeys(map) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(CHORD_KEYS_KEY, JSON.stringify(map));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  function readSavedChordKey(songKey, originalName) {
+    const key = String(songKey || "").trim();
+    if (!key || !originalName) return "";
+    const saved = readSavedChordKeys()[key];
+    if (typeof saved !== "string" || !knownKey(saved)) return "";
+    if (saved.endsWith("m") !== originalName.endsWith("m")) return "";
+    return saved === originalName ? "" : saved;
+  }
+
+  function writeSavedChordKey(songKey, originalName, selectedName) {
+    const key = String(songKey || "").trim();
+    if (!key) return;
+    const map = readSavedChordKeys();
+    const selected = String(selectedName || "").trim();
+    if (!selected || !knownKey(selected) || selected === originalName
+        || selected.endsWith("m") !== String(originalName || "").endsWith("m")) {
+      if (!(key in map)) return;
+      delete map[key];
+      writeSavedChordKeys(map);
+      return;
+    }
+    map[key] = selected;
+    writeSavedChordKeys(map);
+  }
 
   // Stock cd6 / cd4 entries, copied once before user preferences overwrite them.
   const stockShapes = { guitar: null, ukulele: null };
@@ -4719,6 +4781,7 @@
   const ui = {
     abc: "",
     chordKey: "",
+    songKey: "",
     shapeChord: "",
     shapeInstrument: "",
     index: -1,
@@ -5123,6 +5186,8 @@
     ui.chordKeySelect = ui.meta.querySelector(".yue-jp-chord-key");
     ui.chordKeySelect.addEventListener("change", () => {
       ui.chordKey = ui.chordKeySelect.value;
+      const info = inspectScore(ui.abc);
+      if (!info.error) writeSavedChordKey(ui.songKey, info.keyName, ui.chordKey);
       renderScore();
     });
     ui.status = root.querySelector(".yue-jp-status");
@@ -7665,6 +7730,7 @@
     ui.saveButton = options && options.saveButton || null;
     ui.saveNote = options && options.saveNote || null;
     ui.songTitle = options && options.title ? String(options.title).trim() : "";
+    ui.songKey = options && options.songKey ? String(options.songKey).trim() : "";
     ui.savedNote = false;
     ui.savedSticky = false;
     ui.view = "jianpu";
@@ -7680,7 +7746,8 @@
       ui.textBurst = 0;
       ui.restoring = false;
       syncHistoryButtons();
-      ui.chordKey = "";
+      const header = parseHeader(ui.abc.split(/\r?\n/));
+      ui.chordKey = readSavedChordKey(ui.songKey, header.key.name);
       ui.textDirty = false;
       ui.textBlocked = false;
       ui.textError = "";

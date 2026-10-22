@@ -1466,10 +1466,24 @@ abc2svg.diag = {
             }
             if (d[3]) {
                 barre = d[3].match(/barre=(\d)-(\d)/)
-                if (barre)
+                if (barre) {
+                    // Expand to every finger-1 string at the barre fret; place at that fret.
+                    var lo = +barre[1], hi = +barre[2], iLo = n - lo,
+                        fretCh = d[0][iLo],
+                        fretNum = fretCh >= "1" && fretCh <= "9" ? +fretCh : 1, si, s
+                    if (d[2] && d[2].length == n && fretCh && fretCh != "x" && fretCh != "0") {
+                        for (si = 0; si < n; si++) {
+                            if (d[0][si] == fretCh && d[2][si] == "1") {
+                                s = n - si
+                                if (s > lo) lo = s
+                                if (s < hi) hi = s
+                            }
+                        }
+                    }
                     dc += '<path class="stroke" stroke="currentColor" fill="none" stroke-width="1.4" d="M'
-                        + ((n - barre[1]) * 4 + x0 - 2)
-                        + " -21h" + ((barre[1] - barre[2]) * 4 + 4) + '"/>'
+                        + ((n - lo) * 4 + x0 - 2)
+                        + " " + (fretNum * 6 - 27) + "h" + ((lo - hi) * 4 + 4) + '"/>'
+                }
             }
             return dc
         }
