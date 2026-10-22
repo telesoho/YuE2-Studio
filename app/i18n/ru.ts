@@ -44,6 +44,7 @@ export const ru = {
     journalKind_settings: 'настройки',
     journalKind_preparation: 'подготовка датасета',
     journalKind_score: 'партитура',
+    journalKind_capture: 'запись окна',
 
     // Tools
     toolsDescription: 'Утилиты для конвертации и управления моделями',

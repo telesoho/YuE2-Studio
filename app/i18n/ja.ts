@@ -44,6 +44,7 @@ export const ja = {
   journalKind_settings: '設定',
   journalKind_preparation: 'データセットの準備',
   journalKind_score: '楽譜',
+  journalKind_capture: '窓録り',
 
   // Tools
   toolsDescription: 'モデルの変換・管理ツール',

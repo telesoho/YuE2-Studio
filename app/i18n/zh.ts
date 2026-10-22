@@ -44,6 +44,7 @@ export const zh = {
     journalKind_settings: '设置',
     journalKind_preparation: '数据集准备',
     journalKind_score: '乐谱',
+    journalKind_capture: '窗口录制',
 
     // Tools
     toolsDescription: '模型转换和管理工具',

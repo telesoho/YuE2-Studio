@@ -44,6 +44,7 @@ export const ko = {
     journalKind_settings: '설정',
     journalKind_preparation: '데이터셋 준비',
     journalKind_score: '악보',
+    journalKind_capture: '창 녹음',
 
     // Tools
     toolsDescription: '모델 변환 및 관리 유틸리티',
