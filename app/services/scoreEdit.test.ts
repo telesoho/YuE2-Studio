@@ -250,6 +250,39 @@ z16|
     expect(result.message).not.toContain('要写在 V: 或 A: 下面');
   });
 
+  it('prints a low comma for D in B major so text matches the score dots', () => {
+    editor.setStrings?.(jianpuStrings.zh as unknown as Record<string, string>);
+    const score = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:B
+% verse
+V: Vocal
+D4|
+V: Ins
+z4|
+`;
+    const built = editor.buildJianpuText(score);
+    expect(built.error).toBeFalsy();
+    expect(built.text).toContain('3,');
+    const cScore = score.replace('K:B', 'K:C');
+    const cBuilt = editor.buildJianpuText(cScore);
+    expect(cBuilt.error).toBeFalsy();
+    expect(cBuilt.text).toMatch(/\n2 \|/);
+    expect(cBuilt.text).not.toContain('2,');
+    const svg = [
+      '<text class="fj v-Vocal" x="0" y="10">3</text>',
+      '<text x="0" y="15">\ue1e7</text>',
+      '<text class="fj v-Ins" x="0" y="30">0</text>',
+    ].join('');
+    const result = editor.compareJianpuNotes(built.text || '', svg, 4, 16, 16);
+    expect(result.ok).toBe(true);
+  });
+
   it('interpolates source scroll between row anchors', () => {
     expect(editor.sourceScrollTop([], 1, 200, 500)).toBe(0);
     const anchors = [

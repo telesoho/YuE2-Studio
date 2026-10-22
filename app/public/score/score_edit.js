@@ -296,8 +296,7 @@
     const degree0 = degree - 1;
     const stepIdx = (tonic + degree0) % 7;
     const wrap = Math.floor((tonic + degree0) / 7);
-    const shift = tonic === 6 ? 1 : 0;
-    const sci = 4 + jpOctave + wrap - shift;
+    const sci = 4 + jpOctave + wrap;
     const abs = keyAlter(stepIdx, key.fifths) + relative;
     if (abs < -2 || abs > 2) return null;
     const written = spellLetter(STEPS[stepIdx], sci);
@@ -324,10 +323,9 @@
     const sci = scientific(ev.letter, ev.marks);
     const degree0 = (stepIdx - tonic + 7) % 7;
     const wrap = Math.floor((tonic + degree0) / 7);
-    const shift = tonic === 6 ? 1 : 0;
     const keyAlt = keyAlter(stepIdx, ev.key.fifths);
     const relative = ev.acc ? ACC[ev.acc] - keyAlt : 0;
-    return { degree: degree0 + 1, octave: sci - 4 - wrap + shift, relative: relative, stepIdx: stepIdx };
+    return { degree: degree0 + 1, octave: sci - 4 - wrap, relative: relative, stepIdx: stepIdx };
   }
 
   function printToken(ev) {
