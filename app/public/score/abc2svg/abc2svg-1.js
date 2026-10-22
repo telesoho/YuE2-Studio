@@ -7758,6 +7758,12 @@ else
 n=0;x+=(w-d*n-5)/2;out_XYAB('<path class="stroke" stroke-width="1.2"\n\
  stroke-dasharray="5,A"\n\
  d="mX YhB"/>\n',x,y+6,Math.round((d-5)/stv_g.scale),d*n+5)}
+// Jianpu lyric "-" is one bar across the hold. Split per note if a gap between beats is required.
+function out_jp_ly(x,y,w){var pad
+if(w<4)return
+pad=w>16?3:1
+if(w<pad*2+4)pad=0
+out_XYAB('<path class="stroke jp-ly" stroke-width="1.2" d="mX YhF"/>\n',x+pad,y+6,w-pad*2)}
 function out_stem(x,y,h,grace,nflags,straight){var dx=grace?GSTEM_XOFF:3.5,slen=-h
 if(h<0)
 dx=-dx;x+=dx*stv_g.scale
@@ -9126,12 +9132,18 @@ for(;s;s=s.next){if(s.a_ly)
 ly=s.a_ly[j]
 else
 ly=null
-if(!ly){switch(s.type){case C.REST:case C.MREST:if(lflag){out_wln(lastx+3,y,x0-lastx);lflag=false;lastx=s.x+s.wr}}
+if(!ly){switch(s.type){case C.REST:case C.MREST:
+// Jianpu: lyric "-" must stop at the last sounding note. jn==8 is a
+// sliced sustain dash (still the note); a real 0 ends the hold.
+if(p_voice.jianpu&&hyflag){if(s.notes&&s.notes[0]&&s.notes[0].jn==8){x0=s.x}else{if(x0>lastx)
+out_jp_ly(lastx,y,x0-lastx)
+hyflag=false;lastx=s.x+s.wr}}
+if(lflag){out_wln(lastx+3,y,x0-lastx);lflag=false;lastx=s.x+s.wr}}
 continue}
 if(ly.font!=gene.curfont)
 gene.curfont=font=ly.font;p=ly.t;w=p.wh[0]
 shift=ly.shift
-if(hyflag){if(ly.ln==2&&p=="_"){p="-"}else if(ly.ln!=2){out_hyph(lastx,y,s.x-shift-lastx);hyflag=false;lastx=s.x+s.wr}}
+if(hyflag){if(ly.ln==2&&p=="_"){p="-"}else if(ly.ln!=2){if(p_voice.jianpu)out_jp_ly(lastx,y,s.x-shift-lastx);else out_hyph(lastx,y,s.x-shift-lastx);hyflag=false;lastx=s.x+s.wr}}
 if(lflag&&(ly.ln!=2||p!="_")){out_wln(lastx+3,y,x0-lastx+3);lflag=false;lastx=s.x+s.wr}
 if(ly.ln==2){if(x0==0&&lastx>s.x-18)
 lastx=s.x-18
@@ -9147,11 +9159,13 @@ anno_start(s2,'lyrics')}
 xy_str(x0,y,p)
 anno_stop(s2,'lyrics')
 lastx=x0+w}
-if(hyflag){hyflag=false;x0=realwidth-10
+if(hyflag){hyflag=false
+if(p_voice.jianpu){if(x0>lastx)
+out_jp_ly(lastx,y,x0-lastx)}else{x0=realwidth-10
 if(x0<lastx+10)
 x0=lastx+10;out_hyph(lastx,y,x0-lastx)
 if(p_voice.s_next&&p_voice.s_next.fmt.hyphencont)
-p_voice.hy_st|=(1<<j)}
+p_voice.hy_st|=(1<<j)}}
 for(p_voice.s_next;s;s=s.next){if(s.type==C.NOTE){if(!s.a_ly)
 break
 ly=s.a_ly[j]
