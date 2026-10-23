@@ -6490,8 +6490,8 @@ async fn assistant_write_stream(
         if let Some(key) = key {
             outgoing = outgoing
                 .header(reqwest::header::AUTHORIZATION, format!("Bearer {key}"))
-                .header("HTTP-Referer", "https://github.com/timoncool/YuE2-Studio")
-                .header("X-Title", "YuE2 Studio");
+                .header("HTTP-Referer", "https://github.com/telesoho/YuE2-Studio")
+                .header("X-Title", "YuE2 Studio Telesoho");
         }
 
         // Until the first byte the window can be closed as well: a model

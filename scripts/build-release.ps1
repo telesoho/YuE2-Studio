@@ -136,7 +136,7 @@ try {
         platforms = [ordered]@{
             'windows-x86_64' = [ordered]@{
                 signature = $signature
-                url = "https://github.com/timoncool/YuE2-Studio/releases/download/v$Version/$assetName"
+                url = "https://github.com/telesoho/YuE2-Studio/releases/download/v$Version/$assetName"
             }
         }
     }

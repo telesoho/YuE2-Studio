@@ -4,7 +4,7 @@
                     "updater":  {
                                     "pubkey":  "__TAURI_UPDATER_PUBKEY__",
                                     "endpoints":  [
-                                                      "https://github.com/timoncool/YuE2-Studio/releases/latest/download/latest.json"
+                                                      "https://github.com/telesoho/YuE2-Studio/releases/latest/download/latest.json"
                                                   ],
                                     "windows":  {
                                                     "installMode":  "passive"

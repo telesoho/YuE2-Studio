@@ -347,7 +347,7 @@ pub const COMMONS_PAGES: &str = "https://commons.wikimedia.org/";
 
 /// Commons asks every client to name itself and a way to reach its authors.
 pub fn commons_agent() -> String {
-    format!("YuE2-Studio/{} (https://github.com/timoncool/YuE2-Studio)", crate::studio_version())
+    format!("YuE2-Studio-Telesoho/{} (https://github.com/telesoho/YuE2-Studio)", crate::studio_version())
 }
 
 /// Commons asks for no more than a few requests at a time.

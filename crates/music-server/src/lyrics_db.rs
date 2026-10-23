@@ -39,7 +39,7 @@ const LENGTH_SLACK: f64 = 10.0;
 /// How many sources a song is asked of.
 pub const SOURCES: usize = 3;
 fn user_agent() -> String {
-    format!("YuE2-Studio/{} (https://github.com/timoncool/YuE2-Studio)", crate::studio_version())
+    format!("YuE2-Studio-Telesoho/{} (https://github.com/telesoho/YuE2-Studio)", crate::studio_version())
 }
 const BROWSER: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 

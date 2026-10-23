@@ -14,8 +14,8 @@ use std::{
 };
 
 const SERVER_PORT: u16 = 8791;
-const RELEASES_URL: &str = "https://github.com/timoncool/YuE2-Studio/releases/latest";
-const STUDIO_DATA_DIRECTORY: &str = "YuE2 Studio";
+const RELEASES_URL: &str = "https://github.com/telesoho/YuE2-Studio/releases/latest";
+const STUDIO_DATA_DIRECTORY: &str = "YuE2 Studio Telesoho";
 
 /// Mutable studio data must not be derived from the process working directory
 /// or from the installed executable directory: a Start Menu shortcut is free
@@ -59,17 +59,17 @@ fn studio_data_directory() -> PathBuf {
     #[cfg(all(not(windows), not(target_os = "macos")))]
     {
         if let Some(root) = std::env::var_os("XDG_DATA_HOME") {
-            return PathBuf::from(root).join("yue2-studio");
+            return PathBuf::from(root).join("yue2-studio-telesoho");
         }
         if let Some(home) = std::env::var_os("HOME") {
             return PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join("yue2-studio");
+                .join("yue2-studio-telesoho");
         }
     }
 
-    std::env::temp_dir().join("yue2-studio")
+    std::env::temp_dir().join("yue2-studio-telesoho")
 }
 
 /// A portable copy, or an installation into a folder it can write to: then the
@@ -678,7 +678,7 @@ pub fn run() {
                             if let MenuItemKind::Predefined(predefined) = &entry {
                                 if predefined.text()?.starts_with("Quit") {
                                     submenu.remove(predefined)?;
-                                    submenu.append(&MenuItem::with_id(app.handle(), "quit-confirm", "Quit YuE2 Studio", true, Some("CmdOrCtrl+Q"))?)?;
+                                    submenu.append(&MenuItem::with_id(app.handle(), "quit-confirm", "Quit YuE2 Studio Telesoho", true, Some("CmdOrCtrl+Q"))?)?;
                                 }
                             }
                         }
@@ -726,7 +726,7 @@ pub fn run() {
             Ok(())
         })
         .build(context)
-        .expect("error while building YuE2 Studio")
+        .expect("error while building YuE2 Studio Telesoho")
         .run(|app, event| {
             // Quitting stops a song that is being generated, so ask first, but
             // only then. Closing the main window quits the studio on every
