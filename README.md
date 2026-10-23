@@ -10,13 +10,13 @@
 **Full songs with an editable score, generated on your own GPU. One executable — no Python, no Node.js, no launcher.**
 
 [![Project page](https://img.shields.io/badge/Project_page-timoncool.github.io-7c3aed?style=for-the-badge)](https://timoncool.github.io/YuE2-Studio/)
-[![Download](https://img.shields.io/badge/Download-Windows_x64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/timoncool/YuE2-Studio/releases/latest)
+[![Download](https://img.shields.io/badge/Download-Windows_x64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/telesoho/YuE2-Studio/releases/latest)
 [![Donate](https://img.shields.io/badge/Support-Donate-ff69b4?style=for-the-badge)](DONATE.md)
 
 [![License](https://img.shields.io/github/license/timoncool/YuE2-Studio?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/timoncool/YuE2-Studio?style=flat-square)](https://github.com/timoncool/YuE2-Studio/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/timoncool/YuE2-Studio?style=flat-square)](https://github.com/timoncool/YuE2-Studio/commits/main)
-[![Downloads](https://img.shields.io/github/downloads/timoncool/YuE2-Studio/total?style=flat-square)](https://github.com/timoncool/YuE2-Studio/releases)
+[![Downloads](https://img.shields.io/github/downloads/telesoho/YuE2-Studio/total?style=flat-square)](https://github.com/telesoho/YuE2-Studio/releases)
 
 **English** · [Русский](https://timoncool.github.io/YuE2-Studio/ru.html) · [中文](https://timoncool.github.io/YuE2-Studio/zh.html) · [日本語](https://timoncool.github.io/YuE2-Studio/ja.html) · [한국어](https://timoncool.github.io/YuE2-Studio/ko.html)
 
@@ -39,7 +39,7 @@ runtime path is Python.
 
 Given this repository, an agent can set everything up and drive the studio by itself:
 
-1. Install the studio from the [latest release](https://github.com/timoncool/YuE2-Studio/releases/latest) and start it.
+1. Install the studio from the [latest release](https://github.com/telesoho/YuE2-Studio/releases/latest) and start it.
 2. Connect to its MCP server at `http://127.0.0.1:8791/mcp`:
    `claude mcp add --transport http yue2-studio http://127.0.0.1:8791/mcp`
 3. Read the skill it serves (resource `studio://skill`, prompt `studio`), the same text as
@@ -298,8 +298,8 @@ The main, tested path is an NVIDIA card.
 
 ## Quick start
 
-1. **Install** — run `YuE2.Studio_x.y.z_x64-setup.exe` from the
-   [latest release](https://github.com/timoncool/YuE2-Studio/releases/latest), or unzip the
+1. **Install** — run `YuE2.Studio.Telesoho_x.y.z_x64-setup.exe` from the
+   [latest release](https://github.com/telesoho/YuE2-Studio/releases/latest), or unzip the
    portable archive anywhere and run `YuE2-Studio.exe`.
 2. **Choose a model set** — the first screen preselects the set your card can run. Press
    download; it fetches only what is missing and resumes if interrupted.
@@ -310,7 +310,7 @@ Everything the studio owns stays in its own folder: models, songs, settings, log
 temporary files and the WebView2 profile, beside `YuE2-Studio.exe`. That holds for the
 portable archive and for an installation into any folder the studio can write to;
 deleting the folder removes the studio. Only an installation into a read-only location
-such as Program Files falls back to `%LOCALAPPDATA%\YuE2 Studio`. The installed version
+such as Program Files falls back to `%LOCALAPPDATA%\YuE2 Studio Telesoho`. The installed version
 updates itself: a new release is offered inside the studio and installed in place.
 
 **If the installer stops on WebView2.** The studio's window runs on Microsoft Edge WebView2,
