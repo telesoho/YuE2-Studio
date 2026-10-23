@@ -3,6 +3,20 @@
 What changed, newest first. Dates are release dates; the studio is versioned by its
 Windows build.
 
+## 2026-10-23 — 3.7.1
+
+### Changed
+
+- **A fork with its own name and its own updates.** This build is YuE2 Studio Telesoho,
+  built from YuE2 Studio 3.7.0. It installs beside the original rather than over it, keeps its
+  models, library and settings in its own folder, and offers updates from its own repository.
+  The signing key is its own, so each build trusts only its own packages. Reported issues and
+  the repository in About point here.
+- **The work of this fork, on top of 3.7.0**: the jianpu (numbered-notation) score editor with
+  its lyric hyphenation, the visualiser and its state, reading and aligning a score from a
+  recording, the music visualiser window, playback history, a file-tag settings page, and the
+  tunnel and black-hole services.
+
 ## 2026-10-21 — 3.7.0
 
 ### Added
