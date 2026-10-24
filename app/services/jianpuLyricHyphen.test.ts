@@ -47,10 +47,26 @@ function render(abc2svg: ReturnType<typeof loadAbc2svg>, src: string) {
 }
 
 function holdLines(svg: string) {
-  return [...svg.matchAll(/class="stroke jp-ly"[^>]*d="m([0-9.]+) [0-9.]+h([0-9.]+)"/g)].map((m) => ({
-    end: +m[1] + +m[2],
-    w: +m[2],
+  return [...svg.matchAll(/class="stroke jp-ly"[^>]*d="m([0-9.]+) ([0-9.]+)h([0-9.]+)"/g)].map((m) => ({
+    y: +m[2],
+    end: +m[1] + +m[3],
+    w: +m[3],
   }));
+}
+
+function lyricBaselines(svg: string, syllable: string) {
+  const re = new RegExp(`<text[^>]*\\sy="([0-9.]+)"[^>]*>${syllable}<`, 'g');
+  return [...svg.matchAll(re)].map((m) => +m[1]);
+}
+
+// happy-dom measures lyric height as 0, so <text y> is the lyric origin.
+// The underline is origin+3 (3px above that y). The old midline was origin+6.
+function expectUnderline(lines: { y: number }[], baselines: number[]) {
+  expect(baselines.length).toBeGreaterThan(0);
+  for (const line of lines) {
+    const rise = Math.min(...baselines.map((y) => y - line.y));
+    expect(rise).toBeCloseTo(3, 0);
+  }
 }
 
 function restXs(svg: string) {
@@ -81,6 +97,7 @@ w: Oh - * *
       expect(line.w).toBeGreaterThan(12);
       expect(line.end).toBeLessThan(firstRest - 1);
     }
+    expectUnderline(lines, lyricBaselines(svg, 'Oh'));
   });
 
   it('still draws a hold between notes', () => {
@@ -104,5 +121,6 @@ w: a - b *
       expect(line.w).toBeGreaterThan(12);
       expect(line.end).toBeLessThan(firstRest - 1);
     }
+    expectUnderline(lines, [...lyricBaselines(svg, 'a'), ...lyricBaselines(svg, 'b')]);
   });
 });

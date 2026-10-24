@@ -7763,7 +7763,7 @@ function out_jp_ly(x,y,w){var pad
 if(w<4)return
 pad=w>16?3:1
 if(w<pad*2+4)pad=0
-out_XYAB('<path class="stroke jp-ly" stroke-width="1.2" d="mX YhF"/>\n',x+pad,y+6,w-pad*2)}
+out_XYAB('<path class="stroke jp-ly" stroke-width="1.2" d="mX YhF"/>\n',x+pad,y+3,w-pad*2)}
 function out_stem(x,y,h,grace,nflags,straight){var dx=grace?GSTEM_XOFF:3.5,slen=-h
 if(h<0)
 dx=-dx;x+=dx*stv_g.scale
