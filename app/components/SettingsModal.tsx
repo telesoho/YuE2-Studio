@@ -14,6 +14,7 @@ import { FileTagSettings } from './FileTagSettings';
 import { HubSettings } from './HubSettings';
 import { JianpuPublishSettings } from './JianpuPublishSettings';
 import { issueReportUrl, type ReportFacts } from '../services/issueReport';
+import { localizeCode } from '../services/localizeCode';
 import { useSetupStatus } from '../services/studioQueries';
 import { onSidebarExtras, setSidebarExtras, sidebarExtras, type SidebarExtras } from '../services/playerPanels';
 
@@ -148,10 +149,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
 
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             {section === 'account' && (
-              <div className="max-w-lg space-y-2">
-                <label className="text-sm text-zinc-500 dark:text-zinc-400">{t('username')}</label>
-                <input defaultValue={user.username} onBlur={(event) => setDisplayName(event.target.value)} className={INPUT} />
-                <p className="text-xs text-zinc-400">{t('displayNameHint')}</p>
+              <div className="max-w-lg space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm text-zinc-500 dark:text-zinc-400">{t('username')}</label>
+                  <input defaultValue={user.username} onBlur={(event) => setDisplayName(event.target.value)} className={INPUT} />
+                  <p className="text-xs text-zinc-400">{t('displayNameHint')}</p>
+                </div>
+                <AccountLicense />
               </div>
             )}
 
@@ -319,6 +323,89 @@ interface NetworkStatus {
  * The studio from another computer's browser: off by default, on with a key.
  * The address is bound when the studio starts, so a change asks for a restart.
  */
+interface LicenseStatus {
+  licensed: boolean;
+  trial_days_left: number;
+  expired: boolean;
+  serial: string;
+}
+
+const AccountLicense: React.FC = () => {
+  const { t } = useI18n();
+  const [serial, setSerial] = useState('');
+  const [status, setStatus] = useState<LicenseStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void fetch('/v1/license')
+      .then(response => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((body: LicenseStatus) => {
+        setStatus(body);
+        setSerial(body.serial || '');
+      })
+      .catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/v1/license', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial }),
+      });
+      const body = (await response.json().catch(() => null)) as (LicenseStatus & { error?: string }) | null;
+      if (!response.ok || !body) throw new Error(body?.error || String(response.status));
+      setStatus(body);
+      setSerial(body?.serial || serial.trim());
+      window.dispatchEvent(new CustomEvent('yue:license'));
+    } catch (reason) {
+      setError(localizeCode(reason instanceof Error ? reason.message : String(reason), t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const licensed = status?.licensed === true;
+  const line = !status
+    ? null
+    : licensed
+      ? t('scoreLicenseLicensed')
+      : status.expired
+        ? t('scoreLicenseExpired')
+        : t('scoreLicenseTrial').replace('{days}', String(status.trial_days_left));
+
+  return (
+    <div className="space-y-2 border-t border-zinc-200 pt-4 dark:border-white/10">
+      <label className="text-sm text-zinc-500 dark:text-zinc-400" htmlFor="score-license-serial">{t('scoreLicenseSerial')}</label>
+      {!licensed && <p className="text-xs text-zinc-400">{t('scoreLicenseHint')}</p>}
+      {line && <p className="text-xs text-zinc-600 dark:text-zinc-300">{line}</p>}
+      <input
+        id="score-license-serial"
+        value={serial}
+        readOnly={licensed}
+        onChange={event => setSerial(event.target.value)}
+        spellCheck={false}
+        autoComplete="off"
+        className={`${INPUT} font-mono`}
+      />
+      {!licensed && (
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={busy || serial.trim() === ''}
+          className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-zinc-900"
+        >
+          {t('scoreLicenseSave')}
+        </button>
+      )}
+      {error && <p role="alert" className="text-xs text-rose-600 dark:text-rose-300">{error}</p>}
+    </div>
+  );
+};
+
 const NetworkAccessSetting: React.FC = () => {
   const { t } = useI18n();
   const [status, setStatus] = React.useState<NetworkStatus | null>(null);

@@ -3308,6 +3308,8 @@ mod tests {
         ("GET", "/v1/transcriptions/{job_id}", "the same score job score_job_get reads"),
         ("POST", "/v1/transcriptions/{job_id}", "the same cancel as score_job_cancel"),
         ("POST", "/v1/library/songs/{id}/score-share", "a zip for the page to download: the score's share package"),
+        ("GET", "/v1/license", "whether automatic score reading is still in its trial; the person registers a serial in Settings"),
+        ("PUT", "/v1/license", "the serial the person types in Settings"),
         ("GET", "/v1/score/publish-settings", "the person's GitHub publish target; agents are not given tokens"),
         ("PUT", "/v1/score/publish-settings", "the person's GitHub token and repo; agents are not given keys"),
         ("POST", "/v1/score/publish-settings/test", "probes the token the person typed"),

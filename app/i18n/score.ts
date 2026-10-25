@@ -127,6 +127,14 @@ const en = {
   scoreRealign: 'Realign lyrics',
   scoreRealigning: 'Aligning…',
   scoreRealignHint: 'Filled-in words are placed on the vocal notes in order. Leave this empty to recognise the singing again and align those words.',
+  scoreLicenseSerial: 'Serial number',
+  scoreLicenseHint: 'Without a serial, automatic score reading works for 7 days. Jianpu editing stays available after that.',
+  scoreLicenseSave: 'Register',
+  scoreLicenseSaved: 'Registered',
+  scoreLicenseInvalid: 'That serial number is not valid.',
+  scoreLicenseTrial: '{days} days of automatic score reading left.',
+  scoreLicenseExpired: 'The 7-day trial is over. Enter a serial number in Settings → Account to use automatic score reading. Jianpu editing still works.',
+  scoreLicenseLicensed: 'Automatic score reading is registered.',
 };
 
 export type ScoreStrings = { readonly [K in keyof typeof en]: string };
@@ -254,6 +262,14 @@ const ru: ScoreStrings = {
   scoreRealign: 'Выровнять текст',
   scoreRealigning: 'Выравниваю…',
   scoreRealignHint: 'Заполненный текст ложится на ноты вокала по порядку. Пустое поле — распознать пение заново и выровнять.',
+  scoreLicenseSerial: 'Серийный номер',
+  scoreLicenseHint: 'Без номера автоматический разбор партитуры работает 7 дней. Правка цифровки после этого остаётся.',
+  scoreLicenseSave: 'Зарегистрировать',
+  scoreLicenseSaved: 'Зарегистрировано',
+  scoreLicenseInvalid: 'Этот номер недействителен.',
+  scoreLicenseTrial: 'Автоматический разбор доступен ещё {days} дн.',
+  scoreLicenseExpired: 'Пробные 7 дней закончились. Введите номер в Настройки → Аккаунт, чтобы снова разбирать партитуру. Правка цифровки по-прежнему доступна.',
+  scoreLicenseLicensed: 'Автоматический разбор зарегистрирован.',
 };
 
 const zh: ScoreStrings = {
@@ -379,6 +395,14 @@ const zh: ScoreStrings = {
   scoreRealign: '重新对齐歌词',
   scoreRealigning: '对齐中…',
   scoreRealignHint: '填写后按顺序贴到人声音符上，不再重新识别。留空则重新听写歌词并对齐。',
+  scoreLicenseSerial: '序列号',
+  scoreLicenseHint: '没有序列号时，自动识谱可以使用 7 天。到期后仍可编辑简谱。',
+  scoreLicenseSave: '注册',
+  scoreLicenseSaved: '已注册',
+  scoreLicenseInvalid: '序列号无效。',
+  scoreLicenseTrial: '自动识谱还可使用 {days} 天。',
+  scoreLicenseExpired: '7 天试用已结束。请在设置 → 账户中填写序列号后再使用自动识谱。简谱编辑不受影响。',
+  scoreLicenseLicensed: '自动识谱已注册。',
 };
 
 const ja: ScoreStrings = {
@@ -504,6 +528,14 @@ const ja: ScoreStrings = {
   scoreRealign: '歌詞を再合わせ',
   scoreRealigning: '合わせています…',
   scoreRealignHint: '歌詞を書くとその順で人声音符に載せます。空のまま押すと歌を聞き直して合わせます。',
+  scoreLicenseSerial: 'シリアル番号',
+  scoreLicenseHint: 'シリアル番号がない場合、自動識譜は 7 日間使えます。期限後も簡譜の編集はできます。',
+  scoreLicenseSave: '登録',
+  scoreLicenseSaved: '登録しました',
+  scoreLicenseInvalid: 'このシリアル番号は無効です。',
+  scoreLicenseTrial: '自動識譜はあと {days} 日使えます。',
+  scoreLicenseExpired: '7 日間の試用は終わりました。自動識譜を使うには 設定 → アカウント にシリアル番号を入力してください。簡譜の編集はそのままできます。',
+  scoreLicenseLicensed: '自動識譜は登録済みです。',
 };
 
 const ko: ScoreStrings = {
@@ -629,6 +661,14 @@ const ko: ScoreStrings = {
   scoreRealign: '가사 다시 맞추기',
   scoreRealigning: '맞추는 중…',
   scoreRealignHint: '가사를 적으면 그 순서대로 보컬 음표에 올립니다. 비워 두면 노래를 다시 받아쓰고 맞춥니다.',
+  scoreLicenseSerial: '시리얼 번호',
+  scoreLicenseHint: '시리얼 번호가 없으면 자동 악보 인식은 7일 동안 쓸 수 있습니다. 그 뒤에도 간보 편집은 됩니다.',
+  scoreLicenseSave: '등록',
+  scoreLicenseSaved: '등록됨',
+  scoreLicenseInvalid: '시리얼 번호가 올바르지 않습니다.',
+  scoreLicenseTrial: '자동 악보 인식을 {days}일 더 쓸 수 있습니다.',
+  scoreLicenseExpired: '7일 체험이 끝났습니다. 자동 악보 인식을 쓰려면 설정 → 계정에 시리얼 번호를 입력하세요. 간보 편집은 계속할 수 있습니다.',
+  scoreLicenseLicensed: '자동 악보 인식이 등록되었습니다.',
 };
 
 export const scoreStrings = { en, ru, zh, ja, ko };

@@ -25,6 +25,7 @@ mod comfy_export;
 mod remote;
 pub use remote::{set_asset_source, AssetSource};
 mod credentials;
+mod license;
 mod model_manager;
 mod hardware;
 mod request_log;
@@ -911,6 +912,9 @@ struct OpenRouterResponse {
 /// in-process, so a release is a single executable rather than a launcher that
 /// has to start a second binary and keep it alive.
 pub async fn serve() -> anyhow::Result<()> {
+    if let Err(error) = license::note_seen() {
+        eprintln!("[ERROR] the score-reading trial could not be recorded: {error}");
+    }
     let settings_path = studio_settings_path();
     let persisted = load_studio_settings(&settings_path);
     let proxy = persisted.as_ref().and_then(|settings| settings.proxy.clone()).unwrap_or_default();
@@ -1230,6 +1234,7 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/scores", post(compose_score))
         .route("/v1/scores/{job_id}", get(score_job_status).post(cancel_score_job))
         .route("/v1/score-readings", post(create_score_reading))
+        .route("/v1/license", get(license_status).put(save_license))
         .route("/v1/score-readings/{job_id}", get(score_reading_status).post(cancel_score_reading))
         .route("/v1/library/songs/{id}/score", axum::routing::put(save_song_score))
         .route("/v1/library/songs/{id}/score-align", post(align_song_score_lyrics))
@@ -8942,11 +8947,30 @@ async fn cancel_score_job(
     Ok(Json(ScoreJob { status: remote.status, ..ScoreJob::running(job_id) }))
 }
 
+async fn license_status() -> Result<Json<license::Status>, (StatusCode, Json<ApiError>)> {
+    license::status().map(Json).map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
+#[derive(Debug, Deserialize)]
+struct SaveLicense {
+    serial: String,
+}
+
+async fn save_license(Json(body): Json<SaveLicense>) -> Result<Json<license::Status>, (StatusCode, Json<ApiError>)> {
+    license::save(&body.serial).map(Json).map_err(|error| {
+        let status = if error == "scoreLicenseInvalid" { StatusCode::BAD_REQUEST } else { StatusCode::INTERNAL_SERVER_ERROR };
+        api_error(status, error)
+    })
+}
+
 /// 识谱: SheetSage2 full score, then vocals, lyrics, alignment → library track.
 async fn create_score_reading(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<score::reading::Reading>), (StatusCode, Json<ApiError>)> {
+    if let Err(error) = license::allow_score_reading() {
+        return Err(api_error(StatusCode::FORBIDDEN, error));
+    }
     let transcriber_loaded = {
         let supervisor = state.engine.lock().await;
         supervisor.as_ref().map(|engine| engine.config().models.transcriber.is_some())

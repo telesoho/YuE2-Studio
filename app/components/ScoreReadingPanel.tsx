@@ -34,6 +34,7 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   const [stage, setStage] = useState('');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [license, setLicense] = useState<{ licensed: boolean; expired: boolean; trial_days_left: number } | null>(null);
   const [windows, setWindows] = useState<CaptureWindow[]>([]);
   const [listRev, setListRev] = useState(0);
   const [chosen, setChosen] = useState<string>('');
@@ -59,6 +60,18 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
   useEffect(() => {
     refreshWindows();
   }, [refreshWindows]);
+
+  useEffect(() => {
+    const load = () => {
+      void fetch('/v1/license')
+        .then(response => (response.ok ? response.json() : null))
+        .then(body => setLicense(body))
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener('yue:license', load);
+    return () => window.removeEventListener('yue:license', load);
+  }, []);
 
   useEffect(() => {
     setPreviewPlaying(false);
@@ -335,13 +348,17 @@ export const ScoreReadingPanel: React.FC<{ onDone?: (songId: string) => void }> 
             <p className="mt-1 text-[11px] leading-4 text-zinc-500">{tt('scoreProvidedLyricsHint')}</p>
             <button
               type="button"
-              disabled={!file || running}
+              disabled={!file || running || Boolean(license?.expired)}
               onClick={() => file && void run(file)}
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-pink-500 to-orange-400 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
             >
               {running ? <Loader2 size={16} className="animate-spin" /> : null}
               {running ? stage || tt('scoreReadingRunning') : tt('scoreStart')}
             </button>
+            {license?.expired && <p className="mt-2 text-xs leading-5 text-rose-600 dark:text-rose-300">{tt('scoreLicenseExpired')}</p>}
+            {license && !license.licensed && !license.expired && (
+              <p className="mt-2 text-xs text-zinc-500">{tt('scoreLicenseTrial').replace('{days}', String(license.trial_days_left))}</p>
+            )}
             {running && (
               <div className="mt-3">
                 <div className="mb-1 flex items-baseline justify-between text-xs text-zinc-500">

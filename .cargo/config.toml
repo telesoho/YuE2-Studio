@@ -1,2 +1,9 @@
+# Built exes inherit this checkout's Low integrity label. Windows then starts
+# them at Low, and they cannot create files in %LOCALAPPDATA%. The runner
+# raises each launched binary to Medium. Installed copies are not labeled Low.
+[env]
+YUE_DEV_RUN = { value = "scripts/dev-run.cmd", relative = true, force = true }
+
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/NODEFAULTLIB:MSVCRTD"]
+runner = ["cmd", "/d", "/c", "call", "%YUE_DEV_RUN%"]

@@ -28,5 +28,6 @@ NEXT_SESSION_PROMPT.md
 .claude/
 desktop/src-tauri/tauri.release.conf.json
 *.password
+license.priv
 /target-check
 /_archive-*
