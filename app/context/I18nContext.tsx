@@ -16,12 +16,23 @@ const I18nContext: React.Context<I18nContextType | undefined> =
   import.meta.hot?.data?.i18nContext ?? createContext<I18nContextType | undefined>(undefined);
 if (import.meta.hot?.data) import.meta.hot.data.i18nContext = I18nContext;
 
+const SUPPORTED = new Set(['zh', 'en', 'ja', 'ko', 'ru']);
+
+/** First supported primary subtag (zh-CN, ja-JP, …). English when none match. */
+export function languageFromTags(tags: readonly string[]): Language {
+  for (const tag of tags) {
+    const code = tag?.toLowerCase().split('-')[0];
+    if (code && SUPPORTED.has(code)) return code as Language;
+  }
+  return 'en';
+}
+
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>(() => {
-    const stored = localStorage.getItem('language') as Language;
-    if (stored === 'zh' || stored === 'en' || stored === 'ja' || stored === 'ko' || stored === 'ru') return stored;
-    if (typeof navigator !== 'undefined' && navigator.language?.startsWith('ru')) return 'ru';
-    return 'en';
+    const stored = localStorage.getItem('language');
+    if (stored && SUPPORTED.has(stored)) return stored as Language;
+    const tags = typeof navigator === 'undefined' ? [] : (navigator.languages?.length ? navigator.languages : [navigator.language]);
+    return languageFromTags(tags);
   });
 
   const handleSetLanguage = (lang: Language) => {
