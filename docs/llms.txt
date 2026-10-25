@@ -16,7 +16,7 @@ For an agent given this repository: install the studio from the latest release, 
 - [Agent skill](https://raw.githubusercontent.com/timoncool/YuE2-Studio/main/docs/mcp-skill.md): every tool by area, the model's writing rules, step-by-step recipes (the same text the server serves as `studio://skill`)
 - [README](https://github.com/timoncool/YuE2-Studio#readme): what the studio does, what it needs, models and where they go
 - [Latest release](https://github.com/timoncool/YuE2-Studio/releases/latest): the installer and the portable archive
-- [Project page](https://timoncool.github.io/YuE2-Studio/)
+- [Project page](https://telesoho.github.io/YuE2-Studio/)
 
 ## Optional
 

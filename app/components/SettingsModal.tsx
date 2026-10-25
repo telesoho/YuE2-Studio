@@ -1,4 +1,3 @@
-import { StudioFamily } from './StudioFamily';
 import React, { useEffect, useRef, useState } from 'react';
 import { BarChart3, Boxes, Cloud, Cpu, Image as ImageIcon, Info, Monitor, Plug, User as UserIcon, X } from 'lucide-react';
 import { SiGithub } from '@icons-pack/react-simple-icons';
@@ -248,7 +247,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, initialSec
                   </div>
                 </div>
 
-                <StudioFamily current="yue2" />
+                <div className="border-t border-zinc-200 pt-4 dark:border-zinc-700/50">
+                  <a href={language === 'en' ? 'https://telesoho.github.io/YuE2-Studio/' : `https://telesoho.github.io/YuE2-Studio/${language}.html`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:border-zinc-600 dark:text-zinc-200">{t('projectPage')}</a>
+                </div>
 
                 {/* Support, in the author's own words: the software is free. */}
                 <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-700/50">

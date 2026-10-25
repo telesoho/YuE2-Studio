@@ -3,8 +3,8 @@
 export const STUDIO = {
   id: 'yue2',
   name: 'YuE2 Studio',
-  repo: 'https://github.com/timoncool/YuE2-Studio',
-  site: 'https://timoncool.github.io/YuE2-Studio/',
+  repo: 'https://github.com/telesoho/YuE2-Studio',
+  site: 'https://telesoho.github.io/YuE2-Studio/',
   installerMB: 319.23,
   updated: '2026-10-21',
   bento: [
@@ -16,5 +16,7 @@ export const STUDIO = {
     { feature: 13, shot: '11-agent' },
   ],
   faq: { lora: 10, mcp: 13 },
+  // Text under the tiles. A shot is drawn only where that language has the file.
+  prose: [{ feature: 29, shot: '18-score-reading' }],
   arch: "React UI ─┐\n          ├─ YuE2-Studio.exe   (Tauri window + Rust/Axum service)\nRust axum ┘        │\n                   └─ yue2.cpp `yue-server`   (C++/CUDA, GGUF)",
 };

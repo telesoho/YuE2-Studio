@@ -2,7 +2,7 @@
 // docs/sitemap.xml. Every page is plain HTML in its own language, with the app and its
 // questions described for search engines and AI answers (schema.org JSON-LD), so readers
 // without JavaScript, crawlers and assistants all see the same page.
-import { openSync, readFileSync, readSync, closeSync, writeFileSync } from 'node:fs';
+import { existsSync, openSync, readFileSync, readSync, closeSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ORDER, SAMPLES, SETS, STRINGS } from '../docs/site/strings.mjs';
@@ -13,13 +13,8 @@ const VERSION = JSON.parse(readFileSync(new URL('../desktop/src-tauri/tauri.conf
 const docs = join(dirname(fileURLToPath(import.meta.url)), '..', 'docs');
 const css = readFileSync(join(docs, 'site', 'page.css'), 'utf8');
 const { name: NAME, repo: REPO, site: SITE } = STUDIO;
-
-// The studio family as tabs over the page: the same language on each site.
-const FAMILY = [
-  ['yue2', 'YuE2 Studio', 'https://timoncool.github.io/YuE2-Studio/'],
-  ['minimax', 'MiniMax Music3 Studio', 'https://timoncool.github.io/MiniMax-Music3-Studio/'],
-  ['ace', 'ACE-Step Studio', 'https://timoncool.github.io/ACE-Step-Studio/'],
-];
+// The author's repository. Downloads and this page are this fork's; the copyright and the donation stay there.
+const UPSTREAM = 'https://github.com/timoncool/YuE2-Studio';
 
 // The questions every studio answers the same way; the answers come from the studio's own strings.
 const WORDS = {
@@ -69,9 +64,6 @@ function page(lang) {
     ...ORDER.map((code) => `<link rel="alternate" hreflang="${code}" href="${pageUrl(code)}" />`),
     `<link rel="alternate" hreflang="x-default" href="${pageUrl('en')}" />`,
   ].join('\n');
-  const family = FAMILY
-    .map(([id, label, url]) => `    <a href="${url}${lang === 'en' ? '' : file(lang)}"${id === STUDIO.id ? ' aria-current="page"' : ''}>${label}</a>`)
-    .join('\n');
   const nav = ORDER
     .map((code) => `      <a href="${file(code)}" hreflang="${code}"${code === lang ? ' aria-current="page"' : ''}>${escape(STRINGS[code].label)}</a>`)
     .join('\n');
@@ -90,6 +82,24 @@ function page(lang) {
 
   // the gallery holds the screenshots the hero and the tiles do not already show
   const shown = new Set(['01-create', ...STUDIO.bento.map(({ shot: name }) => name)]);
+  const prose = (STUDIO.prose ?? []).map((entry) => {
+    const index = entry.feature ?? entry;
+    const item = s.features[index];
+    if (!item) throw new Error(`[ERROR] no feature ${index} in ${lang}`);
+    const [title, body] = item;
+    const name = entry.shot;
+    const png = name && existsSync(join(docs, 'screenshots', `${lang}-${name}.png`));
+    let figure = '';
+    if (png) {
+      shown.add(name);
+      const [width, height] = pictureSize(lang, name);
+      figure = `\n        <figure class="shot"><img src="${shot(lang, name)}" alt="${escape(shotAlt(name))}" loading="lazy" width="${width}" height="${height}" /></figure>`;
+    }
+    return `      <article class="tile">
+        <h3>${escape(title)}</h3>${figure}
+        <p>${escape(body)}</p>
+      </article>`;
+  }).join('\n');
   const sampleCard = (sample) => `      <figure class="sample"><figcaption><b>${escape(sample.title)}</b><span>${escape(sample.note[lang])}</span></figcaption><audio controls preload="none" src="samples/${sample.file}"></audio></figure>`;
   const samples = SAMPLES.length ? `  <section id="listen">
     <h2>${escape(s.samplesTitle)}</h2>
@@ -145,7 +155,7 @@ ${s.inside.map((row) => `            <tr>${row.map((cell) => `<td>${escape(cell)
         downloadUrl: `${REPO}/releases/latest`, isAccessibleForFree: true, license: 'https://opensource.org/licenses/MIT',
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
         image: `${SITE}og-${lang}.jpg`, screenshot: `${SITE}${shot(lang, '01-create')}`,
-        codeRepository: REPO, sameAs: [REPO], author: { '@id': author['@id'] }, dateModified: STUDIO.updated,
+        codeRepository: REPO, sameAs: [REPO, UPSTREAM], author: { '@id': author['@id'] }, dateModified: STUDIO.updated,
       },
       author,
       { '@type': 'FAQPage', inLanguage: lang, mainEntity: faq.map(({ q, text }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: text.join(' ') } })) },
@@ -183,9 +193,6 @@ ${css.trimEnd()}
 <body>
 <header>
   <div class="utility"><div class="wrap utility-bar">
-    <nav class="family" aria-label="Studios">
-${family}
-    </nav>
     <nav class="langs" aria-label="Language">
 ${nav}
     </nav>
@@ -207,6 +214,7 @@ ${nav}
       <a class="btn" href="${REPO}">${escape(w.starCta)}${starsBadge(escape(w.stars))}</a>
     </div>
     <p class="note">${escape(s.ctaNote)}</p>
+    <p class="note">${escape(s.forkNote)}</p>
     <figure class="hero-shot"><img src="${shot(lang, '01-create')}" alt="${escape(shotAlt('01-create'))}" width="1600" height="1000" fetchpriority="high" /></figure>
   </section>
 
@@ -214,6 +222,7 @@ ${samples}  <section id="features">
     <h2>${escape(s.featuresTitle)}</h2>
     <div class="bento">
 ${tiles}
+${prose}
     </div>
   </section>
 
@@ -246,11 +255,13 @@ ${faq.map(({ q, html }) => `    <details><summary>${escape(q)}</summary><div cla
       <a class="pill" href="https://t.me/nerual_dreming">Telegram · @nerual_dreming</a>
       <a class="pill" href="https://t.me/neuroport">Telegram · @neuroport</a>
       <a class="pill" href="https://artgeneration.me">ArtGeneration.me</a>
-      <a class="pill" href="${REPO}/blob/main/DONATE.md">${escape(s.ctaDonate)}</a>
+      <a class="pill" href="${UPSTREAM}">${escape(s.originalProject)}</a>
+      <a class="pill" href="${UPSTREAM}/blob/main/DONATE.md">${escape(s.ctaDonate)}</a>
     </div>
   </section>
 
   <footer>
+    <p>Copyright (c) 2025-2026 Ilya Timonin (Nerual Dreming)</p>
     <p>${escape(s.footerLicense)}</p>
     <p><a href="${REPO}/blob/main/CHANGELOG.md">${escape(s.footerChanges)}</a> · <a href="${REPO}/issues">${escape(s.footerIssues)}</a> · ${escape(w.updated)} <time datetime="${STUDIO.updated}">${STUDIO.updated}</time></p>
   </footer>

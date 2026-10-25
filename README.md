@@ -1,7 +1,7 @@
 <div align="center">
 
 <!-- studio family tabs -->
-[![YuE2 Studio](https://img.shields.io/badge/YuE2_Studio-songs_with_a_score-ec4899?style=for-the-badge)](https://github.com/timoncool/YuE2-Studio) [![MiniMax Music3 Studio](https://img.shields.io/badge/MiniMax_Music3_Studio-full--length_tracks-3f3f46?style=for-the-badge)](https://github.com/timoncool/MiniMax-Music3-Studio) [![ACE-Step Studio](https://img.shields.io/badge/ACE--Step_Studio-Suno_at_home-3f3f46?style=for-the-badge)](https://github.com/timoncool/ACE-Step-Studio)
+[![YuE2 Studio](https://img.shields.io/badge/YuE2_Studio-songs_with_a_score-ec4899?style=for-the-badge)](https://github.com/telesoho/YuE2-Studio)
 
 <img src="docs/logo.png" alt="" width="112" height="112" />
 
@@ -9,7 +9,7 @@
 
 **Full songs with an editable score, generated on your own GPU. One executable — no Python, no Node.js, no launcher.**
 
-[![Project page](https://img.shields.io/badge/Project_page-timoncool.github.io-7c3aed?style=for-the-badge)](https://timoncool.github.io/YuE2-Studio/)
+[![Project page](https://img.shields.io/badge/Project_page-telesoho.github.io-7c3aed?style=for-the-badge)](https://telesoho.github.io/YuE2-Studio/)
 [![Download](https://img.shields.io/badge/Download-Windows_x64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/telesoho/YuE2-Studio/releases/latest)
 [![Donate](https://img.shields.io/badge/Support-Donate-ff69b4?style=for-the-badge)](DONATE.md)
 
@@ -18,7 +18,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/timoncool/YuE2-Studio?style=flat-square)](https://github.com/timoncool/YuE2-Studio/commits/main)
 [![Downloads](https://img.shields.io/github/downloads/telesoho/YuE2-Studio/total?style=flat-square)](https://github.com/telesoho/YuE2-Studio/releases)
 
-**English** · [Русский](https://timoncool.github.io/YuE2-Studio/ru.html) · [中文](https://timoncool.github.io/YuE2-Studio/zh.html) · [日本語](https://timoncool.github.io/YuE2-Studio/ja.html) · [한국어](https://timoncool.github.io/YuE2-Studio/ko.html)
+**English** · [Русский](https://telesoho.github.io/YuE2-Studio/ru.html) · [中文](https://telesoho.github.io/YuE2-Studio/zh.html) · [日本語](https://telesoho.github.io/YuE2-Studio/ja.html) · [한국어](https://telesoho.github.io/YuE2-Studio/ko.html)
 
 ![YuE2 Studio](docs/screenshots/en-01-create.png)
 
@@ -74,6 +74,7 @@ Code, save [docs/mcp-skill.md](docs/mcp-skill.md) as `~/.claude/skills/yue2-stud
   the same notes, or the singing drifts off the tune — lines stretch, pause and slide into
   the wrong section. Transcription mistakes carry into the cover too. A track from your
   library can be transcribed from its menu.
+- **Score reading** — from the sidebar, upload audio or capture a sounding window. SheetSage2 writes the melody and chords; a recogniser you have configured aligns the lyrics. The result lands in the library for jianpu editing. SheetSage2 and the MERT encoder of the same precision must already be in the model set (Settings → Models); reading does not download them. Without a serial, automatic score reading works for 7 days. Jianpu editing stays available after that.
 - **Exact replay** — every track keeps its request and its audio codes, so it can be
   re-rendered bit for bit, or re-rendered with other steps, a new sound seed, several
   variations, or another output format, without composing again.
@@ -110,8 +111,7 @@ Code, save [docs/mcp-skill.md](docs/mcp-skill.md) as `~/.claude/skills/yue2-stud
 - **Train your own LoRA** — an optional tab on the LoRA page: songs of one artist or
   style become a LoRA on your own card with HOT-Step's trainer and its tuned recipe (LoKr,
   Prodigy, lyric timing from a forced aligner that also reads Cyrillic). Every setting of
-  the recipe is editable. Datasets move between this studio and MiniMax Music3 Studio as a
-  folder, and each saved checkpoint goes into the LoRA library in one click.
+  the recipe is editable. Each saved checkpoint goes into the LoRA library in one click.
   - **A three-step wizard** — drop a folder of songs, check them, train. Albums with a
     cue sheet are cut into songs; titles and artists come from the tags, the file name and
     the folders.
@@ -207,15 +207,15 @@ In YuE2, the same editor opens ABC scores and applies notes, chords and sections
 | ![Audio processing](docs/screenshots/en-10-processing.png) | ![Agent over MCP](docs/screenshots/en-11-agent.png) |
 | Audio processing — noise reduction, the Spectral Lifter, a vocal naturaliser, VST3, mastering | An agent over MCP — the address and the lines to paste into Claude Code or any client |
 
-The same screens in the language you read: [Русский](https://timoncool.github.io/YuE2-Studio/ru.html),
-[中文](https://timoncool.github.io/YuE2-Studio/zh.html), [日本語](https://timoncool.github.io/YuE2-Studio/ja.html),
-[한국어](https://timoncool.github.io/YuE2-Studio/ko.html) — on the project page, or in
+The same screens in the language you read: [Русский](https://telesoho.github.io/YuE2-Studio/ru.html),
+[中文](https://telesoho.github.io/YuE2-Studio/zh.html), [日本語](https://telesoho.github.io/YuE2-Studio/ja.html),
+[한국어](https://telesoho.github.io/YuE2-Studio/ko.html) — on the project page, or in
 [docs/screenshots](docs/screenshots).
 
 ## Samples
 
 Made in the released build on an RTX 4090 with the recommended BF16 set, nothing edited
-afterwards. Listen in the browser on the [project page](https://timoncool.github.io/YuE2-Studio/#samples)
+afterwards. Listen in the browser on the [project page](https://telesoho.github.io/YuE2-Studio/#samples)
 or download the MP3s from [docs/samples](docs/samples).
 
 | Song | How it was made | Style |
@@ -345,7 +345,7 @@ model expects, and step-by-step recipes.
 
 A runnable YuE2 installation is a **backbone** (the 3B model that writes the score and the
 audio codes) and the **VAE** (turns them into 48 kHz stereo). **SheetSage2** is optional:
-without it the studio generates, but cannot transcribe recordings for covers.
+without it the studio generates, but cannot read a recording into a score or make a cover.
 
 Every set also carries the **decoder companion**, 134 MB: Mothersuperior's decoder adapter,
 published as the pair of the tokenizer head the LoRA trainer turns songs into codes with. The
@@ -579,8 +579,6 @@ statistics off entirely: no id exists and nothing is counted.
 
 | Project | Description |
 |---------|-------------|
-| [MiniMax Music3 Studio](https://github.com/timoncool/MiniMax-Music3-Studio) | The same studio on MiniMax Music3 — the one this grew out of |
-| [ACE-Step Studio](https://github.com/timoncool/ACE-Step-Studio) | AI music studio — songs, vocals, covers, videos |
 | [Foundation Music Lab](https://github.com/timoncool/Foundation-Music-Lab) | Music generation + timeline editor |
 | [VibeVoice ASR](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Portable speech recognition |
 | [Qwen3-TTS](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Portable text-to-speech with voice cloning |
