@@ -143,6 +143,9 @@ jobs:
           $dir = Join-Path 'release' $version
           $msi = @(Get-ChildItem $dir -Filter '*.msi' | Where-Object { $_.Name -notlike '*.sig' })
           if ($msi.Count -ne 1) { throw "expected one MSI in $dir" }
+          if ($msi[0].Name -notmatch '_x64_vulkan_en-US\.msi$') {
+            throw "windows-x86_64 must point at the Vulkan MSI, got $($msi[0].Name)"
+          }
           $signature = "$($msi[0].FullName).sig"
           if (-not (Test-Path $signature)) { throw "missing $signature" }
           New-Item -ItemType Directory -Force -Path out | Out-Null

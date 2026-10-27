@@ -526,8 +526,7 @@ npm --prefix app run dev            # UI on 127.0.0.1:3791
 
 The engine: `scripts/build-yue-runtime.ps1 -RuntimeBackend all` builds the pinned yue2.cpp
 commit (`engines/yue2-cpp-source.json`) with runtime-loaded CUDA, Vulkan and CPU backends,
-using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer and a
-Windows `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
+using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1` names the MSI for the backend it built: `YuE2.Studio.Telesoho_<version>_x64_vulkan_en-US.msi` for `-RuntimeBackend vulkan` (and for `auto` when `nvcc` is absent), and `YuE2.Studio.Telesoho_<version>_x64_cuda_en-US.msi` for `-RuntimeBackend cuda` or `all`. The updater runs the Vulkan MSI with `msiexec`, which installs it
 back into the folder recorded at install time. The script reads the signing key from
 `TAURI_SIGNING_PRIVATE_KEY` or `%USERPROFILE%\.tauri\yue2-studio.key`. Model weights are
 never part of a release.
@@ -559,14 +558,14 @@ The password secret has to be non-empty. An encrypted key with an empty password
 
 | Key | Installer |
 | --- | --- |
-| `windows-x86_64`, `windows-x86_64-msi` | the MSI |
+| `windows-x86_64`, `windows-x86_64-msi` | the Vulkan MSI, `YuE2.Studio.Telesoho_<version>_x64_vulkan_en-US.msi` |
 | `linux-x86_64`, `linux-x86_64-appimage` | the AppImage |
 | `linux-x86_64-deb` | the `.deb`, only when that build also signed it |
 | `darwin-aarch64`, `darwin-aarch64-app` | the macOS `.app.tar.gz` |
 
 The `.dmg` is uploaded for a manual install. The updater installs the `.app.tar.gz`.
 
-The Windows job runs `scripts/build-release.ps1 -RuntimeBackend vulkan`. A GitHub-hosted runner has no CUDA 12 and CUDA 13 toolkits, and `-RuntimeBackend all` needs both plus a long device-code compile. The Vulkan backend still ships `yue-server.exe` with Vulkan and the processor, so the studio can start. It does not include the runtime-loaded CUDA 12/13 backends or the per-processor `ggml-cpu-*.dll` set from `-RuntimeBackend all`. A release machine that has those toolkits can still build that package locally and upload it over the CI MSI. Linux CI is native Ubuntu 22.04 (glibc 2.35), not a container inside the runner. The macOS `.dmg` is ad-hoc signed, not notarized. The first Actions run of each platform still wants a manual install check: this workflow has not been executed on a runner yet.
+The Windows job runs `scripts/build-release.ps1 -RuntimeBackend vulkan` and uploads `YuE2.Studio.Telesoho_<version>_x64_vulkan_en-US.msi` (and its `.sig`). `windows-x86_64` points at that file. A GitHub-hosted runner has no CUDA 12 and CUDA 13 toolkits, and `-RuntimeBackend all` needs both plus a long device-code compile. The Vulkan backend still ships `yue-server.exe` with Vulkan and the processor, so the studio can start. It does not include the runtime-loaded CUDA 12/13 backends or the per-processor `ggml-cpu-*.dll` set from `-RuntimeBackend all`. A release machine that has those toolkits can build `-RuntimeBackend all` or `-RuntimeBackend cuda` and upload `YuE2.Studio.Telesoho_<version>_x64_cuda_en-US.msi` beside the Vulkan package. Leave `latest.json` on the Vulkan MSI. Linux CI is native Ubuntu 22.04 (glibc 2.35), not a container inside the runner. The macOS `.dmg` is ad-hoc signed, not notarized. The first Actions run of each platform still wants a manual install check: this workflow has not been executed on a runner yet.
 
 On macOS there is no packaged engine, so build it once from source (needs Xcode command line
 tools and CMake) and again whenever `engines/yue2-cpp-source.json` moves to a new commit:

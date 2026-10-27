@@ -109,28 +109,45 @@ try {
     $signature = (Get-Content -Raw $signaturePath).Trim()
 
     # GitHub replaces spaces in asset names with dots; the manifest must name
-    # the asset as it will be served.
-    $assetName = $msiInstaller.Name -replace ' ', '.'
+    # the asset as it will be served. The runtime suffix separates the Vulkan
+    # package CI publishes from a CUDA package uploaded beside it. `auto`
+    # follows the engine script: nvcc means CUDA, otherwise Vulkan.
+    $runtimeLabel = switch ($RuntimeBackend) {
+        'vulkan' { 'vulkan' }
+        'auto' {
+            if (Get-Command nvcc -ErrorAction SilentlyContinue) { 'cuda' } else { 'vulkan' }
+        }
+        default { 'cuda' }
+    }
+    $dottedName = $msiInstaller.Name -replace ' ', '.'
+    $assetName = $dottedName -replace '_x64_en-US\.msi$', "_x64_${runtimeLabel}_en-US.msi"
+    if ($assetName -eq $dottedName) { throw "could not add the $runtimeLabel suffix to $($msiInstaller.Name)" }
     Copy-Item $msiInstaller.FullName (Join-Path $releaseDir $assetName) -Force
     Copy-Item $signaturePath (Join-Path $releaseDir "$assetName.sig") -Force
-
-    $latest = [ordered]@{
-        version = $Version
-        notes = $ReleaseNotes
-        pub_date = (Get-Date).ToUniversalTime().ToString('o')
-        platforms = [ordered]@{
-            'windows-x86_64' = [ordered]@{
-                signature = $signature
-                url = "https://github.com/telesoho/YuE2-Studio/releases/download/v$Version/$assetName"
+    if ($runtimeLabel -eq 'cuda') {
+        # A CUDA package can sit beside the Vulkan MSI. It must not become the
+        # updater target: windows-x86_64 stays on the Vulkan file CI publishes.
+        Write-Warning 'This CUDA MSI is not the updater target. Upload it beside the Vulkan MSI and leave latest.json alone.'
+    }
+    else {
+        $latest = [ordered]@{
+            version = $Version
+            notes = $ReleaseNotes
+            pub_date = (Get-Date).ToUniversalTime().ToString('o')
+            platforms = [ordered]@{
+                'windows-x86_64' = [ordered]@{
+                    signature = $signature
+                    url = "https://github.com/telesoho/YuE2-Studio/releases/download/v$Version/$assetName"
+                }
             }
         }
+        # A byte-order mark in front of the JSON makes the updater reject it.
+        [System.IO.File]::WriteAllText(
+            (Join-Path $releaseDir 'latest.json'),
+            ($latest | ConvertTo-Json -Depth 8),
+            (New-Object System.Text.UTF8Encoding($false))
+        )
     }
-    # A byte-order mark in front of the JSON makes the updater reject it.
-    [System.IO.File]::WriteAllText(
-        (Join-Path $releaseDir 'latest.json'),
-        ($latest | ConvertTo-Json -Depth 8),
-        (New-Object System.Text.UTF8Encoding($false))
-    )
     Get-ChildItem $releaseDir -File | Select-Object Name, Length | Format-Table | Out-Host
 }
 catch {
