@@ -109,9 +109,11 @@ try {
     $signature = (Get-Content -Raw $signaturePath).Trim()
 
     # GitHub replaces spaces in asset names with dots; the manifest must name
-    # the asset as it will be served. The runtime suffix separates the Vulkan
-    # package CI publishes from a CUDA package uploaded beside it. `auto`
-    # follows the engine script: nvcc means CUDA, otherwise Vulkan.
+    # the asset as it will be served. The runtime suffix keeps the Vulkan and
+    # CUDA packages distinct. `auto` follows the engine script: nvcc means
+    # CUDA, otherwise Vulkan. The updater always downloads the unsuffixed MSI,
+    # which is a copy of the CUDA file when one is in this folder and a copy
+    # of the Vulkan file otherwise.
     $runtimeLabel = switch ($RuntimeBackend) {
         'vulkan' { 'vulkan' }
         'auto' {
@@ -124,30 +126,44 @@ try {
     if ($assetName -eq $dottedName) { throw "could not add the $runtimeLabel suffix to $($msiInstaller.Name)" }
     Copy-Item $msiInstaller.FullName (Join-Path $releaseDir $assetName) -Force
     Copy-Item $signaturePath (Join-Path $releaseDir "$assetName.sig") -Force
-    if ($runtimeLabel -eq 'cuda') {
-        # A CUDA package can sit beside the Vulkan MSI. It must not become the
-        # updater target: windows-x86_64 stays on the Vulkan file CI publishes.
-        Write-Warning 'This CUDA MSI is not the updater target. Upload it beside the Vulkan MSI and leave latest.json alone.'
+    $canonicalName = $dottedName
+    $cudaAsset = Join-Path $releaseDir ($dottedName -replace '_x64_en-US\.msi$', '_x64_cuda_en-US.msi')
+    $vulkanAsset = Join-Path $releaseDir ($dottedName -replace '_x64_en-US\.msi$', '_x64_vulkan_en-US.msi')
+    if (Test-Path -LiteralPath $cudaAsset) {
+        $updaterSource = $cudaAsset
+    }
+    elseif (Test-Path -LiteralPath $vulkanAsset) {
+        $updaterSource = $vulkanAsset
     }
     else {
-        $latest = [ordered]@{
-            version = $Version
-            notes = $ReleaseNotes
-            pub_date = (Get-Date).ToUniversalTime().ToString('o')
-            platforms = [ordered]@{
-                'windows-x86_64' = [ordered]@{
-                    signature = $signature
-                    url = "https://github.com/telesoho/YuE2-Studio/releases/download/v$Version/$assetName"
-                }
+        throw "no CUDA or Vulkan MSI to copy onto $canonicalName"
+    }
+    Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $releaseDir $canonicalName) -Force
+    Copy-Item -LiteralPath "$updaterSource.sig" -Destination (Join-Path $releaseDir "$canonicalName.sig") -Force
+    $signature = (Get-Content -Raw "$updaterSource.sig").Trim()
+    Write-Host "Canonical MSI $canonicalName copied from $((Split-Path -Leaf $updaterSource))"
+    $updaterUrl = "https://github.com/telesoho/YuE2-Studio/releases/download/v$Version/$canonicalName"
+    $latest = [ordered]@{
+        version = $Version
+        notes = $ReleaseNotes
+        pub_date = (Get-Date).ToUniversalTime().ToString('o')
+        platforms = [ordered]@{
+            'windows-x86_64' = [ordered]@{
+                signature = $signature
+                url = $updaterUrl
+            }
+            'windows-x86_64-msi' = [ordered]@{
+                signature = $signature
+                url = $updaterUrl
             }
         }
-        # A byte-order mark in front of the JSON makes the updater reject it.
-        [System.IO.File]::WriteAllText(
-            (Join-Path $releaseDir 'latest.json'),
-            ($latest | ConvertTo-Json -Depth 8),
-            (New-Object System.Text.UTF8Encoding($false))
-        )
     }
+    # A byte-order mark in front of the JSON makes the updater reject it.
+    [System.IO.File]::WriteAllText(
+        (Join-Path $releaseDir 'latest.json'),
+        ($latest | ConvertTo-Json -Depth 8),
+        (New-Object System.Text.UTF8Encoding($false))
+    )
     Get-ChildItem $releaseDir -File | Select-Object Name, Length | Format-Table | Out-Host
 }
 catch {

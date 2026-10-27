@@ -141,20 +141,31 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = $env:RELEASE_VERSION
           $dir = Join-Path 'release' $version
-          $msi = @(Get-ChildItem $dir -Filter '*.msi' | Where-Object { $_.Name -notlike '*.sig' })
-          if ($msi.Count -ne 1) { throw "expected one MSI in $dir" }
-          if ($msi[0].Name -notmatch '_x64_vulkan_en-US\.msi$') {
-            throw "windows-x86_64 must point at the Vulkan MSI, got $($msi[0].Name)"
+          $canonical = @(Get-ChildItem $dir -Filter '*.msi' | Where-Object { $_.Name -match '_x64_en-US\.msi$' -and $_.Name -notmatch '_x64_(vulkan|cuda)_en-US\.msi$' })
+          if ($canonical.Count -ne 1) { throw "expected one unsuffixed MSI in $dir, got $($canonical.Count)" }
+          $updater = $canonical[0]
+          $signature = "$($updater.FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature)) { throw "missing $signature" }
+          $vulkan = @(Get-ChildItem $dir -Filter '*_x64_vulkan_en-US.msi')
+          if ($vulkan.Count -ne 1) { throw "expected the Vulkan MSI beside the updater MSI" }
+          if (-not (Test-Path -LiteralPath "$($vulkan[0].FullName).sig")) { throw "missing $($vulkan[0].Name).sig" }
+          $cuda = @(Get-ChildItem $dir -Filter '*_x64_cuda_en-US.msi')
+          foreach ($file in $cuda) {
+            if (-not (Test-Path -LiteralPath "$($file.FullName).sig")) { throw "missing $($file.Name).sig" }
           }
-          $signature = "$($msi[0].FullName).sig"
-          if (-not (Test-Path $signature)) { throw "missing $signature" }
+          $source = if ($cuda.Count -ge 1) { $cuda[0] } else { $vulkan[0] }
+          $updaterHash = (Get-FileHash -LiteralPath $updater.FullName -Algorithm SHA256).Hash
+          $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
+          if ($updaterHash -ne $sourceHash) { throw "unsuffixed MSI must be a copy of $($source.Name)" }
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Copy-Item $msi[0].FullName (Join-Path out $msi[0].Name) -Force
-          Copy-Item $signature (Join-Path out "$($msi[0].Name).sig") -Force
-          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($msi[0].Name)"
+          foreach ($file in (@($updater, $vulkan[0]) + $cuda)) {
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path out $file.Name) -Force
+            Copy-Item -LiteralPath "$($file.FullName).sig" -Destination (Join-Path out "$($file.Name).sig") -Force
+          }
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($updater.Name)"
           node scripts/release-manifest.mjs fragment out/platforms.json `
-            windows-x86_64 "out/$($msi[0].Name).sig" $url `
-            windows-x86_64-msi "out/$($msi[0].Name).sig" $url
+            windows-x86_64 "out/$($updater.Name).sig" $url `
+            windows-x86_64-msi "out/$($updater.Name).sig" $url
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -357,6 +368,15 @@ jobs:
             for (const key of ["windows-x86_64", "linux-x86_64", "darwin-aarch64"]) {
               const entry = manifest.platforms[key];
               if (!entry?.signature || !entry?.url?.startsWith("https://")) throw new Error(`incomplete ${key}`);
+            }
+            for (const key of ["windows-x86_64", "windows-x86_64-msi"]) {
+              const url = manifest.platforms[key]?.url ?? "";
+              if (!url.endsWith("_x64_en-US.msi") || /_x64_(vulkan|cuda)_en-US\.msi$/.test(url)) {
+                throw new Error(`${key} must use the unsuffixed MSI, got ${url}`);
+              }
+            }
+            if (manifest.platforms["windows-x86_64"].url !== manifest.platforms["windows-x86_64-msi"].url) {
+              throw new Error("windows updater keys must share one MSI url");
             }
             console.log("latest.json platforms:", keys.join(", "));
           '
