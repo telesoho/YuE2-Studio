@@ -23,9 +23,19 @@ if [ ! -x "$midi/music-midi" ] || [ "$(cat "$midi/runtime.commit" 2>/dev/null)" 
 fi
 
 cd "$root"
-npm --prefix app install
-npm --prefix desktop install
+npm --prefix app ci --no-audit --no-fund
+npm --prefix desktop ci --no-audit --no-fund
 cd desktop
-npm exec tauri build -- --config src-tauri/tauri.macos-release.conf.json --bundles dmg
+# Ad-hoc code signing stays in the macOS release config. The updater signature
+# is separate and only produced when the release signing key is present.
+config_args=(--config src-tauri/tauri.macos-release.conf.json)
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    if [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+        echo "TAURI_SIGNING_PRIVATE_KEY is set but TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty." >&2
+        exit 1
+    fi
+    config_args+=(--config src-tauri/tauri.updater.conf.json)
+fi
+npm exec tauri build -- "${config_args[@]}" --bundles dmg
 
 find src-tauri/target/release/bundle/dmg -name '*.dmg'
