@@ -347,14 +347,13 @@ fn spawn_update_check(app: tauri::AppHandle) {
     use tauri_plugin_updater::UpdaterExt;
 
     tauri::async_runtime::spawn(async move {
-        // The installer is a child of this process, which sits in its own
+        // msiexec is a child of this process, which sits in its own
         // kill-on-close job: without releasing it, the installer died with the
         // studio a moment after starting and the update never happened.
+        // The install folder is the one the MSI wrote to
+        // HKCU\Software\Telesoho\YuE2 Studio Telesoho\InstallDir. Passing
+        // INSTALLDIR here would override that and split the installation.
         let cleanup = app.clone();
-        // Started from the studio, the installer did not find the previous
-        // folder and installed a second copy into its default one. NSIS takes
-        // the folder as `/D=`, which must be the last argument and unquoted.
-        let install_directory = format!("/D={}", executable_directory().display());
         // The proxy chosen in Settings: GitHub, where updates come from, is
         // among the sites a proxy is set up for.
         let builder = match music_server::net::fixed() {
@@ -363,7 +362,6 @@ fn spawn_update_check(app: tauri::AppHandle) {
             music_server::net::Fixed::Through(proxy) => app.updater_builder().proxy(proxy),
         };
         let updater = match builder
-            .installer_arg(install_directory)
             .on_before_exit(move || {
                 cleanup.cleanup_before_exit();
                 if !music_engine::process_group::release_children() {

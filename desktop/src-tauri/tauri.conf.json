@@ -29,21 +29,16 @@
     "withGlobalTauri": true
   },
   "bundle": {
+    "publisher": "Telesoho",
     "linux": { "appimage": { "bundleMediaFramework": true } },
     "active": true,
     "targets": [
-      "nsis"
+      "msi"
     ],
     "createUpdaterArtifacts": true,
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
-      },
-      "nsis": {
-        "installerHooks": "installer-hooks.nsi",
-        "customLanguageFiles": {
-          "English": "installer-english.nsh"
-        }
       }
     },
     "icon": [

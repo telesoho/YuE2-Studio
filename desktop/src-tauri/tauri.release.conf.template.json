@@ -12,12 +12,13 @@
                                 }
                 },
     "bundle":  {
+                   "publisher":  "Telesoho",
                    "resources":  {
                                      "resources/yue2-cpp":  "resources/yue2-cpp",
                                      "resources/vst-host":  "resources/vst-host"
                                  },
                    "targets":  [
-                                   "nsis"
+                                   "msi"
                                ]
                }
 }

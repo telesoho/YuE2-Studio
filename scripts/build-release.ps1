@@ -93,7 +93,7 @@ try {
 
     Push-Location $desktopRoot
     try {
-        npm exec tauri build -- --config $releaseConfigPath --bundles nsis
+        npm exec tauri build -- --config $releaseConfigPath --bundles msi
         if ($LASTEXITCODE -ne 0) { throw "tauri build failed with exit code $LASTEXITCODE" }
     }
     finally {
@@ -102,16 +102,16 @@ try {
 
     New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
     $bundleRoot = Join-Path $tauriRoot 'target\release\bundle'
-    $nsisInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'nsis') -Filter "*_$($Version)_x64-setup.exe" | Select-Object -First 1
-    if (-not $nsisInstaller) { throw "the NSIS installer for $Version is missing" }
-    $signaturePath = "$($nsisInstaller.FullName).sig"
+    $msiInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'msi') -Filter "*_$($Version)_x64_en-US.msi" | Select-Object -First 1
+    if (-not $msiInstaller) { throw "the MSI installer for $Version is missing" }
+    $signaturePath = "$($msiInstaller.FullName).sig"
     if (-not (Test-Path $signaturePath)) { throw "the updater signature is missing: $signaturePath" }
     $signature = (Get-Content -Raw $signaturePath).Trim()
 
     # GitHub replaces spaces in asset names with dots; the manifest must name
     # the asset as it will be served.
-    $assetName = $nsisInstaller.Name -replace ' ', '.'
-    Copy-Item $nsisInstaller.FullName (Join-Path $releaseDir $assetName) -Force
+    $assetName = $msiInstaller.Name -replace ' ', '.'
+    Copy-Item $msiInstaller.FullName (Join-Path $releaseDir $assetName) -Force
     Copy-Item $signaturePath (Join-Path $releaseDir "$assetName.sig") -Force
 
     # Portable: the same executable, the engine beside it, and the marker that

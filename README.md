@@ -298,7 +298,7 @@ The main, tested path is an NVIDIA card.
 
 ## Quick start
 
-1. **Install** — run `YuE2.Studio.Telesoho_x.y.z_x64-setup.exe` from the
+1. **Install** — run `YuE2.Studio.Telesoho_x.y.z_x64_en-US.msi` from the
    [latest release](https://github.com/telesoho/YuE2-Studio/releases/latest), or unzip the
    portable archive anywhere and run `YuE2-Studio.exe`.
 2. **Choose a model set** — the first screen preselects the set your card can run. Press
@@ -311,7 +311,8 @@ temporary files and the WebView2 profile, beside `YuE2-Studio.exe`. That holds f
 portable archive and for an installation into any folder the studio can write to;
 deleting the folder removes the studio. Only an installation into a read-only location
 such as Program Files falls back to `%LOCALAPPDATA%\YuE2 Studio Telesoho`. The installed version
-updates itself: a new release is offered inside the studio and installed in place.
+updates itself: a new release is offered inside the studio, and `msiexec` installs that MSI
+back into the folder recorded at install time.
 
 **If the installer stops on WebView2.** The studio's window runs on Microsoft Edge WebView2,
 and the installer fetches it when Windows lacks it. On a blocked or unsteady connection, or on
@@ -526,8 +527,9 @@ npm --prefix app run dev            # UI on 127.0.0.1:3791
 
 The engine: `scripts/build-yue-runtime.ps1 -RuntimeBackend all` builds the pinned yue2.cpp
 commit (`engines/yue2-cpp-source.json`) with runtime-loaded CUDA, Vulkan and CPU backends,
-using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the NSIS installer, the
-portable archive and the signed `latest.json` for the updater; it reads the signing key from
+using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer, the
+portable archive and the signed `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
+back into the folder recorded at install time. The script reads the signing key from
 `TAURI_SIGNING_PRIVATE_KEY` or `%USERPROFILE%\.tauri\yue2-studio.key`. Model weights are
 never part of a release.
 
