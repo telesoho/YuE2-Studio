@@ -11,8 +11,8 @@ sees what you do in the studio's window.
 
 ## If the studio is not running yet
 
-1. It is a Windows desktop application. If it is not installed, download the installer or
-   the portable archive from https://github.com/timoncool/YuE2-Studio/releases/latest (it needs an
+1. It is a Windows desktop application. If it is not installed, download the installer
+   from https://github.com/timoncool/YuE2-Studio/releases/latest (it needs an
    NVIDIA card; the first start offers to download the models).
 2. Start it. The MCP server is up as soon as its window is: `http://127.0.0.1:8791/mcp`.
    Nothing else to install - no npx, no bridge.

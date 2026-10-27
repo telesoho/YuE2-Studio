@@ -28,7 +28,7 @@ YuE2 Studio is a desktop studio for **YuE2**, the open song model from M-A-P tha
 score before it sings. Describe a style, write the lyrics, and the model composes a melody
 with chords as sheet music, then performs it as a full song with vocals. The score comes
 back with the track: read it, edit it, and render the same composition again with a
-different sound. Windows installer with auto-update or a portable folder, runs offline on
+different sound. Windows installer with auto-update, runs offline on
 an NVIDIA card with 6 GB of VRAM or more; AMD and Intel cards through Vulkan are experimental.
 
 It is built on [yue2.cpp](https://github.com/ServeurpersoCom/yue2.cpp), the native C++/CUDA
@@ -299,16 +299,15 @@ The main, tested path is an NVIDIA card.
 ## Quick start
 
 1. **Install** — run `YuE2.Studio.Telesoho_x.y.z_x64_en-US.msi` from the
-   [latest release](https://github.com/telesoho/YuE2-Studio/releases/latest), or unzip the
-   portable archive anywhere and run `YuE2-Studio.exe`.
+   [latest release](https://github.com/telesoho/YuE2-Studio/releases/latest).
 2. **Choose a model set** — the first screen preselects the set your card can run. Press
    download; it fetches only what is missing and resumes if interrupted.
 3. **Create** — write a style and lyrics, or load one of the examples, and press Create.
    The engine starts by itself and the song lands in your library with its score.
 
 Everything the studio owns stays in its own folder: models, songs, settings, logs,
-temporary files and the WebView2 profile, beside `YuE2-Studio.exe`. That holds for the
-portable archive and for an installation into any folder the studio can write to;
+temporary files and the WebView2 profile, beside `YuE2-Studio.exe`. That holds for an
+installation into any folder the studio can write to;
 deleting the folder removes the studio. Only an installation into a read-only location
 such as Program Files falls back to `%LOCALAPPDATA%\YuE2 Studio Telesoho`. The installed version
 updates itself: a new release is offered inside the studio, and `msiexec` installs that MSI
@@ -376,8 +375,7 @@ pinned to revision `e630f2b`, the decoder companion from
 pinned to revision `e2e63d8`; all are checked by size and SHA-256. They are written to, and
 can be dropped into by hand at:
 
-- `<the studio's folder>\data\models\yue2-cpp\` — the portable folder, or the folder
-  you installed into
+- `<the studio's folder>\data\models\yue2-cpp\` — the folder you installed into
 - `%LOCALAPPDATA%\YuE2 Studio\models\yue2-cpp\` — only for an installation into a
   read-only location
 
@@ -527,8 +525,8 @@ npm --prefix app run dev            # UI on 127.0.0.1:3791
 
 The engine: `scripts/build-yue-runtime.ps1 -RuntimeBackend all` builds the pinned yue2.cpp
 commit (`engines/yue2-cpp-source.json`) with runtime-loaded CUDA, Vulkan and CPU backends,
-using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer, the
-portable archive and the signed `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
+using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer and the
+signed `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
 back into the folder recorded at install time. The script reads the signing key from
 `TAURI_SIGNING_PRIVATE_KEY` or `%USERPROFILE%\.tauri\yue2-studio.key`. Model weights are
 never part of a release.

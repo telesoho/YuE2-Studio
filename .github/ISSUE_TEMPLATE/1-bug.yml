@@ -46,8 +46,7 @@ body:
     attributes:
       label: System and package / Система и сборка
       options:
-        - Windows — installer (.exe)
-        - Windows — portable (.zip)
+        - Windows — installer (.msi)
         - macOS — Apple Silicon (.dmg)
         - Linux — AppImage
         - Linux — .deb

@@ -114,22 +114,6 @@ try {
     Copy-Item $msiInstaller.FullName (Join-Path $releaseDir $assetName) -Force
     Copy-Item $signaturePath (Join-Path $releaseDir "$assetName.sig") -Force
 
-    # Portable: the same executable, the engine beside it, and the marker that
-    # keeps every byte of data inside the folder.
-    $binaryName = (Get-Content -Raw (Join-Path $tauriRoot 'tauri.conf.json') | ConvertFrom-Json).mainBinaryName
-    $portableRoot = Join-Path $releaseDir "YuE2-Studio-$Version-portable"
-    if (Test-Path $portableRoot) { Remove-Item -Recurse -Force $portableRoot }
-    New-Item -ItemType Directory -Force -Path $portableRoot | Out-Null
-    Copy-Item (Join-Path $tauriRoot "target\release\$binaryName.exe") (Join-Path $portableRoot "$binaryName.exe") -Force
-    New-Item -ItemType Directory -Force -Path (Join-Path $portableRoot 'resources') | Out-Null
-    Copy-Item $engineResourceRoot (Join-Path $portableRoot 'resources\yue2-cpp') -Recurse -Force
-    Get-ChildItem (Join-Path $portableRoot 'resources\yue2-cpp') -Filter '*.pdb' | Remove-Item -Force
-    Copy-Item $vstResourceRoot (Join-Path $portableRoot 'resources\vst-host') -Recurse -Force
-    New-Item -ItemType File -Path (Join-Path $portableRoot 'portable.flag') -Force | Out-Null
-    $portableZip = Join-Path $releaseDir "YuE2-Studio-$Version-portable-windows-x64.zip"
-    if (Test-Path $portableZip) { Remove-Item -Force $portableZip }
-    Compress-Archive -Path "$portableRoot\*" -DestinationPath $portableZip -Force
-
     $latest = [ordered]@{
         version = $Version
         notes = $ReleaseNotes
