@@ -267,9 +267,12 @@ fn is_provided_by_the_system(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     name.starts_with("api-ms-win-")
         || name.starts_with("ext-ms-win-")
-        // The display driver's own library: NVIDIA's guide is explicit that
-        // this one is never redistributed - the user installs a driver.
+        // The display driver's own libraries. NVIDIA's guide is explicit that
+        // nvcuda.dll is never redistributed. vulkan-1.dll comes with the AMD,
+        // Intel or NVIDIA driver, which is also where the engine diagram says
+        // the Vulkan loader is found.
         || name == "nvcuda.dll"
+        || name == "vulkan-1.dll"
         || [
             "kernel32.dll",
             "kernelbase.dll",
@@ -344,6 +347,15 @@ mod tests {
         std::fs::create_dir_all(&writable).unwrap();
         assert_eq!(EngineRuntime::new(&writable, &data).library_dir(), writable);
         std::fs::remove_dir_all(&data).ok();
+    }
+
+    /// A Vulkan build imports vulkan-1.dll. That loader is installed with the
+    /// display driver, so the release must not try to ship it.
+    #[test]
+    fn the_display_driver_provides_vulkan() {
+        assert!(is_provided_by_the_system("vulkan-1.dll"));
+        assert!(is_provided_by_the_system("nvcuda.dll"));
+        assert!(!is_provided_by_the_system("cublas64_13.dll"));
     }
 
     /// The file names are the contract with the engine binary: they are what

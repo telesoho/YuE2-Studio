@@ -261,7 +261,8 @@ or download the MP3s from [docs/samples](docs/samples).
 The .deb and the AppImage for Linux x86-64 are **experimental**. They come from the same code with the
 Linux build of the same engine (Vulkan, and the processor), but the author works on Windows and has not
 run them on a real Linux desktop. **If you live on Linux, it would be great if you polished them and sent
-the fixes back as a pull request.** The studio keeps its data in `~/.local/share/yue2-studio`
+the fixes back as a pull request.** When a release publishes them, the AppImage is what the updater
+installs (`linux-x86_64` in `latest.json`). The studio keeps its data in `~/.local/share/yue2-studio`
 (`$XDG_DATA_HOME`).
 
 ## What runs where
@@ -525,17 +526,47 @@ npm --prefix app run dev            # UI on 127.0.0.1:3791
 
 The engine: `scripts/build-yue-runtime.ps1 -RuntimeBackend all` builds the pinned yue2.cpp
 commit (`engines/yue2-cpp-source.json`) with runtime-loaded CUDA, Vulkan and CPU backends,
-using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer and the
-signed `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
+using CUDA 13, the Vulkan SDK, MSVC and Ninja. `scripts/build-release.ps1 -Version X.Y.Z` produces the MSI installer and a
+Windows `latest.json` for the updater. The updater runs that MSI with `msiexec`, which installs it
 back into the folder recorded at install time. The script reads the signing key from
 `TAURI_SIGNING_PRIVATE_KEY` or `%USERPROFILE%\.tauri\yue2-studio.key`. Model weights are
 never part of a release.
 
-Linux packages are built on the release machine in an Ubuntu 22.04 container (glibc 2.35; Docker, under WSL on
+Linux packages can still be built on a release machine in an Ubuntu 22.04 container (glibc 2.35; Docker, under WSL on
 Windows): `scripts/build-linux-docker.sh <output folder>` builds the committed HEAD with
-`scripts/build-release-linux.sh` and checks that the engine starts. Only the .dmg is built on GitHub, by
-the `macOS build` workflow (`.github/workflows/release-unix.yml`, started by hand, optionally with a
-release tag to attach it to): there is no Mac on the release machine.
+`scripts/build-release-linux.sh` and checks that the engine starts. The same three scripts also run in
+GitHub Actions; see [Cutting a release](#cutting-a-release).
+
+## Cutting a release
+
+Push a tag `vX.Y.Z` whose numbers match `version` in `desktop/src-tauri/tauri.conf.json`.
+That starts [`.github/workflows/release.yml`](.github/workflows/release.yml), which checks out the tag,
+builds Windows, Linux and macOS together, uploads the installers to the GitHub Release for the tag,
+and writes one `latest.json`. The same workflow can be started by hand (`workflow_dispatch`) with that
+tag. The hand-started macOS-only workflow is gone; this one replaces it.
+
+Repository secrets, the same three values as `%USERPROFILE%\.tauri\yue2-studio.key`, its `.password` and its `.pub`. Do not commit them.
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of `yue2-studio.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | contents of `yue2-studio.key.password` |
+| `TAURI_UPDATER_PUBKEY` | contents of `yue2-studio.key.pub`. It must match `plugins.updater.pubkey` in `tauri.conf.json` |
+
+The password secret has to be non-empty. An encrypted key with an empty password waits on stdin instead of failing.
+
+`latest.json` uses the updater's platform keys. Tauri looks for `{os}-{arch}-{bundle}` and then `{os}-{arch}`:
+
+| Key | Installer |
+| --- | --- |
+| `windows-x86_64`, `windows-x86_64-msi` | the MSI |
+| `linux-x86_64`, `linux-x86_64-appimage` | the AppImage |
+| `linux-x86_64-deb` | the `.deb`, only when that build also signed it |
+| `darwin-aarch64`, `darwin-aarch64-app` | the macOS `.app.tar.gz` |
+
+The `.dmg` is uploaded for a manual install. The updater installs the `.app.tar.gz`.
+
+The Windows job runs `scripts/build-release.ps1 -RuntimeBackend vulkan`. A GitHub-hosted runner has no CUDA 12 and CUDA 13 toolkits, and `-RuntimeBackend all` needs both plus a long device-code compile. The Vulkan backend still ships `yue-server.exe` with Vulkan and the processor, so the studio can start. It does not include the runtime-loaded CUDA 12/13 backends or the per-processor `ggml-cpu-*.dll` set from `-RuntimeBackend all`. A release machine that has those toolkits can still build that package locally and upload it over the CI MSI. Linux CI is native Ubuntu 22.04 (glibc 2.35), not a container inside the runner. The macOS `.dmg` is ad-hoc signed, not notarized. The first Actions run of each platform still wants a manual install check: this workflow has not been executed on a runner yet.
 
 On macOS there is no packaged engine, so build it once from source (needs Xcode command line
 tools and CMake) and again whenever `engines/yue2-cpp-source.json` moves to a new commit:

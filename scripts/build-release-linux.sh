@@ -23,6 +23,17 @@ cd "$root"
 npm --prefix app ci --no-audit --no-fund
 npm --prefix desktop ci --no-audit --no-fund
 cd desktop
-npm exec tauri build -- --config src-tauri/tauri.linux-release.conf.json --bundles deb,appimage
+# The Linux release config leaves updater artifacts off so a build without the
+# signing key still produces a .deb and an AppImage. Release CI sets the key
+# and turns signing on; an encrypted key with no password waits on stdin.
+config_args=(--config src-tauri/tauri.linux-release.conf.json)
+if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    if [ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]; then
+        echo "TAURI_SIGNING_PRIVATE_KEY is set but TAURI_SIGNING_PRIVATE_KEY_PASSWORD is empty." >&2
+        exit 1
+    fi
+    config_args+=(--config src-tauri/tauri.updater.conf.json)
+fi
+npm exec tauri build -- "${config_args[@]}" --bundles deb,appimage
 
 find src-tauri/target/release/bundle -name '*.deb' -o -name '*.AppImage'

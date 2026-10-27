@@ -1,0 +1,376 @@
+name: Release
+
+# Builds Windows, Linux and macOS from a version tag and attaches them to that
+# GitHub Release, with one signed latest.json for the updater.
+# Replaces the hand-started macOS workflow (release-unix.yml).
+#
+# Secrets (repository settings, never committed):
+#   TAURI_SIGNING_PRIVATE_KEY
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+#   TAURI_UPDATER_PUBKEY          must match tauri.conf.json
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and attach, for example v3.7.1"
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  guard:
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tag matches the studio version
+        id: meta
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "tag must look like vX.Y.Z, got: $tag"
+            exit 1
+          fi
+          version="${tag#v}"
+          configured="$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")"
+          if [[ "$version" != "$configured" ]]; then
+            echo "tag $tag does not match desktop/src-tauri/tauri.conf.json version $configured"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Signing secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] || [ -z "$TAURI_UPDATER_PUBKEY" ]; then
+            echo "Set the TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD and TAURI_UPDATER_PUBKEY repository secrets."
+            exit 1
+          fi
+          node scripts/check-updater-pubkey.mjs
+
+  windows:
+    needs: guard
+    runs-on: windows-2022
+    timeout-minutes: 360
+    env:
+      RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y
+          }
+      - name: Vulkan SDK
+        shell: pwsh
+        run: |
+          $version = '1.4.363.0'
+          $root = "C:\VulkanSDK\$version"
+          $installer = Join-Path $env:RUNNER_TEMP 'vulkansdk.exe'
+          curl.exe -fL "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-X64-$version.exe" -o $installer
+          $process = Start-Process -FilePath $installer -ArgumentList @(
+            '--root', $root,
+            '--accept-licenses', '--default-answer', '--confirm-command', 'install'
+          ) -PassThru
+          if (-not $process.WaitForExit(900000)) {
+            $process.Kill()
+            throw 'Vulkan SDK installer timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "Vulkan SDK installer exited $($process.ExitCode)" }
+          if (-not (Test-Path "$root\Include\vulkan\vulkan.h")) { throw "vulkan.h is missing under $root" }
+          if (-not (Test-Path "$root\Bin\glslc.exe")) { throw "glslc.exe is missing under $root" }
+          "VULKAN_SDK=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$root\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Install the interface and the shell
+        run: |
+          npm --prefix app ci --no-audit --no-fund
+          npm --prefix desktop ci --no-audit --no-fund
+      - name: Build the Vulkan MSI
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -RuntimeBackend vulkan
+      - name: Collect
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_VERSION
+          $dir = Join-Path 'release' $version
+          $msi = @(Get-ChildItem $dir -Filter '*.msi' | Where-Object { $_.Name -notlike '*.sig' })
+          if ($msi.Count -ne 1) { throw "expected one MSI in $dir" }
+          $signature = "$($msi[0].FullName).sig"
+          if (-not (Test-Path $signature)) { throw "missing $signature" }
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Copy-Item $msi[0].FullName (Join-Path out $msi[0].Name) -Force
+          Copy-Item $signature (Join-Path out "$($msi[0].Name).sig") -Force
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($msi[0].Name)"
+          node scripts/release-manifest.mjs fragment out/platforms.json `
+            windows-x86_64 "out/$($msi[0].Name).sig" $url `
+            windows-x86_64-msi "out/$($msi[0].Name).sig" $url
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: out/*
+          if-no-files-found: error
+
+  linux:
+    needs: guard
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    env:
+      RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+      RUSTUP_TOOLCHAIN: stable
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake ninja-build nasm autoconf automake libtool \
+            curl ca-certificates git unzip xz-utils libssl-dev libasound2-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf file libfuse2 \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
+            libvulkan-dev
+      - name: Vulkan SDK
+        run: |
+          set -euo pipefail
+          version=1.4.363.0
+          root="$RUNNER_TEMP/vulkansdk"
+          mkdir -p "$root"
+          curl -sSfL "https://sdk.lunarg.com/sdk/download/$version/linux/vulkansdk-linux-x86_64-$version.tar.xz" \
+            | tar -xJ -C "$root" --strip-components=1
+          test -x "$root/x86_64/bin/glslc"
+          echo "VULKAN_SDK=$root/x86_64" >> "$GITHUB_ENV"
+          echo "$root/x86_64/bin" >> "$GITHUB_PATH"
+      - name: Build
+        run: bash scripts/build-release-linux.sh
+      - name: Engine starts
+        run: |
+          set -euo pipefail
+          engine=desktop/src-tauri/resources/yue2-cpp/yue-server
+          if ldd "$engine" | grep -i 'not found'; then
+            echo "the engine misses libraries"
+            exit 1
+          fi
+          "$engine" --help > /tmp/engine-help.txt 2>&1 || true
+          grep -q 'Usage' /tmp/engine-help.txt
+          midi=desktop/src-tauri/resources/music-midi/music-midi
+          if ldd "$midi" | grep -i 'not found'; then
+            echo "the MIDI transcriber misses libraries"
+            exit 1
+          fi
+      - name: Collect
+        run: |
+          set -euo pipefail
+          version="$RELEASE_VERSION"
+          tag="$RELEASE_TAG"
+          deb="$(find desktop/src-tauri/target/release/bundle/deb -name "*_${version}_amd64.deb" | head -n 1)"
+          appimage="$(find desktop/src-tauri/target/release/bundle/appimage -name "*_${version}_amd64.AppImage" | head -n 1)"
+          test -f "$deb"
+          test -f "$appimage"
+          test -f "${appimage}.sig"
+          mkdir -p out
+          cp "$deb" "out/YuE2-Studio-${version}-linux-amd64.deb"
+          cp "$appimage" "out/YuE2-Studio-${version}-linux-x86_64.AppImage"
+          cp "${appimage}.sig" "out/YuE2-Studio-${version}-linux-x86_64.AppImage.sig"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
+          args=(
+            linux-x86_64 "out/YuE2-Studio-${version}-linux-x86_64.AppImage.sig" "${base}/YuE2-Studio-${version}-linux-x86_64.AppImage"
+            linux-x86_64-appimage "out/YuE2-Studio-${version}-linux-x86_64.AppImage.sig" "${base}/YuE2-Studio-${version}-linux-x86_64.AppImage"
+          )
+          if [ -f "${deb}.sig" ]; then
+            cp "${deb}.sig" "out/YuE2-Studio-${version}-linux-amd64.deb.sig"
+            args+=(linux-x86_64-deb "out/YuE2-Studio-${version}-linux-amd64.deb.sig" "${base}/YuE2-Studio-${version}-linux-amd64.deb")
+          fi
+          node scripts/release-manifest.mjs fragment out/platforms.json "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: out/*
+          if-no-files-found: error
+
+  macos:
+    needs: guard
+    runs-on: macos-14
+    timeout-minutes: 240
+    env:
+      RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+      RUSTUP_TOOLCHAIN: stable
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: "**/package-lock.json"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Tools
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+      - name: Build
+        run: bash scripts/build-release-macos.sh
+      - name: Engine starts
+        run: |
+          set -euo pipefail
+          engine=desktop/src-tauri/resources/yue2-cpp/yue-server
+          "$engine" --help > /tmp/engine-help.txt 2>&1 || true
+          grep -q 'Usage' /tmp/engine-help.txt
+          midi=desktop/src-tauri/resources/music-midi/music-midi
+          "$midi" --help > /tmp/midi-help.txt 2>&1 || true
+          test -x "$midi"
+      - name: Collect
+        run: |
+          set -euo pipefail
+          version="$RELEASE_VERSION"
+          tag="$RELEASE_TAG"
+          dmg="$(find desktop/src-tauri/target/release/bundle/dmg -name '*.dmg' | head -n 1)"
+          archive="$(find desktop/src-tauri/target/release/bundle/macos -name '*.app.tar.gz' ! -name '*.sig' | head -n 1)"
+          test -f "$dmg"
+          test -f "$archive"
+          test -f "${archive}.sig"
+          mkdir -p out
+          cp "$dmg" "out/YuE2-Studio-${version}-macos-arm64.dmg"
+          cp "$archive" "out/YuE2-Studio-${version}-macos-arm64.app.tar.gz"
+          cp "${archive}.sig" "out/YuE2-Studio-${version}-macos-arm64.app.tar.gz.sig"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
+          node scripts/release-manifest.mjs fragment out/platforms.json \
+            darwin-aarch64 "out/YuE2-Studio-${version}-macos-arm64.app.tar.gz.sig" "${base}/YuE2-Studio-${version}-macos-arm64.app.tar.gz" \
+            darwin-aarch64-app "out/YuE2-Studio-${version}-macos-arm64.app.tar.gz.sig" "${base}/YuE2-Studio-${version}-macos-arm64.app.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [guard, windows, linux, macos]
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-parts
+      - name: Assemble latest.json and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/release-manifest.mjs assemble \
+            --out release-parts/latest.json \
+            --version "$RELEASE_VERSION" \
+            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            release-parts/release-windows/platforms.json \
+            release-parts/release-linux/platforms.json \
+            release-parts/release-macos/platforms.json
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const manifest = JSON.parse(readFileSync("release-parts/latest.json", "utf8"));
+            const keys = Object.keys(manifest.platforms);
+            for (const key of ["windows-x86_64", "linux-x86_64", "darwin-aarch64"]) {
+              const entry = manifest.platforms[key];
+              if (!entry?.signature || !entry?.url?.startsWith("https://")) throw new Error(`incomplete ${key}`);
+            }
+            console.log("latest.json platforms:", keys.join(", "));
+          '
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_VERSION" --verify-tag \
+              --notes "YuE2 Studio ${RELEASE_VERSION}."
+          fi
+          files=()
+          while IFS= read -r path; do
+            files+=("$path")
+          done < <(find release-parts/release-windows release-parts/release-linux release-parts/release-macos -type f ! -name platforms.json | sort)
+          files+=(release-parts/latest.json)
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > /tmp/release-names.txt
+          for path in "${files[@]}"; do
+            name="$(basename "$path")"
+            grep -qx "$name" /tmp/release-names.txt || { echo "release is missing $name"; exit 1; }
+          done
+          echo "uploaded:"
+          printf '  %s\n' "${files[@]##*/}"
