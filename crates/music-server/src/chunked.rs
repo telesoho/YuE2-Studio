@@ -547,9 +547,10 @@ mod tests {
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
         let error = probe(&http, &format!("http://127.0.0.1:{port}/model.gguf")).await.unwrap_err().to_string();
         assert!(error.starts_with(&format!("could not connect to 127.0.0.1 (3 attempts) for http://127.0.0.1:{port}/model.gguf: ")), "{error}");
-        assert!(!error.contains("HF-Mirror"));
+        assert!(!error.contains("mirror"));
         assert!(start_failure("https://huggingface.co/a/b/resolve/c/d.gguf", 3, true, "x").starts_with("could not connect to huggingface.co (3 attempts)"));
-        assert!(start_failure("https://huggingface.co/a/b/resolve/c/d.gguf", 3, true, "x").ends_with("HF-Mirror instead"));
+        // The fork names the mirror where it is set (Settings - Providers), not "HF-Mirror".
+        assert!(start_failure("https://huggingface.co/a/b/resolve/c/d.gguf", 3, true, "x").ends_with("Hugging Face mirror instead"));
         assert_eq!(start_failure("https://github.com/a/b.zip", 8, false, "x"), "could not start https://github.com/a/b.zip from github.com after 8 attempts: x");
     }
 }
