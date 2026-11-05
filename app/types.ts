@@ -186,6 +186,8 @@ export interface NativeLibrarySong {
   profile_id?: string | null;
   replay_request?: unknown | null;
   audio_codes?: unknown | null;
+  /** The library's list leaves the replay request and the semantic stream out and says only whether both are kept. */
+  replay_available?: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -206,6 +208,9 @@ export interface YueJob {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   phase: string;
   message: string;
+  /** For a failed job, why as a code and fields the window translates (i18n/songErrors.ts). */
+  code?: string;
+  params?: Record<string, unknown>;
   title?: string;
   style: string;
   lyrics: string;

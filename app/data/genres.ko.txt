@@ -1,0 +1,105 @@
+16-bit	16비트 칩튠
+2-step	투스텝 (UK 개러지)
+acid house	애시드 하우스
+acid techno	애시드 테크노
+acid trance	애시드 트랜스
+acoustic chicago blues	어쿠스틱 시카고 블루스
+acoustic rock	어쿠스틱 록
+acoustic texas blues	어쿠스틱 텍사스 블루스
+african folk	아프리카 포크
+afrikaner folk	아프리카너 포크
+afro house	아프로 하우스
+afro trap	아프로 트랩
+afro-cuban jazz	아프로쿠반 재즈
+afro-funk	아프로 펑크
+afro-jazz	아프로 재즈
+afro-rock	아프로 록
+afrobeat	아프로비트
+afropiano	아프로피아노 (아마피아노)
+afroswing	아프로스윙
+algorave	알고레이브
+alternative r &b	얼터너티브 R&B
+alternative rock	얼터너티브 록
+ambient techno	앰비언트 테크노
+anti-folk	안티포크
+avant-garde jazz	아방가르드 재즈
+bachata	바차타
+bedroom pop	베드룸 팝
+bluegrass	블루그래스
+blues rock	블루스 록
+boogie	부기
+bossa nova	보사노바
+bubblegum bass	버블검 베이스
+bubblegum dance	버블검 댄스
+cabaret	카바레
+cajun	케이준
+cape verdean	카보베르데 음악
+caribbean	카리브 음악
+carnatic	카르나틱 (남인도 고전)
+celtic	켈틱
+chanson	샹송
+chillstep	칠스텝
+chillsynth	칠신스
+classical	클래식
+cloud rap	클라우드 랩
+coptic	콥트 음악
+cumbia	쿰비아
+dance	댄스
+dancehall	댄스홀
+dancepop	댄스 팝
+dembow	뎀보우
+dirty south	더티 사우스 (남부 랩)
+dream pop	드림 팝
+drill	드릴
+dubstep	덥스텝
+edm	EDM (일렉트로닉 댄스 뮤직)
+egyptian	이집트 음악
+garage	개러지
+gnawa	그나와
+goa trance	고아 트랜스
+grime	그라임
+griot	그리오 (서아프리카 이야기꾼)
+grunge	그런지
+hip hop	힙합
+house	하우스
+hyphy	하이피 (베이 에어리어 랩)
+illbient	일비언트
+indie	인디
+jazz	재즈
+jungle	정글
+k-pop	K팝
+kawaii future bass	카와이 퓨처 베이스
+klezmer	클레즈머
+liquid drum and bass	리퀴드 드럼 앤 베이스
+mariachi	마리아치
+math rock	매스 록
+merengue	메렝게
+motown	모타운
+new jack swing	뉴 잭 스윙
+new wave	뉴 웨이브
+p-funk	P펑크
+pacific reggae	퍼시픽 레게
+polka	폴카
+pop	팝
+raga	라가 (인도 선법)
+rap	랩
+reggae	레게
+rock	록
+rockabilly	로커빌리
+rumba	룸바
+salsa	살사
+samba	삼바
+ska	스카
+soul	소울
+southern rock	서던 록
+surf	서프 음악
+surf rock	서프 록
+swamp blues	스웜프 블루스
+swing	스윙
+symphonic metal	심포닉 메탈
+synthpop	신스팝
+synthwave	신스웨이브
+tango	탱고
+trance	트랜스
+trap	트랩
+tuareg	투아레그 음악

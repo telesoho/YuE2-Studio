@@ -1,0 +1,398 @@
+808	808 鼓机
+accelerating	逐渐加速
+acoustic guitar	木吉他
+acoustic piano	原声钢琴
+active electric bass	有源电贝斯
+aggressive	激进、有攻击性
+airy reverb and delay	通透的混响和延迟
+alto recorder	中音竖笛
+ambient	氛围音乐
+andalusian accent	安达卢西亚口音
+angsty	焦躁、青春期苦闷
+anime	动漫风
+anime opening	动漫片头曲
+anthemic	颂歌般、气势恢宏
+anthemic crowd vocals	颂歌式群唱
+anticipation	期待感
+AOR classic rock	成人导向经典摇滚
+appalachian revival feel	阿巴拉契亚复兴风格
+arena rock	体育场摇滚
+atmosphere	氛围
+atmospheric	有氛围感
+autotune	自动修音（电音人声）
+autotune accents	自动修音点缀
+background vocals	和声伴唱
+ballad	抒情慢歌
+ballad pop	抒情流行
+banjo	班卓琴
+baritone	男中音
+bass	贝斯
+bass clarinet	低音单簧管
+bass pattern	贝斯律动型
+belted vocals	强力胸声演唱
+bicycle horn	自行车喇叭声
+blues	布鲁斯
+bold	大胆
+boogie piano	布吉钢琴
+boogie-woogie piano	布吉伍吉钢琴
+bouncing	弹跳感
+brass punches	铜管重音
+bright	明亮
+bright close chords	明亮的密集和弦
+bright steelpan	明亮的钢鼓
+bright tone	明亮的音色
+brushed drums	鼓刷演奏的鼓
+call and response vocals	一唱一和的人声
+carefree summer energy	无忧无虑的夏日活力
+catchy	抓耳
+catchy chant hook	抓耳的口号式副歌
+cathedral choir swells	大教堂合唱渐强
+celebratory	欢庆
+cello	大提琴
+chinese epic rock	中国史诗摇滚
+chinese pop	华语流行
+chinese traditional folk	中国传统民乐
+chopped vocal hooks	切片人声钩子
+cinematic	电影感
+cinematic rock	电影感摇滚
+cinematic strings	电影感弦乐
+city pop	城市流行
+clarinet	单簧管
+classic	经典
+classic country	经典乡村
+classic rock	经典摇滚
+clean guitar chord stabs	清音吉他短促和弦
+clean pop drum groove	干净的流行鼓律动
+close-mic	近距离收音
+club anthem	夜店神曲
+comedic	喜剧
+comedy rock	喜剧摇滚
+comfortable	舒适
+congas	康加鼓
+contemporary christian	当代基督教音乐
+contemporary country	当代乡村
+country	乡村
+crisp hi-hats	清脆的踩镲
+crowd-shout hooks	人群呼喊式钩子
+cute	可爱
+cyberpunk atmosphere	赛博朋克氛围
+cymbals	镲片
+dance music	舞曲音乐
+dance pop	舞曲流行
+dance-floor fire	点燃舞池
+danceable	适合跳舞
+dark cabaret	暗黑卡巴莱
+decelerating	逐渐减速
+deep sub-bass	深沉的超低音
+disco	迪斯科
+distorted guitars	失真吉他
+DJ	DJ 打碟
+double-kick drums	双踩底鼓
+dramatic	戏剧性
+dramatic crescendos	戏剧性的渐强
+dreamy	梦幻
+driving bass	推进感贝斯
+driving palm-muted electric guitars	推进感闷音电吉他
+driving rhythm	推进感节奏
+driving rhythm section	推进感节奏组
+drum kit	架子鼓
+drums	鼓
+duet	二重唱
+dynamic	富有动态
+electric guitar	电吉他
+electric guitar chords	电吉他和弦
+electric piano	电钢琴
+electro swing	电子摇摆
+electronic	电子
+electronic drums	电子鼓
+electronic textures	电子质感
+emotion	情感
+emotional	情绪饱满
+emotional and expressive	情感丰富、富有表现力
+emotional and intimate atmosphere	动情而亲密的氛围
+emotional storytelling	动情的叙事
+energetic	充满活力
+energetic and joyful	活力而欢快
+english	英语
+epic	史诗
+escalating tension	不断升级的紧张感
+ethereal	空灵
+eurobeat	欧陆节拍
+excited	兴奋
+explosive chorus	爆发式副歌
+expressive and melodic	富有表现力、旋律性强
+expressive female voice	富有表现力的女声
+expressive tone	富有表现力的音色
+fading into silence	渐弱至无声
+fast pace	快节奏
+fast tempo	快速度
+fast violin	快速小提琴
+female	女声
+female vocals	女声演唱
+festive rhythm	节日节奏
+fiddle	民间小提琴
+final chorus	最后一遍副歌
+finger snaps	响指
+fingerstyle jazz guitar	指弹爵士吉他
+flamenco gipsy female vocals	弗拉门戈吉普赛女声
+flamenco guitar	弗拉门戈吉他
+folk	民谣
+funk	放克
+funk soul	放克灵魂乐
+funky bass	放克贝斯
+funky house	放克浩室
+fusion	融合
+futuristic	未来感
+gentle filter movement	轻柔的滤波变化
+gentle rhythm	轻柔的节奏
+good time country	欢乐乡村
+gorgeous	华丽
+grand piano	三角钢琴
+gritty english lead vocal	粗粝的英语主唱
+groovy	律动感强
+groovy bass	律动贝斯
+groovy soulful jazz-funk	律动感灵魂爵士放克
+growling	低吼
+guitar	吉他
+guitar solo	吉他独奏
+halftime bridge switch	桥段切换为半拍
+hammond organ	哈蒙德风琴
+happy	快乐
+happy mood	快乐的情绪
+harmonica	口琴
+harmonized vocals	和声人声
+harmony	和声
+harsh screamed vocals	嘶吼人声
+heartbreak	心碎
+heartfelt	真挚
+heavy drums	厚重的鼓
+heavy metal	重金属
+heavy metal rock	重金属摇滚
+high tenor	高男高音
+honking sax section	高亢的萨克斯组
+honky tonk	酒吧乡村
+honky-tonk piano	酒吧钢琴
+humorous	幽默
+husky voice	沙哑的嗓音
+infectious finish	极具感染力的结尾
+inspiring	鼓舞人心
+instrumental	纯音乐
+intellectual satire mood	知性讽刺的情绪
+intense	强烈
+intimate mandarin male vocal	亲密的普通话男声
+intimate piano ballad	亲密的钢琴抒情曲
+ironic	反讽
+j-eurobeat	日式欧陆节拍
+j-heavymetal	日式重金属
+j-pop	日本流行
+japanese	日语
+jazz ballad	爵士抒情曲
+jazz fusion	融合爵士
+jazz manouche	吉普赛爵士
+joyful	欢快
+joyful energy	欢快的活力
+joyful male harmonies	欢快的男声和声
+keyboard	键盘
+latin pop	拉丁流行
+layered but spacious	层次丰富而空间开阔
+layered harmonies	多层和声
+layered vocal harmonies	多层人声和声
+less drum	少用鼓
+light pop	轻流行
+live vocal style	现场演唱风格
+lively fiddle	轻快的民间小提琴
+lush orchestral strings	饱满的管弦乐弦乐
+lush riffs	饱满的重复乐句
+lyrical memorable melody	抒情而易记的旋律
+male lead vocal	男主唱
+male singer	男歌手
+male vocals	男声演唱
+male voice	男声
+mandarin	普通话
+mandarin child-and-adult unison vocals	普通话童声与成人齐唱
+mandolin	曼陀林
+mediterranean vibe	地中海风情
+medium beat	中等节拍
+medium tempo	中速
+medium tempo southern gospel	中速南方福音
+melodic	旋律性强
+melodic bassline	旋律性贝斯线
+melodic rap	旋律说唱
+metal	金属
+metallic vocal fx	金属感人声效果
+mezzo-soprano female	女中音
+middle tempo	中速
+minimal and clean arrangement	简约干净的编曲
+minimal hi-hat pattern	简约的踩镲型
+minor-key chamber folk	小调室内民谣
+moderate groove	适中的律动
+modern flamenco rap fusion	现代弗拉门戈说唱融合
+modern rock	现代摇滚
+muffled female vocals	闷声女声
+muted trumpet	弱音小号
+nature	自然
+neon city night	霓虹都市夜
+neon light	霓虹灯光
+neon pads	霓虹铺底音色
+neon-lit night drive	霓虹夜间驾驶
+new age	新世纪
+new orleans brass-funk	新奥尔良铜管放克
+nostalgic	怀旧
+obsessive	执迷
+orchestra jazz	管弦乐爵士
+overdriven guitar	过载吉他
+overdriven organ	过载风琴
+pad	铺底音色
+palm-muted guitar riff	闷音吉他重复乐句
+palm-muted riffs	闷音重复乐句
+palmas	弗拉门戈拍手
+peaceful	平和
+percussion	打击乐
+piano	钢琴
+piano stabs	钢琴短促和弦
+pipa	琵琶
+pizzicato strings	拨弦弦乐
+playful	俏皮
+playful mandarin duet	俏皮的普通话二重唱
+playful piano	俏皮的钢琴
+polished and warm	精致而温暖
+pop ballad	流行抒情曲
+pop music	流行音乐
+pop vocal	流行唱腔
+pop-rock hit	流行摇滚热门曲
+power metal	力量金属
+powerful	有力
+powerful belting	强力高音
+powerful english vocal	有力的英语人声
+powerful rhythm	强劲的节奏
+pulsing melodic guitar	跳动的旋律吉他
+punchy bassline	有冲击力的贝斯线
+punchy rock drums	有冲击力的摇滚鼓
+punk	朋克
+R&B	节奏布鲁斯
+R&B hook	节奏布鲁斯钩子
+rap vocals	说唱人声
+rapid hi-hats	急速踩镲
+reflective bridge	沉思的桥段
+reflective vocal phrase	沉思的人声乐句
+reggaeton	雷鬼动
+retro	复古
+retro-futuristic euphoria	复古未来的狂喜
+rhythm guitar	节奏吉他
+rhythmic	富有节奏感
+rhythmic sense	节奏感
+risers	上升音效
+romantic	浪漫
+romantic danceable	浪漫而适合跳舞
+room reverb	房间混响
+rubbery bass	弹性贝斯
+satirical mood	讽刺的情绪
+saxophone	萨克斯
+second-line drums	新奥尔良游行鼓
+seductive	性感诱惑
+serene	宁静
+shaanxi opera	秦腔（陕西戏曲）
+sharp lyrics	犀利的歌词
+shimmering guitars	闪烁的吉他
+shiny archtop chops	明亮的拱面吉他切音
+simple and memorable	简单易记
+simple drums	简单的鼓
+sleigh bells	雪橇铃
+slow	慢
+slow tempo	慢速
+sly and theatrical	狡黠而戏剧化
+smiling	微笑般的
+smooth	顺滑
+smooth male vocals	顺滑的男声
+smooth R&B bounce	顺滑的节奏布鲁斯律动
+soaring retro synth leads	高飞的复古合成器主音
+soft	柔和
+soft and bright	柔和而明亮
+soft and slightly fragile	柔和而略显脆弱
+soft low-pass	柔和的低通滤波
+solo	独奏
+soul music	灵魂音乐
+soul-blues	灵魂布鲁斯
+soulful	深情
+soulful and lively	深情而活泼
+sousaphone	苏萨号
+southern soul	南方灵魂乐
+spirited	精神饱满
+spiritual	灵性
+sprung rhythm	弹跳节奏
+stacked harmonies	叠加和声
+static noise	静电噪声
+steel guitar	夏威夷钢棒吉他
+storytelling	叙事
+strange	奇特
+street spirit	街头精神
+strong harmony choruses	和声饱满的副歌
+strong rhythm	强烈的节奏
+studio quality	录音室品质
+sub-bass	超低音
+subtle chorus width	细微的合唱宽度效果
+sung-rap verses in punjabi	旁遮普语唱说主歌
+super eurobeat	超级欧陆节拍
+surprise	惊喜
+sweet vibe	甜美氛围
+swing jazz	摇摆爵士
+swirling arps	回旋的琶音
+symphony	交响乐
+syncopated acoustic guitar	切分木吉他
+syncopated claps	切分拍手
+synth	合成器
+synth bass	合成器贝斯
+synth stabs	合成器短促和弦
+synth-pop	合成器流行
+synth-pop production	合成器流行制作
+synthesizer	合成器
+teen pop	青少年流行
+tenor	男高音
+tenor saxophone	次中音萨克斯
+theatrical hard rock	戏剧化硬摇滚
+tight live rhythm section	紧凑的现场节奏组
+tight punchy kick	紧实有冲击力的底鼓
+toy piano	玩具钢琴
+trio vocals	三重唱
+triumph	凯旋
+trombone and baritone sax	长号与上低音萨克斯
+trumpet stabs	小号短促重音
+UK garage bounce	英国车库律动
+UK pop rap	英国流行说唱
+unhurried phrasing	从容的乐句
+upbeat	轻快
+upbeat but sad melody	轻快却忧伤的旋律
+upbeat christian country song	轻快的基督教乡村歌曲
+upbeat disco funk	轻快的迪斯科放克
+upbeat gospel bluegrass style	轻快的福音蓝草风格
+upbeat production	轻快的制作
+upbeat saxophone riff	轻快的萨克斯重复乐句
+uplifting	振奋
+uplifting and emotional	振奋而动情
+upright bass	低音提琴
+upright bass driving rhythm	低音提琴推进节奏
+urban strings	都市弦乐
+vibrant and organic production	鲜活而自然的制作
+vibrato	颤音
+vintage	复古
+vintage motown soul duet	复古摩城灵魂二重唱
+vintage nightclub vibe	复古夜总会氛围
+violin	小提琴
+viral	爆款
+virtuoso	炫技
+wah-wah electric guitar riff	哇音电吉他重复乐句
+walking upright slap	低音提琴行走拍弦
+warm	温暖
+warm analog production	温暖的模拟制作
+warm analog texture	温暖的模拟质感
+warm electric bass	温暖的电贝斯
+warm english vocal	温暖的英语人声
+warm piano	温暖的钢琴
+warm piano pop	温暖的钢琴流行
+warm tone	温暖的音色
+water FX	水声音效
+wavesynth layers	波形合成器层
+well-defined rhythm	清晰的节奏
+wide stereo image	宽广的立体声场
+xylophone	木琴
+youthful street energy	青春街头活力

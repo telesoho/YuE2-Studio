@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { karaokeStatusChanged, useSystemResources } from '../services/studioQueries';
 import { AlertTriangle, BookOpen, Check, CheckSquare, ChevronDown, Clock, ChevronLeft, ChevronRight, Cpu, Download, FolderInput, FolderOpen, FolderOutput, Headphones, Library, Loader2, Mic2, MoreHorizontal, Music, Play, Plus, RotateCcw, Search, Square, Trash2, UploadCloud, Wand2, X } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
+import { AUDIO_ACCEPT } from '../services/audioFiles';
 import { ConfirmDialog } from './ConfirmDialog';
 import { StemPlayer } from './StemPlayer';
 import { TrainingGuide } from './TrainingGuide';
@@ -417,7 +418,7 @@ const DropZone: React.FC<{ onPicked: (files: PickedFile[]) => void; disabled?: b
         <button type="button" onClick={() => fileInput.current?.click()} className={OUTLINE}><Music size={13} />{t('trainingDropFiles')}</button>
       </div>
       <input ref={folderInput} type="file" multiple className="hidden" onChange={event => { take(pickedFromInput(event.target.files)); event.target.value = ''; }} />
-      <input ref={fileInput} type="file" multiple accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aiff,.aif,.txt,.lrc,.cue" className="hidden" onChange={event => { take(pickedFromInput(event.target.files)); event.target.value = ''; }} />
+      <input ref={fileInput} type="file" multiple accept={`${AUDIO_ACCEPT},.txt,.lrc,.cue`} className="hidden" onChange={event => { take(pickedFromInput(event.target.files)); event.target.value = ''; }} />
     </div>
   );
 };
@@ -983,7 +984,7 @@ const RunCard: React.FC<{ run: TrainingRun; onChanged: () => void; onError: (mes
       )}
       {running && run.device && !onCpu && <p className="mt-1.5 text-[11px] text-zinc-500">{t('trainingOnDevice').replace('{device}', run.device)}</p>}
       {onCpu && <p role="alert" className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{t('trainingOnCpuWarning')}</p>}
-      {running && !onCpu && cardFull && <p role="alert" className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{t('trainingCardFullWarning')}</p>}
+      {running && !onCpu && cardFull && <p role="alert" className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{t(tunedRun ? 'trainingCardFullWarning' : 'trainingCardFullWarningPreset')}</p>}
 
       {run.checkpoints.length > 0 && (
         <div className="mt-3">

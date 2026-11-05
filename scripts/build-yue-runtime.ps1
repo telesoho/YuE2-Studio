@@ -89,7 +89,7 @@ function Invoke-CMakeBuild([string]$backend) {
     # gets device code: PTX needs a driver as new as this toolkit, and an older
     # one fails the first kernel with "PTX was compiled with an unsupported toolchain".
     $cudaArch = switch ($CudaArchitecture) {
-        'universal' { '-DGGML_NATIVE=OFF "-DCMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;90-real;120a-real;120-virtual"' }
+        'universal' { '-DGGML_NATIVE=OFF "-DCMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-real;89-real;90-real;120a-real"' }
         'native' { '-DCMAKE_CUDA_ARCHITECTURES=native' }
         'sm_89' { '-DCMAKE_CUDA_ARCHITECTURES=89' }
     }
@@ -114,7 +114,8 @@ function Invoke-CMakeBuild([string]$backend) {
     # VSLANG=1033: Ninja reads header dependencies from cl's /showIncludes, which a
     # localised Visual Studio prints in its own language; without it an edited
     # header would not rebuild anything.
-    $command = "set `"VSLANG=1033`" && call `"$vcvars`" >nul && cmake -S . -B `"$buildDirectoryName`" -G Ninja -DCMAKE_BUILD_TYPE=Release $ccache $symbols $backendFlags && cmake --build `"$buildDirectoryName`" $targets --parallel $parallelism"
+    # --fresh: a cache from an earlier configure keeps what this one does not pass.
+    $command = "set `"VSLANG=1033`" && call `"$vcvars`" >nul && cmake --fresh -S . -B `"$buildDirectoryName`" -G Ninja -DCMAKE_BUILD_TYPE=Release $ccache $symbols $backendFlags && cmake --build `"$buildDirectoryName`" $targets --parallel $parallelism"
     Push-Location $engineWorktree
     try { & cmd.exe /d /s /c $command | Out-Host } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw "yue2.cpp $backend build failed." }
@@ -209,7 +210,7 @@ $redist = Get-ChildItem -Path (Join-Path $vsRoot 'VC\Redist\MSVC') -Directory | 
 if (-not $redist) { throw 'The Visual C++ redistributable folder was not found in this Visual Studio.' }
 $crt = Get-ChildItem -Path (Join-Path $redist.FullName 'x64') -Directory -Filter 'Microsoft.VC*.CRT' | Select-Object -First 1
 $openmp = Get-ChildItem -Path (Join-Path $redist.FullName 'x64') -Directory -Filter 'Microsoft.VC*.OpenMP' | Select-Object -First 1
-foreach ($library in @((Join-Path $crt.FullName 'msvcp140.dll'), (Join-Path $crt.FullName 'vcruntime140.dll'), (Join-Path $crt.FullName 'vcruntime140_1.dll'), (Join-Path $openmp.FullName 'vcomp140.dll'))) {
+foreach ($library in @((Join-Path $crt.FullName 'msvcp140.dll'), (Join-Path $crt.FullName 'msvcp140_1.dll'), (Join-Path $crt.FullName 'vcruntime140.dll'), (Join-Path $crt.FullName 'vcruntime140_1.dll'), (Join-Path $openmp.FullName 'vcomp140.dll'))) {
     if (-not (Test-Path $library)) { throw "Visual C++ runtime library missing: $library" }
     Copy-Item $library $resolvedOutputDirectory -Force
 }

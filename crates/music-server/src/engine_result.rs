@@ -6,6 +6,9 @@ pub struct ResultTrack {
     pub replay_request: Value,
     pub audio_content_type: String,
     pub audio: Vec<u8>,
+    /// The VAE latents the audio was decoded from (raw f32 [T, 64]), which
+    /// the engine sends after each track's audio since its webui keeps them.
+    pub latent: Option<Vec<u8>>,
 }
 
 pub fn parse_multipart_result(content_type: &str, body: &[u8]) -> Result<Vec<ResultTrack>> {
@@ -23,7 +26,10 @@ pub fn parse_multipart_result(content_type: &str, body: &[u8]) -> Result<Vec<Res
             pending_replay = Some(serde_json::from_slice(&part.body).context("invalid JSON replay part")?);
         } else if media_type.starts_with("audio/") {
             let replay_request = pending_replay.take().context("audio part has no preceding replay request")?;
-            tracks.push(ResultTrack { replay_request, audio_content_type: media_type, audio: part.body });
+            tracks.push(ResultTrack { replay_request, audio_content_type: media_type, audio: part.body, latent: None });
+        } else if media_type == "application/octet-stream" {
+            let track = tracks.last_mut().filter(|track| pending_replay.is_none() && track.latent.is_none()).context("latent part does not follow a track's audio")?;
+            track.latent = Some(part.body);
         } else {
             bail!("unsupported engine result part content type: {}", part.content_type);
         }
@@ -115,6 +121,16 @@ mod tests {
         assert_eq!(tracks.len(), 1);
         assert_eq!(tracks[0].replay_request["semantic_tokens"], "1,2,3");
         assert_eq!(tracks[0].audio, b"ID3\x00\xff");
+    }
+
+    #[test]
+    fn a_track_carries_the_latent_sent_after_its_audio() {
+        let body = b"--b\r\nContent-Type: application/json\r\n\r\n{\"seed\":1}\r\n--b\r\nContent-Type: audio/mpeg\r\n\r\nA1\r\n--b\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"latent\"\r\n\r\nL1\r\n--b\r\nContent-Type: application/json\r\n\r\n{\"seed\":2}\r\n--b\r\nContent-Type: audio/mpeg\r\n\r\nA2\r\n--b\r\nContent-Type: application/octet-stream\r\n\r\nL2\r\n--b--\r\n";
+        let tracks = parse_multipart_result("multipart/mixed; boundary=b", body).unwrap();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!((tracks[1].audio.as_slice(), tracks[1].latent.as_deref()), (b"A2".as_slice(), Some(b"L2".as_slice())));
+        let stray = b"--b\r\nContent-Type: application/octet-stream\r\n\r\nL1\r\n--b--\r\n";
+        assert!(parse_multipart_result("multipart/mixed; boundary=b", stray).is_err());
     }
 
     #[test]

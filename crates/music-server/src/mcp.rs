@@ -367,14 +367,14 @@ fn annotations(name: &str) -> Value {
     // a verb that changes something outweighs a noun that reads
     const CHANGES: &[&str] = &["install", "import", "remove", "delete", "refresh", "create", "update", "start", "cancel", "select", "download", "apply", "restart"];
     // reads whose names the rules above miss: create_form names the create page
-    const READ_NAMES: &[&str] = &["lyrics_syllables", "assistant_cli_agents", "system_gpus", "cover_scenes", "cover_photos_search", "video_backgrounds_search", "network_proxy_test", "network_hub_test", "journal_read", "score_to_midi", "score_instrumental", "score_vocal_octave", "score_from_midi", "score_mark", "lyrics_find", "cover_prompt_render", "studio_wait", "engine_presets_get", "assistant_requests_wait", "ui_console", "song_defaults", "create_form_get", "library_liked", "score_chord_bed", "song_tokenize", "score_match_sections"];
+const READ_NAMES: &[&str] = &["lyrics_syllables", "assistant_cli_agents", "system_gpus", "cover_scenes", "cover_photos_search", "video_backgrounds_search", "network_proxy_test", "network_hub_test", "journal_read", "score_to_midi", "score_instrumental", "score_vocal_octave", "score_from_midi", "score_mark", "lyrics_find", "cover_prompt_render", "studio_wait", "engine_presets_get", "assistant_requests_wait", "ui_console", "song_defaults", "create_form_get", "library_liked", "score_chord_bed", "song_tokenize", "score_match_sections", "models_update_plan"];
     // writes over what was stored, so the earlier content is gone: a client asks first
-    const OVERWRITES: &[&str] = &["library_song_update", "library_song_score_set", "score_align_lyrics", "playlist_update", "dataset_update", "dataset_song_update", "dataset_prepare", "lora_update", "stems_split", "karaoke_make", "midi_transcribe", "cover_draw", "cover_set_from_file", "openrouter_set_key"];
+    const OVERWRITES: &[&str] = &["library_song_update", "library_song_score_set", "score_align_lyrics", "playlist_update", "dataset_update", "dataset_song_update", "dataset_prepare", "lora_update", "stems_split", "karaoke_make", "midi_transcribe", "cover_draw", "cover_set_from_file", "openrouter_set_key", "models_update_apply"];
     let changes = CHANGES.iter().any(|verb| name.split('_').any(|word| word == *verb));
     let read_only = READ_NAMES.contains(&name) || !changes && (READS.iter().any(|part| name.ends_with(part) || name.contains(&format!("{part}_"))) || name.starts_with("writing_"));
     let destructive = name.ends_with("_delete") || name.ends_with("_remove") || name == "processing_discard" || name.ends_with("_cancel") || name.contains("_cancel_") || OVERWRITES.contains(&name);
     // what reaches the internet: OpenRouter, Hugging Face, the lyric databases and every download
-    let open_world = name.starts_with("openrouter_") || name.contains("_hf") || name == "lyrics_find" || name == "models_download" || name == "lora_install_catalog" || name == "score_publish" || name.ends_with("_install") && name != "training_checkpoint_install";
+let open_world = name.starts_with("openrouter_") || name.contains("_hf") || name == "lyrics_find" || name == "models_download" || name == "models_update_apply" || name == "lora_install_catalog" || name == "score_publish" || name.ends_with("_install") && name != "training_checkpoint_install";
     let title = name.replace('_', " ");
     json!({ "title": title, "readOnlyHint": read_only, "destructiveHint": destructive, "idempotentHint": read_only || name.ends_with("_set") || name.contains("_select"), "openWorldHint": open_world })
 }
@@ -452,6 +452,7 @@ const JOURNAL: &[(&str, &str, &str)] = &[
     ("lora_delete", "deleted", "lora"),
     ("lora_export_comfyui", "exported", "lora"),
     ("models_download", "started", "download"),
+    ("models_update_apply", "started", "download"),
     ("training_pack_install", "started", "download"),
     ("training_listen_pack_install", "started", "download"),
     ("assistant_model_install", "started", "download"),
@@ -934,7 +935,7 @@ fn folder_files(folder: &Path, keep: fn(&Path) -> bool, what: &str) -> Result<Ve
 /// Audio, lyrics and cue files: what a dropped folder of songs brings.
 fn song_file(path: &Path) -> bool {
     let extension = path.extension().and_then(|value| value.to_str()).unwrap_or_default().to_lowercase();
-    ["wav", "mp3", "flac", "ogg", "m4a", "aiff", "aif", "txt", "lrc", "cue"].contains(&extension.as_str())
+    crate::audio_pcm::reads_audio(&extension) || ["txt", "lrc", "cue"].contains(&extension.as_str())
 }
 
 /// A dataset folder of the studio family: its dataset.json and WAV files.
@@ -992,6 +993,24 @@ fn tools() -> &'static [Tool] {
                 description: "Take model files already on this computer instead of downloading them: every file of the catalogue found in the folder (by name, else by exact size) is linked into the studio's models. models_status shows the result.",
                 schema: || id_only("path", "folder with the model files"),
                 call: |args| post("/setup/adopt".into(), json!({ "path": text(args, "path")? })),
+            },
+            Tool {
+                name: "models_update_plan",
+                description: "The update screen's plan of this release: what is updated (from, to, bytes to download, reason), what is new, what former releases left that is no longer needed (paths, bytes freed, reason), the totals, show (whether the window shows the screen at start), and job, the screen's download while it runs and after. models_update_apply carries it out.",
+                schema: nothing,
+                call: |_| get("/setup/update".into()),
+            },
+            Tool {
+                name: "models_update_apply",
+                description: "The update screen's button: downloads what the plan updates and adds in the background (models_update_plan's job shows it) and, once all of it is in place, removes what former releases left; with nothing to download it removes them at once. Answers the plan and the job.",
+                schema: nothing,
+                call: |_| post("/setup/update/apply".into(), json!({})),
+            },
+            Tool {
+                name: "models_update_later",
+                description: "The update screen's «Later»: this release's plan is not shown at start again; models_update_plan and Settings - Models still have it.",
+                schema: nothing,
+                call: |_| post("/setup/update/seen".into(), json!({})),
             },
             Tool {
                 name: "song_defaults",
@@ -2031,7 +2050,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "separator_runtime_install",
-                description: "Download a runtime for the separator (asset_id from separator_runtime).",
+                description: "Download for the separator: an engine whole on the settings' device (htdemucs: its model and audio.cpp's server; roformer: Mel-Band RoFormer and its BSRoformer.cpp build), the chosen engine on a device (auto, cuda, cpu), or a single asset_id from separator_runtime.",
                 schema: || id_only("asset_id", "runtime asset id"),
                 call: |args| post("/v1/separation/runtime/install".into(), args.clone()),
             },
@@ -2049,13 +2068,13 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "separator_remove",
-                description: "Delete the HT-Demucs stem model.",
-                schema: nothing,
-                call: |_| post("/v1/separation/remove".into(), json!({})),
+                description: "Delete a separator's files: asset_id roformer deletes Mel-Band RoFormer and its engine, otherwise the HT-Demucs model.",
+                schema: || object(json!({ "asset_id": { "type": "string", "enum": ["htdemucs", "roformer"] } }), &[]),
+                call: |args| post("/v1/separation/remove".into(), json!({ "asset_id": args.get("asset_id").and_then(Value::as_str).unwrap_or("htdemucs") })),
             },
             Tool {
                 name: "separator_settings_get",
-                description: "Separator settings: runtime (card or processor) and overlap.",
+                description: "Separator settings: runtime (auto, the card or the processor), the stems to keep and the engine.",
                 schema: nothing,
                 call: |_| get("/v1/separation/settings".into()),
             },
@@ -2355,6 +2374,20 @@ fn tools() -> &'static [Tool] {
                 call: |args| post(format!("/v1/library/songs/{}/describe-style", segment(&text(args, "song_id")?)), json!({})),
             },
             Tool {
+                name: "recording_describe_style",
+                description: "Describe the style of an audio file on this computer by ear, as library_song_describe_style does for a library song: the cover form's recording taken from disk. path: the file; lyrics: the words the style is written for (an empty one is an instrumental). Needs auto-describe installed; holds the card for a minute.",
+                schema: || object(json!({ "path": { "type": "string" }, "lyrics": { "type": "string" } }), &["path"]),
+                call: |args| {
+                    let path = PathBuf::from(text(args, "path")?.trim());
+                    let mut fields = Vec::new();
+                    if let Some(lyrics) = args.get("lyrics").and_then(Value::as_str) {
+                        fields.push(("lyrics".to_string(), lyrics.to_string()));
+                    }
+                    let files = vec![("audio".to_string(), path.clone(), file_name(&path))];
+                    Ok(Call { method: Method::POST, path: "/v1/describe-style".into(), payload: Payload::Form { fields, files } })
+                },
+            },
+            Tool {
                 name: "dataset_take_as_is",
                 description: "Without a writing assistant: keep the found lyrics as they are (no section tags) and the heard style as MOSS-Music described it, and mark those songs ready. items: song ids, all songs when left out.",
                 schema: || object(json!({ "dataset_id": { "type": "string" }, "items": { "type": "array", "items": { "type": "string" } } }), &["dataset_id"]),
@@ -2483,7 +2516,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "score_instrumental",
-                description: "The score made instrumental, as the score card's Instrumental button does: the voice's melody moves to the instrument and Vocal keeps only its rests and chords.",
+                description: "The score made instrumental, as the score card's Instrumental button does: the voice's melody moves to the instrument and Vocal keeps only its rests and chords; a score without Vocal notes comes back as it is (moved 0).",
                 schema: || object(json!({ "abc": { "type": "string" } }), &["abc"]),
                 call: |args| post("/v1/score/instrumental".into(), json!({ "abc": text(args, "abc")? })),
             },
@@ -3189,6 +3222,7 @@ mod tests {
             "assistant_sections",
             "assistant_request_answer",
             "library_song_describe_style",
+            "recording_describe_style",
             // the journal itself
             "journal_clear",
             "journal_remove",
@@ -3198,6 +3232,8 @@ mod tests {
             "openrouter_catalog_refresh",
             "assistant_start",
             "assistant_stop",
+            // the update screen put off: nothing of the person's changes
+            "models_update_later",
         ];
         let unwritten: Vec<&str> = tools()
             .iter()

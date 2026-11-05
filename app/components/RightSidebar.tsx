@@ -5,6 +5,7 @@ import { TRACK_ARTIST } from '../services/studio';
 import { Song } from '../types';
 import { Heart, Share2, Play, Pause, MoreHorizontal, X, Copy, Wand2, MoreVertical, Download, Repeat, Video, Music, Link as LinkIcon, Sparkles, Globe, Lock, Trash2, Edit3, Layers, ChevronDown, ClipboardCopy, Braces, ImagePlus, Loader2, Mic2, FileMusic, Clapperboard } from 'lucide-react';
 import { mapNativeLibrarySong, setNativeSongNote, updateNativeSong } from '../services/nativeLibrary';
+import { pendingNotes } from '../services/generations';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { openExternal } from '../services/externalLinks';
@@ -24,6 +25,7 @@ import { localizeCode } from '../services/localizeCode';
 import { stemOf } from '../services/songStems';
 import { named } from '../services/accessibleName';
 import { exactMoment } from '../services/dates';
+import { lrcToSrt } from '../services/lrc-parser';
 
 interface RightSidebarProps {
     song: Song | null;
@@ -134,13 +136,20 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
             setIsEditingTitle(false);
             setTitleError(null);
             setIsSavingTitle(false);
-            setNoteDraft(song.note ?? '');
             setNoteError(null);
-            setParamsJsonOpen(false);
         }
     }, [song?.id]);
 
+    // a finished song's note can arrive after the song itself, from the note written while it was made
+    useEffect(() => {
+        if (song) setNoteDraft(song.note ?? (song.isGenerating ? pendingNotes.get(song.id) : undefined) ?? '');
+    }, [song?.id, song?.note]);
+
     const saveNote = async () => {
+        if (song?.isGenerating) {
+            pendingNotes.set(song.id, noteDraft);
+            return;
+        }
         if (!song || noteDraft.trim() === (song.note ?? '')) return;
         try {
             const updated = await setNativeSongNote(song.id, noteDraft);
@@ -593,7 +602,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                         <label className="mb-1 block text-[11px] font-medium text-zinc-500">{t('songNote')}</label>
                         <textarea
                             value={noteDraft}
-                            onChange={event => setNoteDraft(event.target.value)}
+                            onChange={event => { setNoteDraft(event.target.value); if (song?.isGenerating) pendingNotes.set(song.id, event.target.value); }}
                             onBlur={() => void saveNote()}
                             placeholder={t('songNotePlaceholder')}
                             rows={2}
@@ -713,15 +722,25 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
 
                     <KaraokeAction song={song} onDone={(lrc) => onSongUpdate?.({ ...song, lrcContent: lrc })} />
 
-                    {/* Download LRC */}
+                    {/* Download the timings as LRC, or as SRT for video editors that take only that */}
                     {song.lrcContent && song.lrcContent.trim().length > 0 && (
-                        <button
-                            onClick={() => void saveFile(`${song.title || 'song'}.lrc`, { blob: new Blob([song.lrcContent!], { type: 'text/plain;charset=utf-8' }) })}
-                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 text-xs font-medium transition-colors"
-                        >
-                            <Download size={14} />
-                            {t('downloadLrc') || 'Download LRC'}
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => void saveFile(`${song.title || 'song'}.lrc`, { blob: new Blob([song.lrcContent!], { type: 'text/plain;charset=utf-8' }) })}
+                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 text-xs font-medium transition-colors"
+                            >
+                                <Download size={14} />
+                                {t('downloadLrc')}
+                            </button>
+                            <button
+                                onClick={() => void saveFile(`${song.title || 'song'}.srt`, { blob: new Blob([lrcToSrt(song.lrcContent!)], { type: 'application/x-subrip;charset=utf-8' }) })}
+                                title={t('downloadSrtHint')}
+                                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 text-xs font-medium transition-colors"
+                            >
+                                <Download size={14} />
+                                {t('downloadSrt')}
+                            </button>
+                        </div>
                     )}
 
                     {/* Lyrics Section */}
@@ -732,7 +751,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 onClick={async (e) => {
                                     e.stopPropagation();
                                     try {
-                                        if (song.lyrics) {
+                                        if (song.lyrics?.trim()) {
                                             await navigator.clipboard.writeText(song.lyrics);
                                             setCopiedLyrics(true);
                                             setTimeout(() => setCopiedLyrics(false), 2000);
@@ -741,14 +760,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                         console.error('Failed to copy lyrics:', error);
                                     }
                                 }}
-                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                                disabled={!song.lyrics?.trim()}
+                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
                             >
                                 <Copy size={12} /> {copiedLyrics ? t('copied') : t('copy')}
                             </button>
                         </div>
                         <div className="p-4 max-h-[300px] overflow-y-auto custom-scrollbar">
                             <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed opacity-90">
-                                {song.lyrics || <div className="text-zinc-400 dark:text-zinc-600 italic text-center py-8">{t('instrumental')}<br /><span className="text-xs not-italic">{t('noLyrics')}</span></div>}
+                                {song.lyrics?.trim() ? song.lyrics : <div className="text-zinc-500 dark:text-zinc-400 italic text-center py-8">{t('noLyricsSaved')}</div>}
                             </div>
                         </div>
                     </div>

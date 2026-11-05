@@ -1,0 +1,105 @@
+16-bit	16ビット・チップチューン
+2-step	2ステップ（UKガラージ）
+acid house	アシッド・ハウス
+acid techno	アシッド・テクノ
+acid trance	アシッド・トランス
+acoustic chicago blues	アコースティック・シカゴ・ブルース
+acoustic rock	アコースティック・ロック
+acoustic texas blues	アコースティック・テキサス・ブルース
+african folk	アフリカン・フォーク
+afrikaner folk	アフリカーナー・フォーク
+afro house	アフロ・ハウス
+afro trap	アフロ・トラップ
+afro-cuban jazz	アフロ・キューバン・ジャズ
+afro-funk	アフロ・ファンク
+afro-jazz	アフロ・ジャズ
+afro-rock	アフロ・ロック
+afrobeat	アフロビート
+afropiano	アフロピアノ（アマピアノ）
+afroswing	アフロスウィング
+algorave	アルゴレイヴ
+alternative r &b	オルタナティブR&B
+alternative rock	オルタナティブ・ロック
+ambient techno	アンビエント・テクノ
+anti-folk	アンチフォーク
+avant-garde jazz	アヴァンギャルド・ジャズ
+bachata	バチャータ
+bedroom pop	ベッドルーム・ポップ
+bluegrass	ブルーグラス
+blues rock	ブルース・ロック
+boogie	ブギー
+bossa nova	ボサノヴァ
+bubblegum bass	バブルガム・ベース
+bubblegum dance	バブルガム・ダンス
+cabaret	キャバレー
+cajun	ケイジャン
+cape verdean	カーボベルデ音楽
+caribbean	カリブ音楽
+carnatic	カルナータカ音楽（南インド古典）
+celtic	ケルト音楽
+chanson	シャンソン
+chillstep	チルステップ
+chillsynth	チルシンセ
+classical	クラシック
+cloud rap	クラウド・ラップ
+coptic	コプト音楽
+cumbia	クンビア
+dance	ダンス
+dancehall	ダンスホール
+dancepop	ダンス・ポップ
+dembow	デンボウ
+dirty south	ダーティ・サウス（南部ラップ）
+dream pop	ドリーム・ポップ
+drill	ドリル
+dubstep	ダブステップ
+edm	EDM（エレクトロニック・ダンス・ミュージック）
+egyptian	エジプト音楽
+garage	ガラージ
+gnawa	グナワ
+goa trance	ゴア・トランス
+grime	グライム
+griot	グリオ（西アフリカの語り部）
+grunge	グランジ
+hip hop	ヒップホップ
+house	ハウス
+hyphy	ハイフィー（ベイエリア・ラップ）
+illbient	イルビエント
+indie	インディー
+jazz	ジャズ
+jungle	ジャングル
+k-pop	K-POP
+kawaii future bass	カワイイ・フューチャーベース
+klezmer	クレズマー
+liquid drum and bass	リキッド・ドラムンベース
+mariachi	マリアッチ
+math rock	マスロック
+merengue	メレンゲ
+motown	モータウン
+new jack swing	ニュー・ジャック・スウィング
+new wave	ニュー・ウェイヴ
+p-funk	Pファンク
+pacific reggae	パシフィック・レゲエ
+polka	ポルカ
+pop	ポップ
+raga	ラーガ（インドの旋法）
+rap	ラップ
+reggae	レゲエ
+rock	ロック
+rockabilly	ロカビリー
+rumba	ルンバ
+salsa	サルサ
+samba	サンバ
+ska	スカ
+soul	ソウル
+southern rock	サザン・ロック
+surf	サーフ・ミュージック
+surf rock	サーフ・ロック
+swamp blues	スワンプ・ブルース
+swing	スウィング
+symphonic metal	シンフォニック・メタル
+synthpop	シンセポップ
+synthwave	シンセウェイヴ
+tango	タンゴ
+trance	トランス
+trap	トラップ
+tuareg	トゥアレグ音楽

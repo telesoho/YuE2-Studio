@@ -3,6 +3,7 @@ import { Check, Copy, ListMusic, Music2, Search as SearchIcon, X } from 'lucide-
 import { Song, Playlist } from '../types';
 import { useI18n } from '../context/I18nContext';
 import { GENRE_KEYS } from '../data/genres';
+import { genreGloss } from '../services/styleSuggestions';
 import { SongCover } from './AlbumCover';
 import { captionSummary } from '../services/examples';
 
@@ -40,7 +41,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   isPlaying,
   onNavigateToPlaylist,
 }) => {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [query, setQuery] = useState('');
   const [copiedTag, setCopiedTag] = useState<string | null>(null);
 
@@ -148,6 +149,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
                     className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:border-pink-400 hover:text-pink-600 dark:border-white/10 dark:text-zinc-300"
                   >
                     {genre}
+                    {genreGloss(genre, language) && <span className="font-normal text-zinc-400 dark:text-zinc-500">{genreGloss(genre, language)}</span>}
                     {copiedTag === genre ? <Check size={12} className="text-emerald-500" /> : <Copy size={11} className="text-zinc-400" />}
                   </button>
                 ))}

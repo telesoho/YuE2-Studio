@@ -1,5 +1,41 @@
 [
   {
+    "id": "yue2-studio-3-8-0",
+    "date": "2026-10-27",
+    "title": {
+      "en": "YuE2 Studio 3.8.0",
+      "ru": "YuE2 Studio 3.8.0",
+      "zh": "YuE2 Studio 3.8.0",
+      "ja": "YuE2 Studio 3.8.0",
+      "ko": "YuE2 Studio 3.8.0"
+    },
+    "body": {
+      "en": "Stems and Audio to MIDI on audio.cpp, an update screen that says what changes, and the most frequent failures of 3.7.0 fixed.\n\n- **Variations no longer stop the engine:** \"CUDA error: an illegal memory access\" with Variations at 2 or more is gone.\n- **Stems and Audio to MIDI run on audio.cpp's server,** the one of Speech Studio and Dub Studio: HT-Demucs 6s on CUDA, Vulkan or the processor, MuScriptor about twice as fast.\n- **The update screen:** the first start says what this version updates, adds and no longer needs, with the space it frees; one button does it all.\n- **Every download is checked against its publisher's hash.**\n- **Style by ear fits the card:** a 16 GB card no longer runs out of memory on long songs, a card under 12 GB uses the smaller Q4_K_M build, a smaller one describes on the processor.\n- **Interface scale** 90-150 %, **karaoke as SRT** for video editors, an **Analyzer** spectrum, glosses for the style suggestions in five languages.\n- **Fixed:** the separator downloads (\"unknown asset roformer\"), karaoke on processors without AVX-512, the cover-look freeze, settings that reset at every start, Instrumental only with a voiceless score, a Mac engine that stayed after closing, playback in an extracted Linux AppImage, Radeon cards of 8 GB.\n\nThe whole list is in What's new.",
+      "ru": "Стемы и «Аудио в MIDI» на audio.cpp, экран обновления, который говорит, что меняется, и самые частые сбои 3.7.0 исправлены.\n\n- **Вариации больше не роняют движок:** ошибки «CUDA error: an illegal memory access» при Вариациях 2 и больше нет.\n- **Стемы и «Аудио в MIDI» работают на сервере audio.cpp,** том же, что у Speech Studio и Dub Studio: HT-Demucs 6s на CUDA, Vulkan или процессоре, MuScriptor примерно вдвое быстрее.\n- **Экран обновления:** при первом запуске студия показывает, что эта версия обновит, добавит и уберёт, и сколько места освободится; одна кнопка делает всё.\n- **Каждая закачка сверяется с хешем издателя.**\n- **«Стиль на слух» по силам карте:** карта на 16 ГБ больше не переполняется на длинных песнях, карта меньше 12 ГБ берёт сборку поменьше Q4_K_M, совсем маленькая описывает на процессоре.\n- **Масштаб интерфейса** 90-150 %, **караоке в SRT** для видеоредакторов, спектр **«Анализатор»**, пояснения к подсказкам стиля на пяти языках.\n- **Исправлено:** закачка разделителей («unknown asset roformer»), караоке на процессорах без AVX-512, зависание при смене вида обложек, настройки, сбрасывавшиеся при каждом запуске, «Только инструментал» с партитурой без голоса, движок на Mac, остававшийся после закрытия, воспроизведение в распакованном Linux AppImage, видеокарты Radeon на 8 ГБ.\n\nПолный список — в «Что нового».",
+      "zh": "分轨与「音频转 MIDI」改用 audio.cpp，新增说明变化的更新界面，并修复了 3.7.0 最常见的故障。\n\n- **多版本不再让引擎停止：**变体为 2 及以上时的「CUDA error: an illegal memory access」已消失。\n- **分轨与「音频转 MIDI」在 audio.cpp 服务器上运行，**与 Speech Studio、Dub Studio 相同：HT-Demucs 6s 可用 CUDA、Vulkan 或处理器，MuScriptor 约快一倍。\n- **更新界面：**首次启动时列出本版本更新、新增和不再需要的内容及释放的空间，一个按钮全部完成。\n- **每个下载都按发布者公布的哈希校验。**\n- **「按声音描述风格」适配显卡：**16 GB 显卡处理长歌不再爆显存，低于 12 GB 使用较小的 Q4_K_M 版本，更小的显卡改用处理器。\n- **界面缩放** 90-150 %、**卡拉OK 导出 SRT**、**分析器**频谱、五种语言的风格提示释义。\n- **修复：**分轨器下载（「unknown asset roformer」）、无 AVX-512 处理器上的卡拉OK、切换封面样式时的卡顿、每次启动都重置的设置、无人声乐谱的「仅伴奏」、关闭后仍在运行的 Mac 引擎、解压后的 Linux AppImage 播放、8 GB 的 Radeon 显卡。\n\n完整列表见「新功能」。",
+      "ja": "ステムと「オーディオ→MIDI」は audio.cpp に、変更内容を伝える更新画面、そして 3.7.0 で多かった不具合を修正。\n\n- **バリエーションでエンジンが止まらなくなりました：**バリエーション 2 以上での「CUDA error: an illegal memory access」は解消。\n- **ステムと「オーディオ→MIDI」は audio.cpp サーバーで動作、**Speech Studio・Dub Studio と同じ：HT-Demucs 6s は CUDA・Vulkan・プロセッサーで、MuScriptor は約2倍の速さ。\n- **更新画面：**初回起動時に、このバージョンで更新・追加・不要になるものと空く容量を表示し、ボタン一つで実行。\n- **すべてのダウンロードを配布元のハッシュで検証。**\n- **「耳でスタイル」がカードに合わせて動作：**16 GB のカードで長い曲でもメモリ不足にならず、12 GB 未満は小さい Q4_K_M 版、さらに小さいカードはプロセッサーで。\n- **画面の拡大縮小** 90-150 %、**カラオケの SRT 書き出し**、**アナライザー**スペクトル、5 言語のスタイル候補の訳。\n- **修正：**ステム分離のダウンロード（「unknown asset roformer」）、AVX-512 のないプロセッサーでのカラオケ、カバー表示切替時のフリーズ、起動のたびに戻る設定、声のない楽譜での「インストのみ」、閉じた後も残る Mac のエンジン、展開した Linux AppImage での再生、8 GB の Radeon カード。\n\nすべての変更は「新着情報」に。",
+      "ko": "스템과 오디오→MIDI는 audio.cpp로, 무엇이 바뀌는지 알려 주는 업데이트 화면, 그리고 3.7.0에서 가장 잦던 오류를 고쳤습니다.\n\n- **변형이 더 이상 엔진을 멈추지 않습니다:** 변형 2 이상에서 나던 \"CUDA error: an illegal memory access\"가 사라졌습니다.\n- **스템과 오디오→MIDI는 audio.cpp 서버에서,** Speech Studio·Dub Studio와 같은 서버: HT-Demucs 6s는 CUDA·Vulkan·프로세서에서, MuScriptor는 약 두 배 빠르게.\n- **업데이트 화면:** 처음 실행할 때 이 버전이 업데이트·추가·정리하는 것과 확보되는 공간을 보여 주고, 버튼 하나로 처리합니다.\n- **모든 다운로드를 배포처의 해시로 확인합니다.**\n- **귀로 스타일이 카드에 맞춰 동작:** 16GB 카드에서 긴 곡도 메모리가 부족하지 않고, 12GB 미만은 작은 Q4_K_M 빌드를, 더 작은 카드는 프로세서를 씁니다.\n- **화면 배율** 90-150 %, 영상 편집기용 **노래방 SRT**, **분석기** 스펙트럼, 다섯 언어의 스타일 제안 풀이.\n- **수정:** 스템 분리기 다운로드(\"unknown asset roformer\"), AVX-512 없는 프로세서의 노래방, 커버 모양 전환 시 멈춤, 실행할 때마다 초기화되던 설정, 목소리 없는 악보의 반주만, 닫은 뒤에도 남던 Mac 엔진, 압축을 푼 Linux AppImage 재생, 8GB Radeon 카드.\n\n전체 목록은 새 소식에 있습니다."
+    },
+    "tags": [
+      "YuE2",
+      "3.8.0"
+    ],
+    "links": [
+      {
+        "label": "YuE2 Studio",
+        "url": "https://timoncool.github.io/YuE2-Studio/"
+      },
+      {
+        "label": "MiniMax Music3 Studio",
+        "url": "https://timoncool.github.io/MiniMax-Music3-Studio/"
+      },
+      {
+        "label": "ACE-Step Studio",
+        "url": "https://timoncool.github.io/ACE-Step-Studio/"
+      }
+    ]
+  },
+  {
     "id": "yue2-studio-3-7-0",
     "date": "2026-10-20",
     "title": {

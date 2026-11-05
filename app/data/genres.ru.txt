@@ -1,0 +1,105 @@
+16-bit	16-битная чиптюн-музыка
+2-step	ту-степ (британский гараж)
+acid house	эйсид-хаус
+acid techno	эйсид-техно
+acid trance	эйсид-транс
+acoustic chicago blues	акустический чикагский блюз
+acoustic rock	акустический рок
+acoustic texas blues	акустический техасский блюз
+african folk	африканский фолк
+afrikaner folk	фолк африканеров
+afro house	афро-хаус
+afro trap	афро-трэп
+afro-cuban jazz	афрокубинский джаз
+afro-funk	афро-фанк
+afro-jazz	афро-джаз
+afro-rock	афро-рок
+afrobeat	афробит
+afropiano	афропиано (амапиано)
+afroswing	афросвинг
+algorave	алгорейв
+alternative r &b	альтернативный ритм-н-блюз
+alternative rock	альтернативный рок
+ambient techno	эмбиент-техно
+anti-folk	антифолк
+avant-garde jazz	авангардный джаз
+bachata	бачата
+bedroom pop	бедрум-поп
+bluegrass	блюграсс
+blues rock	блюз-рок
+boogie	буги
+bossa nova	босса-нова
+bubblegum bass	бабблгам-басс
+bubblegum dance	бабблгам-дэнс
+cabaret	кабаре
+cajun	каджун
+cape verdean	музыка Кабо-Верде
+caribbean	карибская музыка
+carnatic	карнатическая (южноиндийская классика)
+celtic	кельтская музыка
+chanson	французский шансон
+chillstep	чиллстеп
+chillsynth	чиллсинт
+classical	классика
+cloud rap	клауд-рэп
+coptic	коптская музыка
+cumbia	кумбия
+dance	дэнс
+dancehall	дэнсхолл
+dancepop	дэнс-поп
+dembow	дембоу
+dirty south	дёрти-саут (южный рэп)
+dream pop	дрим-поп
+drill	дрилл
+dubstep	дабстеп
+edm	EDM, электронная танцевальная музыка
+egyptian	египетская музыка
+garage	гараж
+gnawa	гнауа
+goa trance	гоа-транс
+grime	грайм
+griot	гриот (западноафриканские сказители)
+grunge	гранж
+hip hop	хип-хоп
+house	хаус
+hyphy	хайфи (рэп Залива)
+illbient	иллбиент
+indie	инди
+jazz	джаз
+jungle	джангл
+k-pop	k-pop, корейский поп
+kawaii future bass	кавай-фьюче-басс
+klezmer	клезмер
+liquid drum and bass	ликвид-драм-н-бейс
+mariachi	мариачи
+math rock	мат-рок
+merengue	меренге
+motown	мотаун
+new jack swing	нью-джек-свинг
+new wave	нью-вейв
+p-funk	пи-фанк
+pacific reggae	тихоокеанское регги
+polka	полька
+pop	поп
+raga	рага (индийский лад)
+rap	рэп
+reggae	регги
+rock	рок
+rockabilly	рокабилли
+rumba	румба
+salsa	сальса
+samba	самба
+ska	ска
+soul	соул
+southern rock	южный рок
+surf	сёрф
+surf rock	сёрф-рок
+swamp blues	свамп-блюз
+swing	свинг
+symphonic metal	симфонический метал
+synthpop	синти-поп
+synthwave	синтвейв
+tango	танго
+trance	транс
+trap	трэп
+tuareg	туарегская музыка

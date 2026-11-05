@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SELF_READ } from '../services/studioQueries';
 import { Check, Copy, Download, FileAudio, KeyboardMusic, Loader2, Music, Play, RefreshCw, Scissors, Search, SlidersHorizontal, Wand2 } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import { saveFile } from '../services/saveFile';
@@ -36,22 +37,15 @@ interface SeparationStatus {
   ready: boolean;
   stems: string[];
   download: { downloaded_bytes: number; total_bytes: number; done: boolean } | null;
-  /** CUDA on an NVIDIA card that runs it; any other card separates on the processor. */
-  card: 'cuda' | null;
+  /** The card audio.cpp separates on: CUDA on an NVIDIA card that runs it, Vulkan on another make, Metal on a Mac. */
+  card: 'cuda' | 'vulkan' | 'metal' | null;
   card_runtime_installed: boolean;
   card_missing_bytes: number;
   /** The separator: HT-Demucs for six stems, Mel-Band RoFormer for the vocals and the instrumental. */
   engine?: 'htdemucs' | 'roformer';
-  settings: { stems: string[]; overlap: number; runtime: 'auto' | 'cuda' | 'cpu'; engine?: 'htdemucs' | 'roformer' };
+  settings: { stems: string[]; runtime: 'auto' | 'cuda' | 'cpu'; engine?: 'htdemucs' | 'roformer' };
   run: { song_id: string; progress: number; done: boolean; error: string | null; stems: string[] } | null;
 }
-
-/** Fast, the model's own reference setting, and slow-but-smoothest. */
-const QUALITIES = [
-  { overlap: 0.1, key: 'separationQualityFast' },
-  { overlap: 0.25, key: 'separationQualityBalanced' },
-  { overlap: 0.5, key: 'separationQualityBest' },
-] as const;
 
 interface CatalogModel {
   id: string;
@@ -115,10 +109,10 @@ export function StudioToolsPanel({ initialSongId }: { initialSongId?: string | n
 
   // The separation state, and which stems the chosen track already has.
   const refresh = useCallback(async () => {
-    const separation: SeparationStatus = await fetch('/v1/separation/status').then(response => response.json());
+    const separation: SeparationStatus = await fetch('/v1/separation/status', { headers: SELF_READ }).then(response => response.json());
     setStatus(separation);
     if (songId) {
-      const body = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/stems`).then(response => response.json());
+      const body = await fetch(`/v1/library/songs/${encodeURIComponent(songId)}/stems`, { headers: SELF_READ }).then(response => response.json());
       setStems(body.stems ?? []);
     }
   }, [songId]);
@@ -194,7 +188,7 @@ export function StudioToolsPanel({ initialSongId }: { initialSongId?: string | n
   const matches = needle ? songs.filter(song => song.title.toLowerCase().includes(needle)) : songs;
   const visible = matches.slice(0, 12);
   const hidden = matches.length - visible.length;
-  const settings = status?.settings ?? { stems: status?.stems ?? [], overlap: 0.25, runtime: 'auto' as const };
+  const settings = status?.settings ?? { stems: status?.stems ?? [], runtime: 'auto' as const };
   // what separating again replaces: the stems it makes that the song has already
   const replacing = stems.filter(stem => settings.stems.includes(stem));
   const run = status?.run?.song_id === songId ? status?.run : null;
@@ -313,27 +307,6 @@ export function StudioToolsPanel({ initialSongId }: { initialSongId?: string | n
                 </p>
               )}
             </div>
-
-            {status?.engine !== 'roformer' && <div className="mt-3">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{t('separationQuality')}</p>
-              <div className="mt-2 flex gap-2">
-                {QUALITIES.map(quality => (
-                  <button
-                    key={quality.overlap}
-                    type="button"
-                    onClick={() => void saveSettings({ ...settings, overlap: quality.overlap })}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-xs font-semibold ${
-                      Math.abs(settings.overlap - quality.overlap) < 0.01
-                        ? 'border-pink-400 bg-pink-500/10 text-zinc-900 dark:text-white'
-                        : 'border-zinc-200 text-zinc-500 dark:border-white/10'
-                    }`}
-                  >
-                    {t(quality.key)}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 text-xs leading-5 text-zinc-500 dark:text-zinc-400">{t('separationQualityHint')}</p>
-            </div>}
 
             <button
               type="button"

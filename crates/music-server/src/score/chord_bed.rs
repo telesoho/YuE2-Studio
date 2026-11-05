@@ -195,12 +195,12 @@ pub fn write(request: &BedRequest) -> Result<Bed, String> {
             row.push(format!("\"{chord}\"z{units}"));
             previous = Some(chord);
             if row.len() == BARS_PER_ROW {
-                abc.push_str(&format!("V: Vocal\n{}|\nV: Ins\nZ{}|\n", row.join("|"), row.len()));
+                abc.push_str(&format!("V: Vocal\n{}|\nV: Ins\n{}|\n", row.join("|"), vec![format!("z{units}"); row.len()].join("|")));
                 row.clear();
             }
         }
         if !row.is_empty() {
-            abc.push_str(&format!("V: Vocal\n{}|\nV: Ins\nZ{}|\n", row.join("|"), row.len()));
+            abc.push_str(&format!("V: Vocal\n{}|\nV: Ins\n{}|\n", row.join("|"), vec![format!("z{units}"); row.len()].join("|")));
         }
         total += bars;
     }
@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(all.len(), bed.bars);
         assert!(all.windows(2).all(|pair| pair[0] != pair[1]), "{all:?}");
         assert!(bed.abc.contains("K:Em\n") && bed.abc.contains("M:4/4\nL:1/16\nQ:1/4=96\n"));
-        assert!(bed.abc.contains("z16|") && bed.abc.contains("V: Ins\nZ4|"));
+        assert!(bed.abc.contains("z16|") && bed.abc.contains("V: Ins\nz16|z16|z16|z16|\n"), "a rest in every bar of the band keeps the composer counting them");
         assert_eq!(bed.progressions.len(), 3);
         assert!(bed.progressions[0] != bed.progressions[1], "verse and chorus play different progressions");
     }

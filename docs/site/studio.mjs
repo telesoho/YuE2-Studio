@@ -3,10 +3,11 @@
 export const STUDIO = {
   id: 'yue2',
   name: 'YuE2 Studio',
+// This fork's own repository and site; the size and date follow the 3.8.4 base.
   repo: 'https://github.com/telesoho/YuE2-Studio',
   site: 'https://telesoho.github.io/YuE2-Studio/',
-  installerMB: 319.23,
-  updated: '2026-10-21',
+  installerMB: 301,
+  updated: '2026-11-05',
   bento: [
     { feature: 1, shot: '02-score' },
     { feature: 3, shot: '04-cover' },

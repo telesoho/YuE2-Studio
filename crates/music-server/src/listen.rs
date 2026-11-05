@@ -80,6 +80,60 @@ pub struct Heard {
     pub caption: String,
 }
 
+/// The card memory a run of the captioner takes at its peak, in GiB, by the seconds of audio it hears: MOSS-Music
+/// 8B Q8_0 and Q4_K_M with the F16 audio tower, ace-caption 9c481fff on CUDA 13.
+const PEAK_Q8_0: [(f64, f64); 4] = [(60.0, 10.6), (180.0, 12.0), (300.0, 14.6), (420.0, 18.0)];
+const PEAK_Q4_K_M: [(f64, f64); 4] = [(60.0, 7.1), (180.0, 8.8), (300.0, 11.4), (420.0, 14.9)];
+/// What the desktop and the driver keep of the card besides the captioner.
+const CARD_RESERVE_GB: f64 = 2.0;
+/// The longest stretch the captioner hears (its own limit), and what it hears on the processor.
+const MAX_SECONDS: f64 = 420.0;
+const PROCESSOR_SECONDS: f64 = 120.0;
+
+/// How this machine hears a song: the MOSS-Music build, the card or the processor, and how many seconds of the song
+/// fit in the card's memory.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hearing {
+    /// The file name of the MOSS-Music build in the models folder.
+    pub lm: &'static str,
+    pub on_card: bool,
+    pub seconds: f64,
+}
+
+/// The seconds that fit in `budget` GiB by a table of peaks: none when not even its first row fits.
+fn seconds_within(peaks: &[(f64, f64)], budget: f64) -> Option<f64> {
+    if budget < peaks[0].1 {
+        return None;
+    }
+    for pair in peaks.windows(2) {
+        let ((s0, m0), (s1, m1)) = (pair[0], pair[1]);
+        if budget < m1 {
+            return Some((s0 + (budget - m0) / (m1 - m0) * (s1 - s0)).floor());
+        }
+    }
+    Some(MAX_SECONDS)
+}
+
+/// Q8_0 where the card holds it for two minutes of a song, Q4_K_M where it does not, the processor with Q4_K_M
+/// where not even a minute fits or the card does not run the captioner's CUDA 13.
+pub fn hearing(hardware: &crate::hardware::Hardware) -> Hearing {
+    // the Mac's captioner computes on Metal in the memory it shares with the system, which the table does not measure
+    if cfg!(target_os = "macos") {
+        return Hearing { lm: "moss-lm-q8_0.gguf", on_card: true, seconds: MAX_SECONDS };
+    }
+    let budget = hardware.total_vram_gb - CARD_RESERVE_GB;
+    let cuda13 = hardware.card_cuda == Some(crate::hardware::CudaBuild::Cuda13);
+    if cuda13 {
+        if let Some(seconds) = seconds_within(&PEAK_Q8_0, budget).filter(|seconds| *seconds >= 120.0) {
+            return Hearing { lm: "moss-lm-q8_0.gguf", on_card: true, seconds };
+        }
+        if let Some(seconds) = seconds_within(&PEAK_Q4_K_M, budget) {
+            return Hearing { lm: "moss-lm-q4_k_m.gguf", on_card: true, seconds };
+        }
+    }
+    Hearing { lm: "moss-lm-q4_k_m.gguf", on_card: false, seconds: PROCESSOR_SECONDS }
+}
+
 /// One run of the captioner over several songs, the way HOT-Step labels a
 /// dataset: the model loads once, and each song's caption is handed to `done`
 /// as soon as it is written, with its index. `libraries` goes first on PATH:
@@ -88,6 +142,7 @@ pub struct Heard {
 pub fn hear_batch(
     exe: &Path,
     moss: &Path,
+    hearing: &Hearing,
     libraries: Option<&Path>,
     audio: &[std::path::PathBuf],
     cancel: &std::sync::atomic::AtomicBool,
@@ -99,16 +154,18 @@ pub fn hear_batch(
     let prompt = work.path().join("prompt.prose.txt");
     std::fs::write(&prompt, PROSE_PROMPT)?;
     let list = work.path().join("songs.tsv");
-    // ace-caption reads WAV and MP3 only and wants ffmpeg for the rest; a song kept as FLAC goes in as the
-    // 16 kHz mono WAV it would have made of it
+    // ace-caption reads WAV and MP3 only and wants ffmpeg for the rest, and hears a song from its start up to its
+    // limit: a song kept as FLAC, or longer than the card holds, goes in as the 16 kHz mono WAV the captioner would
+    // have made of it, of the middle of the song when it is longer
     let mut inputs = Vec::with_capacity(audio.len());
     for (index, path) in audio.iter().enumerate() {
         let readable = path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("wav") || extension.eq_ignore_ascii_case("mp3"));
-        if readable {
+        let longer = crate::audio_pcm::duration_seconds(path).is_none_or(|seconds| seconds > hearing.seconds);
+        if readable && !longer {
             inputs.push(path.clone());
         } else {
             let wav = work.path().join(format!("{index}.source.wav"));
-            crate::audio_pcm::write_wav16k_mono(path, &wav).with_context(|| format!("decode {} for the captioner", path.display()))?;
+            crate::audio_pcm::write_wav16k_mono_middle(path, &wav, hearing.seconds).with_context(|| format!("decode {} for the captioner", path.display()))?;
             inputs.push(wav);
         }
     }
@@ -119,9 +176,14 @@ pub fn hear_batch(
     if let Some(path) = music_core::process::own_libraries_first(exe) {
         command.env("LD_LIBRARY_PATH", path);
     }
+    dub_core::proc::outside_appimage(&mut command);
     command
         .arg("--models")
         .arg(moss)
+        .arg("--lm")
+        .arg(moss.join(hearing.lm))
+        .arg("--max-seconds")
+        .arg(hearing.seconds.to_string())
         .arg("--src-list")
         .arg(&list)
         .args(["--mode", "prose", "--temperature", "0", "--rep-penalty", "1.0", "--freq-penalty", "0.3"])
@@ -136,6 +198,9 @@ pub fn hear_batch(
         if let Ok(path) = std::env::join_paths(paths) {
             command.env("PATH", path);
         }
+    }
+    if !hearing.on_card {
+        command.env("CUDA_VISIBLE_DEVICES", "-1");
     }
     quiet(&mut command);
     let mut child = command.spawn().with_context(|| format!("start {}", exe.display()))?;
@@ -307,6 +372,37 @@ mod tests {
 
     fn facts() -> Facts {
         Facts { bpm: 104 }
+    }
+
+    #[test]
+    fn a_card_hears_what_its_memory_holds() {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        let card = |gb: f64, cuda: Option<crate::hardware::CudaBuild>| crate::hardware::Hardware {
+            gpu_name: None,
+            total_vram_gb: gb,
+            total_ram_gb: 32.0,
+            nvidia: cuda.is_some(),
+            cuda,
+            runs_cuda: cuda.is_some(),
+            card_cuda: cuda,
+            compute_capability: None,
+            driver_major: None,
+            recommended: None,
+        };
+        let cuda13 = Some(crate::hardware::CudaBuild::Cuda13);
+        assert_eq!(hearing(&card(24.0, cuda13)), Hearing { lm: "moss-lm-q8_0.gguf", on_card: true, seconds: 420.0 });
+        let sixteen = hearing(&card(16.0, cuda13));
+        assert_eq!(sixteen.lm, "moss-lm-q8_0.gguf");
+        assert!(sixteen.on_card && sixteen.seconds >= 240.0 && sixteen.seconds < 300.0, "{sixteen:?}");
+        let twelve = hearing(&card(12.0, cuda13));
+        assert_eq!((twelve.lm, twelve.on_card), ("moss-lm-q4_k_m.gguf", true));
+        assert!(twelve.seconds > 180.0 && twelve.seconds < 300.0, "{twelve:?}");
+        let small = Hearing { lm: "moss-lm-q4_k_m.gguf", on_card: false, seconds: PROCESSOR_SECONDS };
+        assert_eq!(hearing(&card(8.0, cuda13)), small, "not a minute fits in 8 GB");
+        assert_eq!(hearing(&card(6.0, cuda13)), small);
+        assert_eq!(hearing(&card(24.0, None)), small, "the captioner's CUDA 13 does not run on this card");
     }
 
     #[test]

@@ -15,7 +15,11 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 # Dub Studio's vocal separator: Mel-Band RoFormer through BSRoFormer.cpp.
-dub-sep = { git = "https://github.com/timoncool/dub-studio", rev = "b8581e3555c2cab047b1b5d4418a7ec2f9c3095c" }
+dub-sep = { git = "https://github.com/timoncool/dub-studio", rev = "d7d3f7600ff23c25ba497a1636002e429b571641" }
+# audio.cpp's server: HT-Demucs, MuScriptor and SheetSage2.
+acpp-server.workspace = true
+# Programs of the computer and downloaded ones started without the AppImage's libraries (dub_core::proc).
+dub-core = { git = "https://github.com/timoncool/dub-studio", rev = "d7d3f7600ff23c25ba497a1636002e429b571641" }
 # "today" and dates the agent names, in this computer's time zone.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The folder picker for "use models I already have", the same crate Dub Studio uses.
@@ -78,3 +82,7 @@ windows = { version = "0.58", features = [
 ] }
 windows-core = "0.58"
 windows-sys.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# gnu_get_libc_version: which llama.cpp build this Linux starts (assistant_runtime::glibc_version).
+libc = "0.2"

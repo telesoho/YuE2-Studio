@@ -94,6 +94,16 @@ pub fn sections(text: &str) -> Result<Vec<Section>, String> {
     Ok(found)
 }
 
+/// The section a score written on past its closing section goes on with: the
+/// one before the close. Left to itself the composer follows an outro with
+/// bars of rest.
+pub fn reprise(text: &str) -> Option<String> {
+    let found = sections(text).ok()?;
+    let labelled: Vec<&Section> = found.iter().filter(|section| !section.label.is_empty()).collect();
+    let pick = if labelled.len() >= 2 { labelled[labelled.len() - 2] } else { *labelled.last()? };
+    Some(pick.label.clone())
+}
+
 /// Lyrics with only the tags: one per section the voice sings in.
 pub fn skeleton(found: &[Section]) -> String {
     found
