@@ -253,6 +253,20 @@ describe('JianpuEditor', () => {
       expect(printBtn).toBeInstanceOf(HTMLButtonElement);
       expect(printBtn?.getAttribute('title')).toBe('Print the jianpu (A4)');
       expect(document.querySelector('.yue-jp-editor [data-act="lead"]')?.textContent).toBe('Lead sheet');
+      const zoomValue = document.querySelector('.yue-jp-editor [data-act="zoom-reset"]');
+      expect(zoomValue).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomValue?.textContent).toBe('100%');
+      expect(zoomValue?.getAttribute('title')).toBe('Reset zoom to fit the width');
+      const zoomOut = document.querySelector('.yue-jp-editor [data-act="zoom-out"]');
+      const zoomIn = document.querySelector('.yue-jp-editor [data-act="zoom-in"]');
+      expect(zoomOut).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomIn).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomOut?.getAttribute('title')).toBe('Zoom out');
+      expect(zoomIn?.getAttribute('title')).toBe('Zoom in');
+      const deleteNote = document.querySelector('.yue-jp-editor [data-act="delete-note"]');
+      expect(deleteNote).toBeInstanceOf(HTMLButtonElement);
+      expect(deleteNote?.textContent).toBe('Delete note');
+      expect(deleteNote?.getAttribute('title')).toBe('Delete this note from the vocal line and the matching note in the accompaniment');
       expect(document.querySelector('.yue-jp-orig-key')?.textContent).toBe('1=C');
       expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 0');
       const keySelect = document.querySelector('.yue-jp-chord-key');
@@ -284,6 +298,44 @@ describe('JianpuEditor', () => {
       host.remove();
       document.querySelector('.yue-jp-editor')?.remove();
       globals.abc2svg = previous;
+    }
+  });
+
+  it('remembers the score zoom and returns to fit width on reset', async () => {
+    localStorage.setItem('language', 'en');
+    localStorage.setItem('yue-jp-zoom', '150');
+    const mounted = await mountEditor(ABC);
+    try {
+      const paper = document.querySelector('.yue-jp-paper') as HTMLElement;
+      const value = document.querySelector('.yue-jp-editor [data-act="zoom-reset"]') as HTMLButtonElement;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const header = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      paper.appendChild(header);
+      paper.appendChild(svg);
+      expect(paper.getAttribute('data-zoom')).toBe('150');
+      expect(value.textContent).toBe('150%');
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="zoom-out"]') as HTMLButtonElement).click();
+      });
+      expect(paper.getAttribute('data-zoom')).toBe('140');
+      expect(value.textContent).toBe('140%');
+      // abc2svg emits one svg per system; every one of them must scale.
+      expect(svg.style.width).toBe('140%');
+      expect(header.style.width).toBe('140%');
+      expect(svg.style.height).toBe('auto');
+      expect(svg.style.maxWidth).toBe('none');
+      expect(localStorage.getItem('yue-jp-zoom')).toBe('140');
+      await act(async () => {
+        value.click();
+      });
+      expect(paper.getAttribute('data-zoom')).toBe('100');
+      expect(value.textContent).toBe('100%');
+      expect(svg.style.width).toBe('100%');
+      expect(header.style.width).toBe('100%');
+      expect(localStorage.getItem('yue-jp-zoom')).toBe('100');
+    } finally {
+      await mounted.close();
+      localStorage.removeItem('yue-jp-zoom');
     }
   });
 

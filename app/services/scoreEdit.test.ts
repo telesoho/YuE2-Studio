@@ -79,6 +79,9 @@ const editor = (globalThis as { yueScoreEditor?: {
   applySavedShapes: () => void;
   resetChordShapePrefs: () => void;
   resolveGuitarShape: (symbol: string) => { symbol: string; shapeKey: string; frets: string };
+  clampZoom: (value: number) => number;
+  zoomLabel: (percent: number) => string;
+  commandOfKey: (key: string) => Record<string, unknown> | null;
 } }).yueScoreEditor!;
 
 const ABC = `X:1
@@ -1030,6 +1033,126 @@ C D|E F|G|
     expect(stayed.abc).toBe(score);
   });
 
+  it('joins two bars with different meters into one bar with the summed meter', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+w: do re mi fa
+V: Ins
+C D E F|
+V: Vocal
+M:3/4
+G A B|C D E|
+w: so la ti do re
+V: Ins
+M:3/4
+G A B|C D E|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalM:7/4CDEFGAB|');
+    expect(body).toContain('V:InsM:7/4CDEFGAB|');
+    expect(body).toContain('w:doremifasolati');
+    expect(body).toContain('V:VocalM:3/4CDE|');
+    expect(body).toContain('V:InsM:3/4CDE|');
+    expect(body).toContain('w:dore');
+    expect(body.match(/M:3\/4/g)?.length).toBe(2);
+  });
+
+  it('joins bars whose meters have different denominators', () => {
+    const score = `X:1
+T:
+M:3/4
+L:1/8
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C2 D2 E2|
+V: Ins
+C2 D2 E2|
+V: Vocal
+M:6/8
+F2 G2 A2|B2 c2 d2|
+V: Ins
+M:6/8
+F2 G2 A2|B2 c2 d2|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalM:6/4C2D2E2F2G2A2|');
+    expect(body).toContain('V:InsM:6/4C2D2E2F2G2A2|');
+    expect(body).toContain('V:VocalM:6/8B2c2d2|');
+    expect(body.match(/M:6\/8/g)?.length).toBe(2);
+  });
+
+  it('gives a partial bar the meter its joined notes add up to', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D|
+V: Ins
+C D|
+V: Vocal
+M:3/4
+G A B|
+V: Ins
+M:3/4
+G A B|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalM:5/4CDGAB|');
+    expect(body).toContain('V:InsM:5/4CDGAB|');
+    expect(joined.beats).toBeNull();
+  });
+
+  it('keeps a tempo change between the two meters it joins', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+V: Ins
+C D E F|
+Q:1/4=90
+V: Vocal
+M:3/4
+G A B|
+V: Ins
+M:3/4
+G A B|
+`;
+    const joined = editor.editScore(score, { op: 'join', index: 0, voice: 'Vocal', minBars: 1, maxBars: 4 });
+    expect(joined.error).toBeFalsy();
+    const body = joined.abc.replace(/\s+/g, '');
+    expect(body).toContain('Q:1/4=90');
+    expect(body.indexOf('Q:1/4=90')).toBeLessThan(body.indexOf('M:7/4'));
+    expect(body).toContain('V:VocalM:7/4CDEFGAB|');
+  });
+
   it('inserts one beat after the selected note and restores the following meter', () => {
     const score = `X:1
 T:
@@ -1237,6 +1360,139 @@ c B A G|
     expect(body).toContain('cBAG|');
     expect(body).toContain('w:end');
     expect(removed.index).toBe(4);
+  });
+
+  it('deletes a vocal note and the matching accompaniment note', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+w: do re mi fa
+V: Ins
+C D E F|
+`;
+    const removed = editor.editScore(score, { op: 'delete-note', index: 1, voice: 'Vocal' });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalCzEF|');
+    expect(body).toContain('V:InsCzEF|');
+    expect(body).toContain('w:domifa');
+    expect(removed.index).toBe(1);
+  });
+
+  it('deletes an accompaniment note and the matching vocal note', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+w: do re mi fa
+V: Ins
+C D E F|
+`;
+    const removed = editor.editScore(score, { op: 'delete-note', index: 2, voice: 'Ins' });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalCDzF|');
+    expect(body).toContain('V:InsCDzF|');
+    expect(body).toContain('w:dorefa');
+  });
+
+  it('deletes every accompaniment note that starts under a long vocal note', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C2 D E|
+w: do re mi
+V: Ins
+C D E F|
+`;
+    const removed = editor.editScore(score, { op: 'delete-note', index: 0, voice: 'Vocal' });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:Vocalz2DE|');
+    expect(body).toContain('V:InszzEF|');
+    expect(body).toContain('w:remi');
+  });
+
+  it('leaves an accompaniment note that began before the deleted vocal note', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C D E F|
+w: do re mi fa
+V: Ins
+C4|
+`;
+    const removed = editor.editScore(score, { op: 'delete-note', index: 2, voice: 'Vocal' });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).toContain('V:VocalCDzF|');
+    expect(body).toContain('V:InsC4|');
+    expect(body).toContain('w:dorefa');
+  });
+
+  it('drops a tie that crossed a system break when its continuation is deleted', () => {
+    const score = `X:1
+T:
+M:4/4
+L:1/4
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+C4- |
+V: Vocal
+C4 D E|
+w: do re mi
+V: Ins
+C4 D E F|
+`;
+    const removed = editor.editScore(score, { op: 'delete-note', index: 1, voice: 'Vocal' });
+    expect(removed.error).toBeFalsy();
+    const body = removed.abc.replace(/\s+/g, '');
+    expect(body).not.toContain('C4-');
+    expect(body).toContain('V:VocalC4|');
+    expect(body).toContain('V:Vocalz4DE|');
+    expect(body).toContain('V:InsC4zzz|');
+  });
+
+  it('maps the Delete key to the both-staff delete', () => {
+    expect(editor.commandOfKey('Delete')).toEqual({ op: 'delete-note' });
+    expect(editor.commandOfKey('Backspace')).toEqual({ op: 'delete-note' });
+    expect(editor.commandOfKey('+')).toEqual({ op: 'insert' });
+  });
+
+  it('clamps and labels the score zoom', () => {
+    expect(editor.clampZoom(10)).toBe(50);
+    expect(editor.clampZoom(100)).toBe(100);
+    expect(editor.clampZoom(480)).toBe(300);
+    expect(editor.clampZoom(Number.NaN)).toBe(100);
+    expect(editor.zoomLabel(125)).toBe('125%');
   });
 
   it('inserts an empty bar after the selected bar in both voices', () => {

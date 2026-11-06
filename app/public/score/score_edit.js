@@ -792,17 +792,17 @@
 
   function breakTies(events, index) {
     const ev = events[index];
-    if (ev.tie) ev.tie = false;
+    const hadTie = !!ev.tie;
+    if (hadTie) ev.tie = false;
     const prev = events[index - 1];
-    if (prev && prev.tie && ev.continuesTie && prev.line === ev.line) {
+    // A tie can cross a system break, where scanMusic cannot mark the
+    // continuation; the previous event still points at this one.
+    if (prev && prev.tie) {
       prev.tie = false;
       ev.continuesTie = false;
     }
     const next = events[index + 1];
-    if (ev.tie && next && next.continuesTie) {
-      ev.tie = false;
-      next.continuesTie = false;
-    }
+    if (hadTie && next && next.continuesTie) next.continuesTie = false;
   }
 
   function applySpelling(ev, spelled) {
@@ -1539,20 +1539,103 @@
     };
   }
 
+  // Two bars of different meters become one bar whose beats are their sum. The
+  // first bar's denominator is kept when the sum is writable in it.
+  function gcdNumber(a, b) {
+    let x = Math.abs(a) || 1;
+    let y = Math.abs(b) || 1;
+    while (y) {
+      const t = x % y;
+      x = y;
+      y = t;
+    }
+    return x || 1;
+  }
+
+  function mergeMeters(first, second) {
+    if (!first || !second) return first;
+    if (!first[1] || !second[1]) return first;
+    const dens = [first[1]];
+    if (second[1] !== first[1]) dens.push(second[1]);
+    const lcm = first[1] / gcdNumber(first[1], second[1]) * second[1];
+    if (dens.indexOf(lcm) < 0) dens.push(lcm);
+    for (const den of dens) {
+      const num = first[0] * den / first[1] + second[0] * den / second[1];
+      if (Number.isInteger(num) && num > 0) return [num, den];
+    }
+    return [first[0] + second[0], first[1]];
+  }
+
+  // The meter of the joined bar follows the notes it actually holds, so a
+  // pickup bar plus a full bar gets the beats they add up to, not the sum of
+  // the two written meters. Complete bars give the same answer either way.
+  function meterForUnits(units, lDen, first, second) {
+    const total = Number(units);
+    if (!Number.isInteger(total) || total <= 0 || !lDen) return mergeMeters(first, second);
+    const dens = [];
+    function push(den) {
+      if (den && dens.indexOf(den) < 0) dens.push(den);
+    }
+    push(first[1]);
+    push(second[1]);
+    push(first[1] / gcdNumber(first[1], second[1]) * second[1]);
+    for (const den of dens) {
+      const num = total * den / lDen;
+      if (Number.isInteger(num) && num > 0) return [num, den];
+    }
+    return mergeMeters(first, second);
+  }
+
   function joinLocate(abc, voice, index, slice) {
     const found = locateBar(abc, voice, index, slice);
     if (found.error) return found;
-    if (found.bar + 1 >= found.vocalBars.length) return { error: m("jpErrJoinLast") };
+    let vocalBars = found.vocalBars;
+    let insBars = found.insBars;
+    let nextBar = found.bar + 1;
+    let nextMeter = found.meter;
+    let end = found.end;
+    let cross = false;
+    // The selected bar is the last of its meter stretch: the next bar starts
+    // the following stretch. Joining across a meter change is allowed; a
+    // section comment between the stretches still ends the join, as before.
+    if (nextBar >= vocalBars.length) {
+      const items = found.walked.items;
+      if (end >= items.length || items[end].type !== "music") return { error: m("jpErrJoinLast") };
+      const meter = items[end].meter;
+      let endB = end + 1;
+      while (endB < items.length) {
+        const next = items[endB];
+        if (next.type !== "music" || !sameMeter(next.meter, meter)) break;
+        endB += 1;
+      }
+      const vocalB = barsFromVoice(items, end, endB, "Vocal");
+      const insB = barsFromVoice(items, end, endB, "Ins");
+      if (!vocalB.length || !insB.length || vocalB.length !== insB.length) {
+        return { error: m("jpErrVoicesBars") };
+      }
+      nextBar = vocalBars.length;
+      nextMeter = meter;
+      vocalBars = vocalBars.concat(vocalB);
+      insBars = insBars.concat(insB);
+      end = endB;
+      cross = true;
+    }
     const heads = [];
     function take(bars, which) {
-      const events = bars[found.bar].concat(bars[found.bar + 1]);
+      const events = bars[found.bar].concat(bars[nextBar]);
       for (const ev of events) {
         if (ev.index == null || ev.index < 0) continue;
         heads.push({ voice: which, index: ev.index });
       }
     }
-    take(found.vocalBars, "Vocal");
-    take(found.insBars, "Ins");
+    take(vocalBars, "Vocal");
+    take(insBars, "Ins");
+    found.vocalBars = vocalBars;
+    found.insBars = insBars;
+    found.nextBar = nextBar;
+    found.nextMeter = nextMeter;
+    found.cross = cross;
+    found.end = end;
     found.heads = heads;
     return found;
   }
@@ -1688,7 +1771,44 @@
     const range = lineBarRange(command);
     const stateV = { key: vocalKey || walked.header.key.name };
     const stateI = { key: insKey || walked.header.key.name };
+    // Lines the region rewrite does not regenerate (a Q: tempo change, a %%
+    // directive) must survive it. The M:/K: lines are written from the bars.
+    const ownedLines = new Set();
+    const lineByIndex = new Map();
+    for (let j = found.start; j < found.end; j++) {
+      const item = items[j];
+      if (item.type !== "music") continue;
+      ownedLines.add(item.vLine);
+      ownedLines.add(item.musicLine);
+      if (item.lyricLine >= 0) ownedLines.add(item.lyricLine);
+      for (const ev of item.events) {
+        if (ev.index != null && ev.index >= 0) lineByIndex.set(item.voice + ":" + ev.index, item.musicLine);
+      }
+    }
+    const kept = [];
+    for (let ln = from; ln <= to; ln++) {
+      if (ownedLines.has(ln)) continue;
+      const text = walked.lines[ln];
+      if (!text || !text.trim()) continue;
+      if (/^\s*(?:M:|K:|V:|w:)/.test(text)) continue;
+      kept.push({ line: ln, text: text });
+    }
     const out = [];
+    let keptAt = 0;
+    function emitKept(bars) {
+      let maxLine = -1;
+      for (const bar of bars) {
+        for (const ev of bar) {
+          if (!ev || ev.index == null || ev.index < 0) continue;
+          const line = lineByIndex.get((ev.voice || "Vocal") + ":" + ev.index);
+          if (line != null && line > maxLine) maxLine = line;
+        }
+      }
+      while (keptAt < kept.length && kept[keptAt].line < maxLine) {
+        out.push(kept[keptAt].text);
+        keptAt += 1;
+      }
+    }
     for (let r = 0; r < runs.length; r++) {
       const run = runs[r];
       const meterLine = sameMeter(run.meter, sounding) ? "" : "M:" + run.meter[0] + "/" + run.meter[1];
@@ -1703,6 +1823,7 @@
       for (let g = 0; g < chunks.length; g++) {
         const chunkV = vocalBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
         const chunkI = insBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
+        emitKept(chunkV.concat(chunkI));
         out.push("V: Vocal");
         if (g === 0 && meterLine) out.push(meterLine);
         out.push(renderBars(chunkV, stateV));
@@ -1714,6 +1835,7 @@
       }
       sounding = run.meter;
     }
+    while (keptAt < kept.length) out.push(kept[keptAt++].text);
     lines.splice(from, to - from + 1, ...out);
     return { abc: joinAbc(lines, abc) };
   }
@@ -1723,17 +1845,28 @@
   function joinBars(abc, voice, index, slice, command) {
     const found = joinLocate(abc, voice, index, slice);
     if (found.error) return { abc: abc, error: found.error };
+    const joinAt = found.bar;
+    const nextBar = found.nextBar;
     const vocalBars = found.vocalBars.slice();
     const insBars = found.insBars.slice();
-    vocalBars[found.bar] = found.vocalBars[found.bar].concat(found.vocalBars[found.bar + 1]);
-    insBars[found.bar] = found.insBars[found.bar].concat(found.insBars[found.bar + 1]);
-    vocalBars.splice(found.bar + 1, 1);
-    insBars.splice(found.bar + 1, 1);
-    const meters = vocalBars.map(() => found.meter);
+    vocalBars[joinAt] = vocalBars[joinAt].concat(vocalBars[nextBar]);
+    insBars[joinAt] = insBars[joinAt].concat(insBars[nextBar]);
+    vocalBars.splice(nextBar, 1);
+    insBars.splice(nextBar, 1);
+    const chosen = voice === "Ins" ? insBars[joinAt] : vocalBars[joinAt];
+    const lDen = found.walked.header.lDen;
+    const mergedUnits = chosen.reduce((sum, ev) => sum + ev.units, 0);
+    const mergedMeter = found.cross
+      ? meterForUnits(mergedUnits, lDen, found.meter, found.nextMeter)
+      : found.meter;
+    const meters = vocalBars.map((_, i) => {
+      if (i < joinAt) return found.meter;
+      if (i === joinAt) return mergedMeter;
+      return found.nextMeter;
+    });
     const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
-    const chosen = voice === "Ins" ? insBars[found.bar] : vocalBars[found.bar];
-    const beats = barBeats(chosen, found.meter, found.walked.header.lDen);
-    return { abc: written.abc, error: null, beats: beats };
+    const beats = barBeats(chosen, mergedMeter, lDen);
+    return { abc: written.abc, error: null, beats: beats, meter: mergedMeter };
   }
 
   function noteEnd(bar, index) {
@@ -1887,11 +2020,72 @@
     };
   }
 
+  function eventSpans(events) {
+    const spans = [];
+    let at = 0;
+    for (const ev of events) {
+      spans.push({ ev: ev, start: at, end: at + ev.units });
+      at += ev.units;
+    }
+    return spans;
+  }
+
+  // Delete the selected note from its own staff and, in the other staff, every
+  // note that starts while it sounds. Both voices drop to rests of the same
+  // length, so the bars keep their beats.
+  function deleteNoteBoth(abc, voice, index, slice, command) {
+    if (slice != null) {
+      const expanded = expandSlicedRest(abc, voice, index, slice | 0);
+      if (expanded.error) return { abc: abc, error: expanded.error };
+      if (expanded.abc !== abc) {
+        return editScore(expanded.abc, Object.assign({}, command, {
+          op: "delete-note",
+          index: expanded.index | 0,
+          slice: null,
+        }));
+      }
+    }
+    const parsed = collect(abc);
+    if (parsed.error) return { abc: abc, error: parsed.error };
+    const events = voice === "Ins" ? parsed.ins : parsed.events;
+    const other = voice === "Ins" ? parsed.events : parsed.ins;
+    if (!events.length) {
+      return { abc: abc, error: voice === "Ins" ? m('jpErrNoInsNotes') : m('jpErrNoVocalNotes') };
+    }
+    if (index < 0 || index >= events.length) return { abc: abc, error: m('jpErrNoSuchNote') };
+    const ev = events[index];
+    if (ev.kind !== "note") {
+      // A rest is a bar-length edit, not a note; keep the single-staff action.
+      return editScore(abc, Object.assign({}, command, { op: "delete", voice: voice, index: index, slice: null }));
+    }
+    const span = eventSpans(events)[index];
+    const targets = [];
+    eventSpans(other).forEach((item, at) => {
+      if (item.ev.kind !== "note") return;
+      if (item.start >= span.start && item.start < span.end) targets.push(at);
+    });
+    breakTies(events, index);
+    makeRest(ev);
+    for (const at of targets) {
+      breakTies(other, at);
+      makeRest(other[at]);
+    }
+    const lines = parsed.lines.slice();
+    rewriteMusic(lines, parsed.events);
+    rewriteMusic(lines, parsed.ins);
+    if (voice !== "Ins" || targets.length) rewriteLyrics(lines, parsed.events);
+    return { abc: joinAbc(lines, abc), error: null, index: index };
+  }
+
   function editScore(abc, command) {
     if (command.op === "reflow") return reflowScore(abc, command);
     const voice = command.voice === "Ins" ? "Ins" : "Vocal";
     if (command.op === "join") {
       return joinBars(abc, voice, command.index | 0, command.slice | 0, command);
+    }
+    if (command.op === "delete-note") {
+      return deleteNoteBoth(abc, voice, command.index | 0,
+        command.slice != null ? command.slice | 0 : null, command);
     }
     if (command.op === "add-beat") {
       return addBeat(abc, voice, command.index | 0, command.slice | 0, command);
@@ -4419,6 +4613,11 @@
   const DIAGRAM_KEY = "yue-jp-chord-diagram";
   const SHAPE_KEY = "yue-jp-chord-shapes";
   const CHORD_KEYS_KEY = "yue-jp-chord-keys";
+  const ZOOM_KEY = "yue-jp-zoom";
+  const ZOOM_DEFAULT = 100;
+  const ZOOM_MIN = 50;
+  const ZOOM_MAX = 300;
+  const ZOOM_STEP = 10;
 
   function readSavedChordKeys() {
     try {
@@ -4697,6 +4896,67 @@
     }
   }
 
+  // At 100% each system fills the paper's width; zoom is a percentage of that
+  // width, so anything above 100% scrolls sideways instead of shrinking.
+  function clampZoom(value) {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return ZOOM_DEFAULT;
+    return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, n));
+  }
+
+  function zoomLabel(percent) {
+    return clampZoom(percent) + "%";
+  }
+
+  function readSavedZoom() {
+    try {
+      if (typeof localStorage === "undefined") return ZOOM_DEFAULT;
+      const raw = localStorage.getItem(ZOOM_KEY);
+      if (raw == null || raw === "") return ZOOM_DEFAULT;
+      return clampZoom(Number(raw));
+    } catch (_err) {
+      return ZOOM_DEFAULT;
+    }
+  }
+
+  function writeSavedZoom(percent) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(ZOOM_KEY, String(clampZoom(percent)));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  // abc2svg emits one svg per system (plus the header), and the paper's
+  // stylesheet fits each of them to the width. Zoom has to reach all of them,
+  // not just the first, or only the title block would change size.
+  function applyZoom() {
+    const percent = clampZoom(ui.zoom);
+    ui.zoom = percent;
+    if (ui.paper) ui.paper.setAttribute("data-zoom", String(percent));
+    if (ui.root) {
+      const value = ui.root.querySelector("[data-act='zoom-reset']");
+      if (value) value.textContent = zoomLabel(percent);
+      const out = ui.root.querySelector("[data-act='zoom-out']");
+      const zin = ui.root.querySelector("[data-act='zoom-in']");
+      if (out) out.disabled = percent <= ZOOM_MIN;
+      if (zin) zin.disabled = percent >= ZOOM_MAX;
+    }
+    if (!ui.paper) return;
+    ui.paper.querySelectorAll("svg").forEach((svg) => {
+      svg.style.width = percent + "%";
+      svg.style.height = "auto";
+      svg.style.maxWidth = "none";
+    });
+  }
+
+  function setZoom(percent, persist) {
+    ui.zoom = clampZoom(percent);
+    if (persist !== false) writeSavedZoom(ui.zoom);
+    applyZoom();
+  }
+
   function currentDiagram() {
     if (ui.diagram) return normalizeDiagram(ui.diagram.getAttribute("data-diagram"));
     return readSavedDiagram();
@@ -4823,6 +5083,7 @@
     saveWatch: 0,
     savedNote: false,
     textVisible: true,
+    zoom: ZOOM_DEFAULT,
     scrollRaf: 0,
     scrollGoal: null,
     sourceAnchors: null,
@@ -4995,6 +5256,9 @@
       ".yue-jp-bar button:disabled{opacity:.35;cursor:default;}",
       ".yue-jp-bar button:disabled:hover{border-color:#d4d4d8;color:inherit;}",
       "html.dark .yue-jp-bar button:disabled:hover{border-color:rgba(255,255,255,.15);color:inherit;}",
+      ".yue-jp-zoom{display:inline-flex;align-items:center;gap:2px;margin:0 2px;}",
+      ".yue-jp-zoom .zoom-value{min-width:3.6em;padding:6px 4px;font-variant-numeric:tabular-nums;}",
+      ".yue-jp-zoom .zoom-step{padding:6px 7px;}",
       ".yue-jp-bar button.primary{border:0;background:linear-gradient(to right,#f97316,#db2777);",
       "color:#fff;font-weight:700;}",
       ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
@@ -5066,7 +5330,7 @@
       ".yue-jp-text textarea::-moz-selection{background:#ec4899;color:#fff;}",
       ".yue-jp-text textarea:focus{outline:none;}",
       ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#71717a;}",
-      ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
+      ".yue-jp-paper svg{display:block;width:100%;max-width:none;height:auto;margin:0 auto;",
       "user-select:none;-webkit-user-select:none;}",
       ".yue-jp-paper svg path,.yue-jp-paper svg line{pointer-events:none;}",
       ".yue-jp-paper svg g.diag,.yue-jp-paper svg g.diag *{pointer-events:auto;cursor:pointer;}",
@@ -5136,6 +5400,11 @@
       '<span class="yue-jp-capo"></span>',
       '<label><span data-i18n="jpOriginalKey"></span> <b class="yue-jp-orig-key"></b></label>',
       '<span class="yue-jp-meta-tempo"></span>',
+      '</span>',
+      '<span class="yue-jp-zoom" role="group" data-i18n-aria="jpZoomGroup">',
+      '<button type="button" class="zoom-step" data-act="zoom-out" data-i18n-aria="jpZoomOut" data-i18n-title="jpZoomOut">−</button>',
+      '<button type="button" class="zoom-value" data-act="zoom-reset" data-i18n-aria="jpZoomReset" data-i18n-title="jpZoomReset">' + ZOOM_DEFAULT + '%</button>',
+      '<button type="button" class="zoom-step" data-act="zoom-in" data-i18n-aria="jpZoomIn" data-i18n-title="jpZoomIn">+</button>',
       '</span>',
       '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_OFF_ICON + "</button>",
       '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
@@ -5249,6 +5518,9 @@
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
       else if (act === "diagram") cycleDiagram();
+      else if (act === "zoom-in") setZoom(ui.zoom + ZOOM_STEP, true);
+      else if (act === "zoom-out") setZoom(ui.zoom - ZOOM_STEP, true);
+      else if (act === "zoom-reset") setZoom(ZOOM_DEFAULT, true);
       else if (act === "lead") openLeadWindow();
       else if (act === "print") printJianpu();
       else if (act === "text") setTextVisible(ui.textVisible === false);
@@ -5359,6 +5631,9 @@
         }
         if (ui.text && event.target === ui.text) return;
         if (ui.split && event.target === ui.split) return;
+        const field = event.target;
+        if (field && (field.tagName === "INPUT" || field.tagName === "SELECT"
+          || field.isContentEditable)) return;
         onKey(event);
       });
     }
@@ -5714,6 +5989,7 @@
         { label: m("jpAddBeat"), title: m("jpAddBeatTitle"), attrs: { act: "add-beat" } },
         { label: m("jpInsertBar"), title: m("jpInsertBarTitle"), attrs: { act: "insert-bar" } },
         { label: m("jpDeleteBar"), title: m("jpDeleteBarTitle"), attrs: { act: "delete-bar" } },
+        { label: m("jpDeleteNote"), title: m("jpDeleteNoteTitle"), attrs: { act: "delete-note" } },
         { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
       ],
     ];
@@ -5872,7 +6148,8 @@
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
     if (act === "tie" || act === "sustain"
         || act === "downbeat" || act === "reflow" || act === "join"
-        || act === "add-beat" || act === "insert-bar" || act === "delete-bar") return { op: act };
+        || act === "add-beat" || act === "insert-bar" || act === "delete-bar"
+        || act === "delete-note") return { op: act };
     return null;
   }
 
@@ -6262,6 +6539,7 @@
     const frame = host.getBoundingClientRect();
     if (box.top < frame.top + 4) host.scrollTop -= frame.top + 4 - box.top;
     else if (box.bottom > frame.bottom - 4) host.scrollTop += box.bottom - (frame.bottom - 4);
+    nudgeAcross(host, box, frame);
   }
 
   function headFor(mark) {
@@ -6720,6 +6998,7 @@
     }
     ui.scoreSvg = svg;
     ui.paper.innerHTML = svg || ('<p>' + m('jpEmpty') + '</p>');
+    applyZoom();
     if (diagram !== DIAGRAM_OFF && svg.indexOf('class="diag"') < 0 && /"[A-G]/.test(ui.abc)) {
       if (!diagReady()) { ui.statusSticky = true; setStatus(m('jpDiagMissing')); }
     }
@@ -7259,7 +7538,7 @@
     if (key === ".") return { op: "duration", factor: 1.5 };
     if (key === "-") return { op: "sustain" };
     if (key === "t") return { op: "tie" };
-    if (key === "Delete" || key === "Backspace") return { op: "delete" };
+    if (key === "Delete" || key === "Backspace") return { op: "delete-note" };
     if (key === "+") return { op: "insert" };
     return null;
   }
@@ -7758,6 +8037,8 @@
       setStatus(playHint());
       if (ui.clock) ui.clock.textContent = "0:00";
       ui.root.hidden = false;
+      ui.zoom = readSavedZoom();
+      applyZoom();
       ui.textVisible = readSavedTextVisible();
       syncTextVisible();
       syncLeadButton();
@@ -7844,6 +8125,8 @@
     easeScrollStep: easeScrollStep,
     compareJianpuNotes: compareJianpuNotes,
     clampTextWidth: clampTextWidth,
+    clampZoom: clampZoom,
+    zoomLabel: zoomLabel,
     open: open,
     setStrings: setStrings,
     applyChrome: applyChrome,
