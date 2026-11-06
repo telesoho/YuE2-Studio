@@ -1,0 +1,398 @@
+808	драм-машина 808
+accelerating	с ускорением
+acoustic guitar	акустическая гитара
+acoustic piano	акустическое фортепиано
+active electric bass	активная бас-гитара
+aggressive	агрессивно
+airy reverb and delay	воздушные реверберация и дилей
+alto recorder	альтовая блок-флейта
+ambient	эмбиент
+andalusian accent	андалусский акцент
+angsty	тревожно, подростковая тоска
+anime	аниме
+anime opening	опенинг аниме
+anthemic	гимн, с размахом
+anthemic crowd vocals	гимновый хор толпы
+anticipation	предвкушение
+AOR classic rock	классический рок AOR
+appalachian revival feel	дух аппалачского возрождения
+arena rock	стадионный рок
+atmosphere	атмосфера
+atmospheric	атмосферно
+autotune	автотюн
+autotune accents	акценты автотюна
+background vocals	бэк-вокал
+ballad	баллада
+ballad pop	поп-баллада
+banjo	банджо
+baritone	баритон
+bass	бас
+bass clarinet	бас-кларнет
+bass pattern	басовый рисунок
+belted vocals	вокал в полный голос (белтинг)
+bicycle horn	велосипедный гудок
+blues	блюз
+bold	смело
+boogie piano	фортепиано в стиле буги
+boogie-woogie piano	фортепиано буги-вуги
+bouncing	пружинисто
+brass punches	акценты духовых
+bright	ярко
+bright close chords	яркие тесные аккорды
+bright steelpan	звонкий стилпан
+bright tone	яркий тембр
+brushed drums	барабаны щётками
+call and response vocals	вокал «вопрос — ответ»
+carefree summer energy	беззаботная летняя энергия
+catchy	цепляюще
+catchy chant hook	цепляющий припев-кричалка
+cathedral choir swells	нарастания соборного хора
+celebratory	празднично
+cello	виолончель
+chinese epic rock	китайский эпический рок
+chinese pop	китайский поп
+chinese traditional folk	китайская народная музыка
+chopped vocal hooks	нарезанные вокальные хуки
+cinematic	кинематографично
+cinematic rock	кинематографичный рок
+cinematic strings	кинематографичные струнные
+city pop	сити-поп
+clarinet	кларнет
+classic	классика
+classic country	классическое кантри
+classic rock	классический рок
+clean guitar chord stabs	короткие чистые гитарные аккорды
+clean pop drum groove	чистый поп-грув барабанов
+close-mic	близкий микрофон
+club anthem	клубный гимн
+comedic	комично
+comedy rock	комедийный рок
+comfortable	уютно
+congas	конги
+contemporary christian	современная христианская музыка
+contemporary country	современное кантри
+country	кантри
+crisp hi-hats	чёткие хай-хэты
+crowd-shout hooks	хуки с выкриками толпы
+cute	мило
+cyberpunk atmosphere	атмосфера киберпанка
+cymbals	тарелки
+dance music	танцевальная музыка
+dance pop	танцевальный поп
+dance-floor fire	огонь на танцполе
+danceable	танцевально
+dark cabaret	мрачное кабаре
+decelerating	с замедлением
+deep sub-bass	глубокий саб-бас
+disco	диско
+distorted guitars	перегруженные гитары
+DJ	диджей
+double-kick drums	двойная бочка
+dramatic	драматично
+dramatic crescendos	драматичные крещендо
+dreamy	мечтательно
+driving bass	напористый бас
+driving palm-muted electric guitars	напористые глушёные электрогитары
+driving rhythm	напористый ритм
+driving rhythm section	напористая ритм-секция
+drum kit	ударная установка
+drums	барабаны
+duet	дуэт
+dynamic	динамично
+electric guitar	электрогитара
+electric guitar chords	аккорды электрогитары
+electric piano	электропиано
+electro swing	электросвинг
+electronic	электроника
+electronic drums	электронные барабаны
+electronic textures	электронные фактуры
+emotion	эмоция
+emotional	эмоционально
+emotional and expressive	эмоционально и выразительно
+emotional and intimate atmosphere	эмоциональная, интимная атмосфера
+emotional storytelling	эмоциональный рассказ
+energetic	энергично
+energetic and joyful	энергично и радостно
+english	английский язык
+epic	эпично
+escalating tension	нарастающее напряжение
+ethereal	воздушно, неземно
+eurobeat	евробит
+excited	возбуждённо
+explosive chorus	взрывной припев
+expressive and melodic	выразительно и мелодично
+expressive female voice	выразительный женский голос
+expressive tone	выразительный тембр
+fading into silence	затухание в тишину
+fast pace	быстрый темп
+fast tempo	быстрый темп
+fast violin	быстрая скрипка
+female	женский голос
+female vocals	женский вокал
+festive rhythm	праздничный ритм
+fiddle	народная скрипка
+final chorus	финальный припев
+finger snaps	щелчки пальцами
+fingerstyle jazz guitar	джазовая гитара пальцами
+flamenco gipsy female vocals	цыганский женский вокал фламенко
+flamenco guitar	гитара фламенко
+folk	фолк
+funk	фанк
+funk soul	фанк-соул
+funky bass	фанковый бас
+funky house	фанки-хаус
+fusion	фьюжн
+futuristic	футуристично
+gentle filter movement	мягкое движение фильтра
+gentle rhythm	мягкий ритм
+good time country	весёлое кантри
+gorgeous	роскошно
+grand piano	рояль
+gritty english lead vocal	шершавый английский ведущий вокал
+groovy	грувово
+groovy bass	грувовый бас
+groovy soulful jazz-funk	грувовый душевный джаз-фанк
+growling	гроулинг
+guitar	гитара
+guitar solo	гитарное соло
+halftime bridge switch	переход бриджа в половинный размер
+hammond organ	орган Хаммонд
+happy	радостно
+happy mood	радостное настроение
+harmonica	губная гармошка
+harmonized vocals	вокал на голоса
+harmony	гармония
+harsh screamed vocals	жёсткий скрим
+heartbreak	разбитое сердце
+heartfelt	искренне
+heavy drums	тяжёлые барабаны
+heavy metal	хеви-метал
+heavy metal rock	хеви-метал рок
+high tenor	высокий тенор
+honking sax section	крикливая секция саксофонов
+honky tonk	хонки-тонк
+honky-tonk piano	фортепиано хонки-тонк
+humorous	с юмором
+husky voice	хрипловатый голос
+infectious finish	заразительный финал
+inspiring	вдохновляюще
+instrumental	инструментал
+intellectual satire mood	интеллектуальная сатира
+intense	напряжённо
+intimate mandarin male vocal	интимный мужской вокал на путунхуа
+intimate piano ballad	интимная фортепианная баллада
+ironic	иронично
+j-eurobeat	японский евробит
+j-heavymetal	японский хеви-метал
+j-pop	джей-поп
+japanese	японский язык
+jazz ballad	джазовая баллада
+jazz fusion	джаз-фьюжн
+jazz manouche	джаз-мануш
+joyful	радостно
+joyful energy	радостная энергия
+joyful male harmonies	радостные мужские голоса
+keyboard	клавишные
+latin pop	латин-поп
+layered but spacious	многослойно, но просторно
+layered harmonies	многослойные гармонии
+layered vocal harmonies	многослойные вокальные гармонии
+less drum	меньше барабанов
+light pop	лёгкий поп
+live vocal style	живой вокал
+lively fiddle	живая народная скрипка
+lush orchestral strings	пышные оркестровые струнные
+lush riffs	пышные риффы
+lyrical memorable melody	лиричная запоминающаяся мелодия
+male lead vocal	мужской ведущий вокал
+male singer	певец
+male vocals	мужской вокал
+male voice	мужской голос
+mandarin	путунхуа (китайский)
+mandarin child-and-adult unison vocals	детский и взрослый вокал в унисон на путунхуа
+mandolin	мандолина
+mediterranean vibe	средиземноморское настроение
+medium beat	средний бит
+medium tempo	средний темп
+medium tempo southern gospel	южный госпел в среднем темпе
+melodic	мелодично
+melodic bassline	мелодичная басовая линия
+melodic rap	мелодичный рэп
+metal	метал
+metallic vocal fx	металлический эффект на голосе
+mezzo-soprano female	меццо-сопрано
+middle tempo	средний темп
+minimal and clean arrangement	минималистичная чистая аранжировка
+minimal hi-hat pattern	минималистичный рисунок хай-хэта
+minor-key chamber folk	камерный фолк в миноре
+moderate groove	умеренный грув
+modern flamenco rap fusion	современный фьюжн фламенко и рэпа
+modern rock	современный рок
+muffled female vocals	приглушённый женский вокал
+muted trumpet	труба с сурдиной
+nature	природа
+neon city night	неоновая городская ночь
+neon light	неоновый свет
+neon pads	неоновые пэды
+neon-lit night drive	ночная поездка в неоне
+new age	нью-эйдж
+new orleans brass-funk	новоорлеанский брасс-фанк
+nostalgic	ностальгично
+obsessive	навязчиво
+orchestra jazz	оркестровый джаз
+overdriven guitar	гитара с овердрайвом
+overdriven organ	орган с овердрайвом
+pad	пэд
+palm-muted guitar riff	глушёный гитарный рифф
+palm-muted riffs	глушёные риффы
+palmas	пальмас (хлопки фламенко)
+peaceful	умиротворённо
+percussion	перкуссия
+piano	фортепиано
+piano stabs	короткие аккорды фортепиано
+pipa	пипа
+pizzicato strings	струнные пиццикато
+playful	игриво
+playful mandarin duet	игривый дуэт на путунхуа
+playful piano	игривое фортепиано
+polished and warm	отполированно и тепло
+pop ballad	поп-баллада
+pop music	поп-музыка
+pop vocal	поп-вокал
+pop-rock hit	поп-рок хит
+power metal	пауэр-метал
+powerful	мощно
+powerful belting	мощный белтинг
+powerful english vocal	мощный английский вокал
+powerful rhythm	мощный ритм
+pulsing melodic guitar	пульсирующая мелодичная гитара
+punchy bassline	упругая басовая линия
+punchy rock drums	упругие рок-барабаны
+punk	панк
+R&B	ритм-н-блюз
+R&B hook	хук в стиле ритм-н-блюз
+rap vocals	рэп-вокал
+rapid hi-hats	частые хай-хэты
+reflective bridge	задумчивый бридж
+reflective vocal phrase	задумчивая вокальная фраза
+reggaeton	реггетон
+retro	ретро
+retro-futuristic euphoria	ретрофутуристическая эйфория
+rhythm guitar	ритм-гитара
+rhythmic	ритмично
+rhythmic sense	чувство ритма
+risers	райзеры
+romantic	романтично
+romantic danceable	романтично и танцевально
+room reverb	комнатная реверберация
+rubbery bass	резиновый бас
+satirical mood	сатирическое настроение
+saxophone	саксофон
+second-line drums	барабаны новоорлеанского парада (second line)
+seductive	соблазнительно
+serene	безмятежно
+shaanxi opera	шэньсийская опера (циньцян)
+sharp lyrics	острые слова
+shimmering guitars	мерцающие гитары
+shiny archtop chops	звонкие отрывистые аккорды архтопа
+simple and memorable	просто и запоминается
+simple drums	простые барабаны
+sleigh bells	бубенцы
+slow	медленно
+slow tempo	медленный темп
+sly and theatrical	лукаво и театрально
+smiling	с улыбкой
+smooth	гладко
+smooth male vocals	мягкий мужской вокал
+smooth R&B bounce	мягкий ритм-н-блюз грув
+soaring retro synth leads	парящие ретро-синтезаторы
+soft	мягко
+soft and bright	мягко и ярко
+soft and slightly fragile	мягко и чуть хрупко
+soft low-pass	мягкий фильтр низких частот
+solo	соло
+soul music	соул
+soul-blues	соул-блюз
+soulful	душевно
+soulful and lively	душевно и живо
+sousaphone	сузафон
+southern soul	южный соул
+spirited	задорно
+spiritual	духовно
+sprung rhythm	пружинистый ритм
+stacked harmonies	наложенные гармонии
+static noise	статический шум
+steel guitar	стил-гитара
+storytelling	повествование
+strange	странно
+street spirit	уличный дух
+strong harmony choruses	припевы с сильными гармониями
+strong rhythm	сильный ритм
+studio quality	студийное качество
+sub-bass	саб-бас
+subtle chorus width	лёгкая ширина хоруса
+sung-rap verses in punjabi	напевный рэп на панджаби в куплетах
+super eurobeat	супер евробит
+surprise	сюрприз
+sweet vibe	сладкое настроение
+swing jazz	свинг-джаз
+swirling arps	кружащиеся арпеджио
+symphony	симфония
+syncopated acoustic guitar	синкопированная акустическая гитара
+syncopated claps	синкопированные хлопки
+synth	синтезатор
+synth bass	синтезаторный бас
+synth stabs	короткие аккорды синтезатора
+synth-pop	синти-поп
+synth-pop production	продакшн в стиле синти-поп
+synthesizer	синтезатор
+teen pop	подростковый поп
+tenor	тенор
+tenor saxophone	тенор-саксофон
+theatrical hard rock	театральный хард-рок
+tight live rhythm section	плотная живая ритм-секция
+tight punchy kick	плотная упругая бочка
+toy piano	игрушечное пианино
+trio vocals	вокальное трио
+triumph	триумф
+trombone and baritone sax	тромбон и баритон-саксофон
+trumpet stabs	акценты трубы
+UK garage bounce	грув британского гэриджа
+UK pop rap	британский поп-рэп
+unhurried phrasing	неспешная фразировка
+upbeat	бодро
+upbeat but sad melody	бодрая, но грустная мелодия
+upbeat christian country song	бодрая христианская кантри-песня
+upbeat disco funk	бодрый диско-фанк
+upbeat gospel bluegrass style	бодрый госпел-блюграсс
+upbeat production	бодрый продакшн
+upbeat saxophone riff	бодрый рифф саксофона
+uplifting	воодушевляюще
+uplifting and emotional	воодушевляюще и эмоционально
+upright bass	контрабас
+upright bass driving rhythm	напористый ритм контрабаса
+urban strings	городские струнные
+vibrant and organic production	живой, естественный продакшн
+vibrato	вибрато
+vintage	винтаж
+vintage motown soul duet	винтажный соул-дуэт Motown
+vintage nightclub vibe	атмосфера старого ночного клуба
+violin	скрипка
+viral	вирусно
+virtuoso	виртуозно
+wah-wah electric guitar riff	рифф электрогитары с вау-вау
+walking upright slap	шагающий контрабас со слэпом
+warm	тепло
+warm analog production	тёплый аналоговый продакшн
+warm analog texture	тёплая аналоговая фактура
+warm electric bass	тёплая бас-гитара
+warm english vocal	тёплый английский вокал
+warm piano	тёплое фортепиано
+warm piano pop	тёплый фортепианный поп
+warm tone	тёплый тембр
+water FX	звуки воды
+wavesynth layers	слои волнового синтезатора
+well-defined rhythm	чёткий ритм
+wide stereo image	широкая стереопанорама
+xylophone	ксилофон
+youthful street energy	юная уличная энергия

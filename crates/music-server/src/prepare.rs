@@ -299,6 +299,41 @@ pub async fn set_train_after(State(state): State<AppState>, Json(request): Json<
 /// assistant, the style is what MOSS heard. For a cover of a song that came
 /// without one, an imported recording.
 pub async fn describe_song_style(State(state): State<AppState>, Path(song_id): Path<String>) -> Result<Json<serde_json::Value>, (StatusCode, Json<ApiError>)> {
+    let song = state.library.get_song(&song_id).map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}")))?
+        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, format!("no library song {song_id}")))?;
+    let audio = state.library.media_path_for_song(&song).ok_or_else(|| api_error(StatusCode::BAD_REQUEST, format!("{} has no audio", song.title)))?;
+    describe_style_of(&state, audio, &song.lyrics).await
+}
+
+/// The style of a recording the cover form took from disk (`audio` part), by
+/// ear as for a library song; `lyrics` are the form's words.
+pub async fn describe_recording_style(State(state): State<AppState>, mut multipart: axum::extract::Multipart) -> Result<Json<serde_json::Value>, (StatusCode, Json<ApiError>)> {
+    let mut audio: Option<(Vec<u8>, String)> = None;
+    let mut lyrics = String::new();
+    while let Some(field) = multipart.next_field().await.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))? {
+        match field.name().unwrap_or_default() {
+            "audio" => {
+                let name = field.file_name().unwrap_or("recording.wav").to_owned();
+                let bytes = field.bytes().await.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?;
+                audio = Some((bytes.to_vec(), name));
+            }
+            "lyrics" => lyrics = field.text().await.map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?,
+            _ => {}
+        }
+    }
+    let (bytes, name) = audio.ok_or_else(|| api_error(StatusCode::BAD_REQUEST, "Send the recording as an audio part.".into()))?;
+    if bytes.is_empty() {
+        return Err(api_error(StatusCode::BAD_REQUEST, "The audio is empty.".into()));
+    }
+    let extension = std::path::Path::new(&name).extension().and_then(|value| value.to_str()).unwrap_or("wav").to_ascii_lowercase();
+    let path = std::env::temp_dir().join(format!("yue2-describe-{}.{extension}", uuid::Uuid::new_v4().simple()));
+    tokio::fs::write(&path, &bytes).await.map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("write {}: {error}", path.display())))?;
+    let described = describe_style_of(&state, path.clone(), &lyrics).await;
+    let _ = tokio::fs::remove_file(&path).await;
+    described
+}
+
+async fn describe_style_of(state: &AppState, audio: std::path::PathBuf, lyrics: &str) -> Result<Json<serde_json::Value>, (StatusCode, Json<ApiError>)> {
     if !state.training.listen_ready() {
         return Err(api_error(StatusCode::CONFLICT, "auto-describe (MOSS-Music) is not installed; install it on the training page".into()));
     }
@@ -307,13 +342,10 @@ pub async fn describe_song_style(State(state): State<AppState>, Path(song_id): P
     if state.training.active_run().await.is_some() || state.prepare.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref().is_some_and(|job| !job.finished) {
         return Err(api_error(StatusCode::CONFLICT, "the card is training or preparing songs; describe once it is free".into()));
     }
-    let song = state.library.get_song(&song_id).map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, format!("{error:#}")))?
-        .ok_or_else(|| api_error(StatusCode::NOT_FOUND, format!("no library song {song_id}")))?;
-    let audio = state.library.media_path_for_song(&song).ok_or_else(|| api_error(StatusCode::BAD_REQUEST, format!("{} has no audio", song.title)))?;
 
-    let hooks = crate::card_hooks(&state).await;
+    let hooks = crate::card_hooks(state).await;
     (hooks.take)().await;
-    crate::release_assistant_unless_kept(&state).await;
+    crate::release_assistant_unless_kept(state).await;
     let heard = async {
         if crate::hardware::hardware().cuda == Some(crate::hardware::CudaBuild::Cuda13) {
             state.engine_runtime.install_missing(Some(crate::hardware::CudaBuild::Cuda13)).await.context("install cuBLAS for the captioner")?;
@@ -323,7 +355,7 @@ pub async fn describe_song_style(State(state): State<AppState>, Path(song_id): P
             let facts = audio_facts::Measurer::load(&facts_dir, card)?.measure_mono(&audio_facts::decode(&audio)?)?;
             let cancel = AtomicBool::new(false);
             let mut caption: Option<anyhow::Result<String>> = None;
-            listen::hear_batch(&captioner, &moss, Some(&libraries), std::slice::from_ref(&audio), &cancel, |_, heard| caption = Some(heard))?;
+            listen::hear_batch(&captioner, &moss, &listen::hearing(&crate::hardware::hardware()), Some(&libraries), std::slice::from_ref(&audio), &cancel, |_, heard| caption = Some(heard))?;
             let caption = caption.context("MOSS-Music wrote nothing for the song")??;
             Ok((listen::heard(&caption, &facts)?, facts))
         })
@@ -335,9 +367,9 @@ pub async fn describe_song_style(State(state): State<AppState>, Path(song_id): P
 
     let note = training::HeardNote { genre: heard.genre.clone(), caption: heard.caption.clone(), bpm: facts.bpm };
     let style = if state.assistant.read().await.available() {
-        let instrumental = song.lyrics.trim().is_empty();
-        let written = write_style(&state, &heard, &facts, &song.lyrics, instrumental).await;
-        crate::release_assistant_unless_kept(&state).await;
+        let instrumental = lyrics.trim().is_empty();
+        let written = write_style(state, &heard, &facts, lyrics, instrumental).await;
+        crate::release_assistant_unless_kept(state).await;
         written.map_err(|error| api_error(StatusCode::BAD_GATEWAY, error))?
     } else {
         heard_style(&note)
@@ -811,7 +843,7 @@ async fn listen_branch(state: &AppState, job: &Job, style_items: &[&training::Da
         let (training, dataset_id, task_ids, task_job) = (state.training.clone(), id.to_string(), ids.clone(), job.clone());
         let libraries = crate::engine_bundle_root();
         let log = tokio::task::spawn_blocking(move || {
-            listen::hear_batch(&captioner, &moss, Some(&libraries), &audio, &task_cancel, |index, caption| {
+            listen::hear_batch(&captioner, &moss, &listen::hearing(&crate::hardware::hardware()), Some(&libraries), &audio, &task_cancel, |index, caption| {
                 let item = &task_ids[index];
                 let measured = loop {
                     if let Some(measured) = task_facts.lock().unwrap_or_else(|poisoned| poisoned.into_inner())[index].clone() {
@@ -996,6 +1028,7 @@ pub(crate) async fn lay_out_lyrics(state: &AppState, transcript: &str, target: a
         style: String::new(),
         abc: String::new(),
         duration_seconds: 0.0,
+        locale: String::new(),
     };
     // a published sheet's words are exact: the assistant marks where its
     // sections start, and the sheet's own lines go under the tags

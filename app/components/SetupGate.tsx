@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { openRouterSettingsChanged } from '../services/studioQueries';
+import { openRouterSettingsChanged, SELF_READ } from '../services/studioQueries';
 import { Check, ChevronDown, Download, FolderDown, FolderOpen, Loader2, Square, Trash2, X } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import { DevicePicker, type Device } from './DevicePicker';
+import { ManualDownloads } from './ManualDownloads';
+import { UpdatePlanView } from './UpdateScreen';
+import { MirrorOffer } from './MirrorOffer';
 import { AssistantExtras } from './AssistantSettings';
 import { KaraokeExtras } from './KaraokeSettings';
 import { HubTelemetryPreview } from './HubTelemetryPreview';
@@ -53,6 +56,10 @@ type SetupStatus = {
   active: DownloadJob | null;
   installed_components: string[];
   data_directory?: string | null;
+  /** Where the model files go. */
+  model_root?: string | null;
+  /** Whether downloads take Hugging Face files from HF-Mirror. */
+  huggingface_mirror?: boolean;
   portable?: boolean;
   /** Models taken from another program of timoncool's in this run instead of being downloaded, by id. */
   taken_from?: Record<string, { app: string; file: string }>;
@@ -85,6 +92,17 @@ type OptionalStatus = {
 };
 
 const bytes = (value: number) => (value < 1024 ** 3 ? `${Math.round(value / 1024 ** 2)} MB` : `${(value / 1024 ** 3).toFixed(1)} GB`);
+
+/** A model file "use models I already have" left in the chosen folder, and why. */
+interface AdoptRefusal {
+  file: string;
+  kind: 'size' | 'unknown' | 'copy';
+  size?: number;
+  needs?: number;
+  repository?: string;
+  revision?: string;
+  error?: string;
+}
 
 const errorMessage = async (response: Response) => {
   const body = await response.json().catch(() => null);
@@ -159,6 +177,7 @@ export const OptionalGroup: React.FC<{
   const [engine, setEngine] = useState<string>(engines?.[0]?.id ?? '');
   const [device, setDevice] = useState<Device>('cuda');
   const [model, setModel] = useState('');
+  const [savingModel, setSavingModel] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [keyStored, setKeyStored] = useState(false);
 
@@ -166,10 +185,13 @@ export const OptionalGroup: React.FC<{
   // taking its provider again undid a choice the user had just made.
   const choiceRead = useRef(false);
   const modelRead = useRef(false);
+  const statusGeneration = useRef(0);
   const load = useCallback(async () => {
-    const response = await fetch(statusUrl);
+    const generation = statusGeneration.current;
+    const response = await fetch(statusUrl, { headers: SELF_READ });
     if (response.ok) {
       const body = await response.json();
+      if (generation !== statusGeneration.current) return;
       setStatus(body);
       const savedEngine = body.provider ?? body.settings?.engine;
       if (!choiceRead.current && savedEngine && engines?.some((choice) => choice.id === savedEngine)) {
@@ -184,7 +206,9 @@ export const OptionalGroup: React.FC<{
         setModel(body.chosen_model);
       }
       if (body.settings?.runtime) setDevice(body.settings.runtime);
+      return body;
     }
+    throw new Error(await errorMessage(response));
   }, [statusUrl, engines]);
 
   /// The engine and the device are a setting before they are a download: they
@@ -239,13 +263,13 @@ export const OptionalGroup: React.FC<{
   // at nought for ever.
   useEffect(() => {
     if (!starting) return;
-    if (status?.active_download && !status.active_download.done) {
-      setStarting(false);
-      return;
-    }
     const timer = window.setTimeout(() => setStarting(false), 8000);
     return () => window.clearTimeout(timer);
-  }, [status, starting]);
+  }, [starting]);
+
+  useEffect(() => {
+    if (status?.set?.ready || (status?.active_download && !status.active_download.done)) setStarting(false);
+  }, [status]);
 
   const assets = status?.assets ?? [];
   if (assets.length === 0) return null;
@@ -253,7 +277,7 @@ export const OptionalGroup: React.FC<{
   // Ready means what the server says the chosen engine needs is on disk. A
   // runtime shared with another role (the karaoke's ONNX and CUDA libraries
   // serve the stem separator too) is not the role being installed.
-  const roleReady = status?.set ? status.set.ready : assets.some((asset) => asset.kind === 'model' && asset.installed);
+  const roleReady = !savingModel && (status?.set ? status.set.ready : assets.some((asset) => asset.kind === 'model' && asset.installed));
   // The models the chosen engine can run. A recogniser or an assistant is a
   // runtime plus one of these; the runtime is the studio's business, the model
   // is the user's choice.
@@ -391,7 +415,9 @@ export const OptionalGroup: React.FC<{
               const percent = running && running.total_bytes > 0
                 ? Math.min(100, Math.round((running.downloaded_bytes / running.total_bytes) * 100))
                 : setBytes > 0 ? Math.min(100, Math.round((haveBytes / setBytes) * 100)) : 0;
-              const ready = setBytes > 0 && haveBytes >= setBytes;
+              // The server includes the runtime and custom model paths in
+              // readiness; catalog bytes alone cannot establish either.
+              const ready = !savingModel && (status?.set?.ready ?? (setBytes > 0 && haveBytes >= setBytes));
               return (
                 // One row, the way Dub Studio states it: what this is, what it
                 // weighs, whether it is here, which variant, and the two
@@ -410,6 +436,7 @@ export const OptionalGroup: React.FC<{
                     {models.length > 1 && (
                       <select
                         value={chosenModel}
+                        disabled={savingModel}
                         onChange={(event) => {
                           setModel(event.target.value);
                           // Which model was picked is a setting, not a detail of
@@ -427,11 +454,43 @@ export const OptionalGroup: React.FC<{
                                 ? 'managed_model'
                                 : null;
                           if (settingsUrl && field) {
-                            void fetch(settingsUrl, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ [field]: event.target.value }),
-                            }).catch(() => undefined);
+                            const nextModel = event.target.value;
+                            setFailed(null);
+                            setSavingModel(true);
+                            // A poll for the old selection may still be pending.
+                            statusGeneration.current++;
+                            void (async () => {
+                              try {
+                                const response = await fetch(settingsUrl, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ [field]: nextModel }),
+                                });
+                                if (!response.ok) throw new Error(await errorMessage(response));
+                              } catch (error) {
+                                setFailed((error as Error).message);
+                                setModel(chosenModel);
+                              }
+                              // Invalidate polls started while the write was
+                              // pending too, before loading the saved choice.
+                              statusGeneration.current++;
+                              try {
+                                const refreshed = await load();
+                                // A rejected write may leave a different saved
+                                // model; align the picker with the server too.
+                                if (refreshed?.chosen_model) setModel(refreshed.chosen_model);
+                              } catch (error) {
+                                setFailed((error as Error).message);
+                                // The previous status describes the old choice.
+                                // A failed refresh cannot certify the new one.
+                                setStatus((current) => current && {
+                                  ...current,
+                                  set: { bytes: 0, installed_bytes: 0, files: 0, ...current.set, ready: false },
+                                });
+                              } finally {
+                                setSavingModel(false);
+                              }
+                            })();
                           }
                         }}
                         className="shrink-0 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] tabular-nums text-zinc-800 outline-hidden focus:border-pink-400 dark:border-white/10 dark:bg-black/20 dark:text-zinc-100"
@@ -476,12 +535,13 @@ export const OptionalGroup: React.FC<{
                               body: JSON.stringify({ asset_id: localEngines.length === 1 ? device : engine, model_id: chosenModel || undefined }),
                             })
                               .then(async (response) => {
-                                if (!response.ok) setFailed(await errorMessage(response));
+                                if (!response.ok) { setStarting(false); setFailed(await errorMessage(response)); }
                                 return load();
                               })
-                              .catch((error: Error) => setFailed(error.message));
+                              .catch((error: Error) => { setStarting(false); setFailed(error.message); });
                           }}
                           title={t('download')}
+                          disabled={savingModel}
                           className="shrink-0 rounded-md border border-zinc-300 p-1.5 text-zinc-600 transition-colors hover:border-pink-400 hover:bg-pink-500/10 hover:text-pink-600 dark:border-white/15 dark:text-zinc-300"
                         >
                           <Download size={13} />
@@ -681,11 +741,13 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
   const { t } = useI18n();
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [choice, setChoice] = useState<Record<string, string>>({});
   const chosenValues = useMemo(() => Object.values(choice).filter((id): id is string => typeof id === 'string' && id.length > 0), [choice]);
   const [error, setError] = useState<string | null>(null);
   // what taking the user's own model folder did: files taken, copies made, what is still missing
   const [adoptNote, setAdoptNote] = useState<string | null>(null);
+  const [adoptRefused, setAdoptRefused] = useState<AdoptRefusal[]>([]);
   // the training page's packs are listed here too, with everything else the studio downloads
   const [trainingInfo, setTrainingInfo] = useState<{ min_vram_gb: number; card_trains: boolean } | null>(null);
   useEffect(() => {
@@ -697,7 +759,7 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
   }, [mode]);
 
   const refresh = useCallback(async () => {
-    const response = await fetch('/setup/status');
+    const response = await fetch('/setup/status', { headers: SELF_READ });
     if (!response.ok) throw new Error(await errorMessage(response));
     const next: SetupStatus = await response.json();
     setStatus(next);
@@ -840,11 +902,30 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
         </p>
 
         {mode === 'settings' && <WhereItRuns trainingVram={trainingInfo?.min_vram_gb ?? null} />}
+        {mode === 'settings' && (
+          <details className="group mt-4 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-white/10 dark:bg-suno-card" onToggle={(event) => setUpdateOpen(event.currentTarget.open)}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-white/5">
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-zinc-900 dark:text-white">{t('updateSettingsEntry')}</span>
+                <span className="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">{t('updateSettingsHint')}</span>
+              </span>
+              <ChevronDown size={15} className="shrink-0 text-zinc-500 transition-transform group-open:rotate-180" />
+            </summary>
+            {updateOpen && <div className="border-t border-zinc-100 p-4 dark:border-white/5"><UpdatePlanView onDone={() => void refresh().catch((problem: unknown) => setError(problem instanceof Error ? problem.message : String(problem)))} /></div>}
+          </details>
+        )}
 
         {error && (
           <div className="mt-5 flex gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
             <X size={16} className="mt-0.5 shrink-0" />{error}
           </div>
+        )}
+
+        {mode === 'first-run' && (
+          <MirrorOffer
+            recheck={status?.active?.status === 'failed' ? status.active.id : ''}
+            onSwitched={() => void refresh().catch((reason) => setError(reason.message))}
+          />
         )}
 
         {mode === 'first-run' && <div className="mt-5 rounded-xl border border-pink-300/50 bg-pink-50 px-4 py-3 text-sm text-zinc-700 dark:border-pink-500/25 dark:bg-pink-500/10 dark:text-zinc-200">
@@ -994,6 +1075,11 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
               );
             })}
             {!chosenIds && <p className="text-xs text-amber-600 dark:text-amber-300">{t('incompleteSet')}</p>}
+            <ManualDownloads
+              files={missing.flatMap((id) => catalog?.components.find((component) => component.id === id) ?? [])}
+              folder={status?.model_root}
+              mirror={status?.huggingface_mirror === true}
+            />
             {status?.taken_from && Object.keys(status.taken_from).length > 0 && (
               <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-[11px] leading-5 text-emerald-700 dark:text-emerald-300">
                 <p className="font-semibold">{t('takenNotice')}</p>
@@ -1027,8 +1113,9 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
                   onClick={() => {
                     void fetch('/setup/adopt', { method: 'POST' })
                       .then(async (response) => (response.ok ? response.json() : Promise.reject(new Error(await errorMessage(response)))))
-                      .then(async (body: { picked?: boolean; adopted?: string[]; copied?: { id: string; bytes: number }[] } | null) => {
+                      .then(async (body: { picked?: boolean; adopted?: string[]; copied?: { id: string; bytes: number }[]; refused?: AdoptRefusal[] } | null) => {
                         if (!body?.picked) return;
+                        setAdoptRefused(body.refused ?? []);
                         const next = await refresh();
                         const wanted = chosenIds ?? chosenValues;
                         const missing = (catalog?.components ?? []).filter((component) => wanted.includes(component.id) && !next.installed_components.includes(component.id));
@@ -1047,6 +1134,18 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
                   {t('useExistingModels')}
                 </button>
                 {adoptNote && <p className="mt-2 text-[11px] leading-4 text-zinc-600 dark:text-zinc-300">{adoptNote}</p>}
+                {adoptRefused.map((refusal) => (
+                  <p key={refusal.file} className="mt-1 break-all text-[11px] leading-4 text-amber-600 dark:text-amber-300">
+                    <span className="font-mono">{refusal.file}</span> — {refusal.kind === 'size'
+                      ? t('adoptRefusedSize')
+                          .replace('{size}', (refusal.size ?? 0).toLocaleString())
+                          .replace('{needs}', (refusal.needs ?? 0).toLocaleString())
+                          .replace('{source}', `huggingface.co/${refusal.repository ?? ''} @ ${(refusal.revision ?? '').slice(0, 7)}`)
+                      : refusal.kind === 'copy'
+                        ? t('adoptRefusedCopy').replace('{error}', refusal.error ?? '')
+                        : t('adoptRefusedUnknown')}
+                  </p>
+                ))}
               </div>
             )}
           </div>
@@ -1112,6 +1211,9 @@ export const SetupGate: React.FC<{ onReady?: () => void; mode?: 'first-run' | 's
             </label>
             <button type="button" onClick={() => setTelemetryPreview(true)} className="text-sm leading-5 text-zinc-600 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
               {t('hubTelemetryWhat')}
+            </button>
+            <button type="button" onClick={() => window.open('https://timoncool.github.io/YuE2-Studio/stats.html', '_blank', 'noreferrer')} className="text-sm leading-5 text-zinc-600 underline underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
+              {t('hubTelemetryStats')}
             </button>
             {telemetryPreview && <HubTelemetryPreview onClose={() => setTelemetryPreview(false)} />}
           </div>

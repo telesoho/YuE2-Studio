@@ -118,6 +118,8 @@ export interface TrainingState {
   active: string | null;
 }
 
+import { SELF_READ } from './studioQueries';
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (response.status === 204) return undefined as T;
@@ -132,7 +134,7 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-export const fetchTraining = () => call<TrainingState>('/v1/training');
+export const fetchTraining = () => call<TrainingState>('/v1/training', { headers: SELF_READ });
 export const installTrainingPack = () => call<void>('/v1/training/pack/install', { method: 'POST' });
 export const installListenPack = () => call<void>('/v1/training/listen/install', { method: 'POST' });
 export const cancelTrainingPack = () => call<void>('/v1/training/pack/cancel', { method: 'POST' });

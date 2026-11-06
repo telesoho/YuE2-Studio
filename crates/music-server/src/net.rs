@@ -64,6 +64,14 @@ pub struct ProxySettings {
     pub kind: ProxyKind,
 }
 
+/// The HF-Mirror address of a Hugging Face file, whether or not the mirror is chosen.
+/// The fork keeps the mirror as the Hub endpoint, so this asks HF-Mirror directly
+/// instead of reading a flag off the proxy settings.
+pub fn mirror_url(original: &str) -> String {
+    const HF_MIRROR: &str = "https://hf-mirror.com";
+    original.replace(OFFICIAL_HUB, HF_MIRROR)
+}
+
 const SCHEMES: [&str; 6] = ["http", "https", "socks5", "socks5h", "socks4", "socks4a"];
 
 fn port(text: &str) -> bool {
@@ -357,9 +365,13 @@ pub fn download_client() -> reqwest::Client {
 
 /// Whether Hugging Face, where the models come from, and OpenRouter answer
 /// through `settings`, before they are kept. An answer of any status counts;
-/// a connection that fails does not. The Hub mirror is checked separately.
+/// a connection that fails does not. Without a Hub endpoint chosen, HF-Mirror is
+/// asked too, so a window can offer it when Hugging Face does not answer. The
+/// fork keeps the mirror as the Hub endpoint (`HubSettings`), not as a proxy flag.
 pub async fn test(settings: ProxySettings) -> Result<serde_json::Value> {
     let settings = settings.validated()?;
+    let hub_url = hub_url("https://huggingface.co/api/models?limit=1");
+    let mirror_chosen = hub_settings().endpoint.is_some();
     let system = Matcher::from_system();
     let client = reqwest::Client::builder()
         .user_agent(user_agent())
@@ -375,15 +387,18 @@ pub async fn test(settings: ProxySettings) -> Result<serde_json::Value> {
             Ok::<(), String>(())
         }
     };
-    let (hub, openrouter) = tokio::join!(
-        reach("https://huggingface.co/api/models?limit=1".into(), false),
-        reach("https://openrouter.ai/api/v1/models".into(), true)
-    );
+let mirror = async {
+        if mirror_chosen { None } else { Some(reach(mirror_url("https://huggingface.co/api/models?limit=1"), false).await) }
+    };
+    let (hub, openrouter, mirror) = tokio::join!(reach(hub_url, false), reach("https://openrouter.ai/api/v1/models".into(), true), mirror);
     Ok(serde_json::json!({
         "huggingface": hub.is_ok(),
         "huggingface_error": hub.err(),
         "openrouter": openrouter.is_ok(),
         "openrouter_error": openrouter.err(),
+        "mirror_chosen": mirror_chosen,
+        "mirror": mirror.as_ref().map(|answer| answer.is_ok()),
+        "mirror_error": mirror.and_then(|answer| answer.err()),
     }))
 }
 
@@ -413,6 +428,37 @@ mod tests {
 
     fn custom(address: &str, kind: ProxyKind) -> ProxySettings {
         ProxySettings { mode: ProxyMode::Custom, address: Some(address.into()), kind, ..ProxySettings::default() }
+    }
+
+    // Rewritten for the fork: the mirror is the Hub endpoint, not a proxy flag.
+    #[test]
+    fn the_mirror_keeps_the_pinned_file_and_changes_hugging_face_alone() {
+        assert_eq!(
+            mirror_url("https://huggingface.co/org/repo/resolve/abc123/weights.gguf?download=true"),
+            "https://hf-mirror.com/org/repo/resolve/abc123/weights.gguf?download=true"
+        );
+        for original in ["https://openrouter.ai/api/v1/models", "https://github.com/a/b", "https://hf-mirror.com/a"] {
+            assert_eq!(mirror_url(original), original);
+        }
+    }
+
+    /// Nothing to ask while the Hub is the official one; a chosen endpoint is
+    /// never asked again, so the mirror flag says so.
+    #[tokio::test]
+    async fn the_check_asks_the_mirror_only_when_it_is_not_chosen() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = closed.local_addr().unwrap().to_string();
+        drop(closed);
+        let answer = test(custom(&address, ProxyKind::Http)).await.unwrap();
+        assert_eq!(answer["huggingface"], false);
+        assert_eq!(answer["mirror_chosen"], false);
+        assert_eq!(answer["mirror"], false);
+        assert!(answer["mirror_error"].is_string());
+        set_hub(HubSettings { endpoint: Some("https://hf-mirror.com".into()) });
+        let answer = test(custom(&address, ProxyKind::Http)).await.unwrap();
+        assert_eq!(answer["mirror_chosen"], true);
+        assert!(answer["mirror"].is_null());
+        set_hub(HubSettings::default());
     }
 
     #[test]

@@ -1,0 +1,398 @@
+808	808 드럼 머신
+accelerating	점점 빨라지는
+acoustic guitar	어쿠스틱 기타
+acoustic piano	어쿠스틱 피아노
+active electric bass	액티브 일렉트릭 베이스
+aggressive	공격적인
+airy reverb and delay	공기감 있는 리버브와 딜레이
+alto recorder	알토 리코더
+ambient	앰비언트
+andalusian accent	안달루시아 억양
+angsty	불안한 사춘기 감성
+anime	애니메이션풍
+anime opening	애니메이션 오프닝
+anthemic	찬가풍, 웅장한
+anthemic crowd vocals	찬가풍 떼창
+anticipation	기대감
+AOR classic rock	AOR 클래식 록
+appalachian revival feel	애팔래치아 리바이벌 느낌
+arena rock	아레나 록
+atmosphere	분위기
+atmospheric	분위기 있는
+autotune	오토튠
+autotune accents	오토튠 포인트
+background vocals	백그라운드 보컬
+ballad	발라드
+ballad pop	발라드 팝
+banjo	밴조
+baritone	바리톤
+bass	베이스
+bass clarinet	베이스 클라리넷
+bass pattern	베이스 패턴
+belted vocals	힘찬 벨팅 보컬
+bicycle horn	자전거 경적
+blues	블루스
+bold	대담한
+boogie piano	부기 피아노
+boogie-woogie piano	부기우기 피아노
+bouncing	통통 튀는
+brass punches	브라스 펀치
+bright	밝은
+bright close chords	밝은 밀집 화음
+bright steelpan	밝은 스틸팬
+bright tone	밝은 음색
+brushed drums	브러시 드럼
+call and response vocals	콜 앤 리스폰스 보컬
+carefree summer energy	걱정 없는 여름 에너지
+catchy	귀에 꽂히는
+catchy chant hook	귀에 꽂히는 구호 훅
+cathedral choir swells	대성당 합창의 고조
+celebratory	축제 같은
+cello	첼로
+chinese epic rock	중국 서사 록
+chinese pop	중국 팝
+chinese traditional folk	중국 전통 민속 음악
+chopped vocal hooks	잘게 자른 보컬 훅
+cinematic	영화 같은
+cinematic rock	시네마틱 록
+cinematic strings	시네마틱 현악
+city pop	시티 팝
+clarinet	클라리넷
+classic	클래식한
+classic country	클래식 컨트리
+classic rock	클래식 록
+clean guitar chord stabs	클린 기타 코드 스탭
+clean pop drum groove	깔끔한 팝 드럼 그루브
+close-mic	근접 마이킹
+club anthem	클럽 앤섬
+comedic	코믹한
+comedy rock	코미디 록
+comfortable	편안한
+congas	콩가
+contemporary christian	CCM, 현대 기독교 음악
+contemporary country	컨템퍼러리 컨트리
+country	컨트리
+crisp hi-hats	선명한 하이햇
+crowd-shout hooks	관중 함성 훅
+cute	귀여운
+cyberpunk atmosphere	사이버펑크 분위기
+cymbals	심벌즈
+dance music	댄스 음악
+dance pop	댄스 팝
+dance-floor fire	댄스 플로어를 달구는
+danceable	춤추기 좋은
+dark cabaret	다크 카바레
+decelerating	점점 느려지는
+deep sub-bass	깊은 서브 베이스
+disco	디스코
+distorted guitars	디스토션 기타
+DJ	DJ
+double-kick drums	더블 킥 드럼
+dramatic	극적인
+dramatic crescendos	극적인 크레셴도
+dreamy	몽환적인
+driving bass	추진력 있는 베이스
+driving palm-muted electric guitars	추진력 있는 팜뮤트 일렉트릭 기타
+driving rhythm	추진력 있는 리듬
+driving rhythm section	추진력 있는 리듬 섹션
+drum kit	드럼 키트
+drums	드럼
+duet	듀엣
+dynamic	다이내믹한
+electric guitar	일렉트릭 기타
+electric guitar chords	일렉트릭 기타 코드
+electric piano	일렉트릭 피아노
+electro swing	일렉트로 스윙
+electronic	일렉트로닉
+electronic drums	전자 드럼
+electronic textures	전자적 질감
+emotion	감정
+emotional	감성적인
+emotional and expressive	감성적이고 표현력 있는
+emotional and intimate atmosphere	감성적이고 친밀한 분위기
+emotional storytelling	감성적인 이야기 전개
+energetic	에너지 넘치는
+energetic and joyful	활기차고 즐거운
+english	영어
+epic	장대한
+escalating tension	고조되는 긴장감
+ethereal	천상의, 몽환적인
+eurobeat	유로비트
+excited	신나는
+explosive chorus	폭발적인 후렴
+expressive and melodic	표현력 있고 선율적인
+expressive female voice	표현력 있는 여성 목소리
+expressive tone	표현력 있는 음색
+fading into silence	정적 속으로 사라지는
+fast pace	빠른 진행
+fast tempo	빠른 템포
+fast violin	빠른 바이올린
+female	여성
+female vocals	여성 보컬
+festive rhythm	축제 리듬
+fiddle	피들
+final chorus	마지막 후렴
+finger snaps	핑거 스냅
+fingerstyle jazz guitar	핑거스타일 재즈 기타
+flamenco gipsy female vocals	플라멩코 집시 여성 보컬
+flamenco guitar	플라멩코 기타
+folk	포크
+funk	펑크
+funk soul	펑크 소울
+funky bass	펑키 베이스
+funky house	펑키 하우스
+fusion	퓨전
+futuristic	미래적인
+gentle filter movement	부드러운 필터 움직임
+gentle rhythm	부드러운 리듬
+good time country	흥겨운 컨트리
+gorgeous	화려한
+grand piano	그랜드 피아노
+gritty english lead vocal	거친 영어 리드 보컬
+groovy	그루비한
+groovy bass	그루비한 베이스
+groovy soulful jazz-funk	그루비하고 소울풀한 재즈 펑크
+growling	그로울링
+guitar	기타
+guitar solo	기타 솔로
+halftime bridge switch	브리지에서 하프타임 전환
+hammond organ	해먼드 오르간
+happy	행복한
+happy mood	행복한 분위기
+harmonica	하모니카
+harmonized vocals	화음 보컬
+harmony	화음
+harsh screamed vocals	거친 스크리밍 보컬
+heartbreak	이별의 아픔
+heartfelt	진심 어린
+heavy drums	묵직한 드럼
+heavy metal	헤비메탈
+heavy metal rock	헤비메탈 록
+high tenor	하이 테너
+honking sax section	우렁찬 색소폰 섹션
+honky tonk	홍키통크
+honky-tonk piano	홍키통크 피아노
+humorous	유머러스한
+husky voice	허스키한 목소리
+infectious finish	중독성 있는 마무리
+inspiring	영감을 주는
+instrumental	연주곡
+intellectual satire mood	지적인 풍자 분위기
+intense	강렬한
+intimate mandarin male vocal	친밀한 중국어 남성 보컬
+intimate piano ballad	잔잔한 피아노 발라드
+ironic	아이러니한
+j-eurobeat	J-유로비트
+j-heavymetal	J-헤비메탈
+j-pop	J-팝
+japanese	일본어
+jazz ballad	재즈 발라드
+jazz fusion	재즈 퓨전
+jazz manouche	집시 재즈
+joyful	즐거운
+joyful energy	즐거운 에너지
+joyful male harmonies	즐거운 남성 화음
+keyboard	키보드
+latin pop	라틴 팝
+layered but spacious	층이 많지만 여유로운
+layered harmonies	겹겹이 쌓인 화음
+layered vocal harmonies	겹겹이 쌓인 보컬 화음
+less drum	드럼 적게
+light pop	라이트 팝
+live vocal style	라이브 보컬 스타일
+lively fiddle	경쾌한 피들
+lush orchestral strings	풍성한 오케스트라 현악
+lush riffs	풍성한 리프
+lyrical memorable melody	서정적이고 기억에 남는 멜로디
+male lead vocal	남성 리드 보컬
+male singer	남성 가수
+male vocals	남성 보컬
+male voice	남성 목소리
+mandarin	중국어 (표준어)
+mandarin child-and-adult unison vocals	중국어 어린이와 어른 제창
+mandolin	만돌린
+mediterranean vibe	지중해 분위기
+medium beat	중간 비트
+medium tempo	중간 템포
+medium tempo southern gospel	중간 템포 서던 가스펠
+melodic	선율적인
+melodic bassline	선율적인 베이스라인
+melodic rap	멜로딕 랩
+metal	메탈
+metallic vocal fx	금속성 보컬 이펙트
+mezzo-soprano female	메조소프라노 여성
+middle tempo	중간 템포
+minimal and clean arrangement	미니멀하고 깔끔한 편곡
+minimal hi-hat pattern	미니멀한 하이햇 패턴
+minor-key chamber folk	단조 체임버 포크
+moderate groove	적당한 그루브
+modern flamenco rap fusion	모던 플라멩코 랩 퓨전
+modern rock	모던 록
+muffled female vocals	먹먹한 여성 보컬
+muted trumpet	뮤트 트럼펫
+nature	자연
+neon city night	네온 도시의 밤
+neon light	네온 불빛
+neon pads	네온 패드
+neon-lit night drive	네온 불빛 속 밤 드라이브
+new age	뉴에이지
+new orleans brass-funk	뉴올리언스 브라스 펑크
+nostalgic	향수를 불러일으키는
+obsessive	집착하는
+orchestra jazz	오케스트라 재즈
+overdriven guitar	오버드라이브 기타
+overdriven organ	오버드라이브 오르간
+pad	패드
+palm-muted guitar riff	팜뮤트 기타 리프
+palm-muted riffs	팜뮤트 리프
+palmas	팔마스 (플라멩코 손뼉)
+peaceful	평화로운
+percussion	퍼커션
+piano	피아노
+piano stabs	피아노 스탭
+pipa	비파
+pizzicato strings	피치카토 현악
+playful	장난스러운
+playful mandarin duet	장난스러운 중국어 듀엣
+playful piano	장난스러운 피아노
+polished and warm	세련되고 따뜻한
+pop ballad	팝 발라드
+pop music	팝 음악
+pop vocal	팝 보컬
+pop-rock hit	팝록 히트곡
+power metal	파워 메탈
+powerful	파워풀한
+powerful belting	파워풀한 벨팅
+powerful english vocal	파워풀한 영어 보컬
+powerful rhythm	강력한 리듬
+pulsing melodic guitar	맥동하는 선율적 기타
+punchy bassline	펀치감 있는 베이스라인
+punchy rock drums	펀치감 있는 록 드럼
+punk	펑크 록
+R&B	R&B
+R&B hook	R&B 훅
+rap vocals	랩 보컬
+rapid hi-hats	빠른 하이햇
+reflective bridge	사색적인 브리지
+reflective vocal phrase	사색적인 보컬 프레이즈
+reggaeton	레게톤
+retro	레트로
+retro-futuristic euphoria	레트로 퓨처리즘의 황홀감
+rhythm guitar	리듬 기타
+rhythmic	리드미컬한
+rhythmic sense	리듬감
+risers	라이저
+romantic	로맨틱한
+romantic danceable	로맨틱하고 춤추기 좋은
+room reverb	룸 리버브
+rubbery bass	탄력 있는 베이스
+satirical mood	풍자적인 분위기
+saxophone	색소폰
+second-line drums	세컨드 라인 드럼 (뉴올리언스 퍼레이드)
+seductive	유혹적인
+serene	고요한
+shaanxi opera	진강 (산시 지방극)
+sharp lyrics	날카로운 가사
+shimmering guitars	반짝이는 기타
+shiny archtop chops	빛나는 아치톱 기타 찹
+simple and memorable	단순하고 기억에 남는
+simple drums	단순한 드럼
+sleigh bells	썰매 방울
+slow	느린
+slow tempo	느린 템포
+sly and theatrical	능청스럽고 연극적인
+smiling	미소 짓는 듯한
+smooth	부드러운
+smooth male vocals	부드러운 남성 보컬
+smooth R&B bounce	부드러운 R&B 바운스
+soaring retro synth leads	치솟는 레트로 신스 리드
+soft	부드러운, 잔잔한
+soft and bright	부드럽고 밝은
+soft and slightly fragile	부드럽고 살짝 여린
+soft low-pass	부드러운 로우패스
+solo	솔로
+soul music	소울 음악
+soul-blues	소울 블루스
+soulful	소울풀한
+soulful and lively	소울풀하고 활기찬
+sousaphone	수자폰
+southern soul	서던 소울
+spirited	기운찬
+spiritual	영적인
+sprung rhythm	튀어 오르는 리듬
+stacked harmonies	겹쳐 쌓은 화음
+static noise	정전기 노이즈
+steel guitar	스틸 기타
+storytelling	이야기 전개
+strange	기묘한
+street spirit	거리의 정신
+strong harmony choruses	화음이 풍성한 후렴
+strong rhythm	강한 리듬
+studio quality	스튜디오 품질
+sub-bass	서브 베이스
+subtle chorus width	은은한 코러스 폭
+sung-rap verses in punjabi	펀자브어 싱잉 랩 벌스
+super eurobeat	슈퍼 유로비트
+surprise	놀라움
+sweet vibe	달콤한 분위기
+swing jazz	스윙 재즈
+swirling arps	소용돌이치는 아르페지오
+symphony	교향곡
+syncopated acoustic guitar	싱코페이션 어쿠스틱 기타
+syncopated claps	싱코페이션 박수
+synth	신스
+synth bass	신스 베이스
+synth stabs	신스 스탭
+synth-pop	신스팝
+synth-pop production	신스팝 프로덕션
+synthesizer	신시사이저
+teen pop	틴 팝
+tenor	테너
+tenor saxophone	테너 색소폰
+theatrical hard rock	연극적인 하드 록
+tight live rhythm section	탄탄한 라이브 리듬 섹션
+tight punchy kick	단단하고 펀치감 있는 킥
+toy piano	토이 피아노
+trio vocals	3중창
+triumph	승리감
+trombone and baritone sax	트롬본과 바리톤 색소폰
+trumpet stabs	트럼펫 스탭
+UK garage bounce	UK 개러지 바운스
+UK pop rap	UK 팝 랩
+unhurried phrasing	여유로운 프레이징
+upbeat	경쾌한
+upbeat but sad melody	경쾌하지만 슬픈 멜로디
+upbeat christian country song	경쾌한 기독교 컨트리 곡
+upbeat disco funk	경쾌한 디스코 펑크
+upbeat gospel bluegrass style	경쾌한 가스펠 블루그래스 스타일
+upbeat production	경쾌한 프로덕션
+upbeat saxophone riff	경쾌한 색소폰 리프
+uplifting	고양감 있는
+uplifting and emotional	고양감 있고 감성적인
+upright bass	업라이트 베이스
+upright bass driving rhythm	업라이트 베이스의 추진력 있는 리듬
+urban strings	어반 현악
+vibrant and organic production	생동감 있고 자연스러운 프로덕션
+vibrato	비브라토
+vintage	빈티지
+vintage motown soul duet	빈티지 모타운 소울 듀엣
+vintage nightclub vibe	빈티지 나이트클럽 분위기
+violin	바이올린
+viral	바이럴
+virtuoso	비르투오소
+wah-wah electric guitar riff	와우와우 일렉트릭 기타 리프
+walking upright slap	워킹 업라이트 슬랩
+warm	따뜻한
+warm analog production	따뜻한 아날로그 프로덕션
+warm analog texture	따뜻한 아날로그 질감
+warm electric bass	따뜻한 일렉트릭 베이스
+warm english vocal	따뜻한 영어 보컬
+warm piano	따뜻한 피아노
+warm piano pop	따뜻한 피아노 팝
+warm tone	따뜻한 음색
+water FX	물소리 효과
+wavesynth layers	웨이브신스 레이어
+well-defined rhythm	또렷한 리듬
+wide stereo image	넓은 스테레오 이미지
+xylophone	실로폰
+youthful street energy	젊은 거리의 에너지

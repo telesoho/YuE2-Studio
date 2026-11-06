@@ -3,7 +3,9 @@ import { AudioWaveform } from './AudioWaveform';
 import { AlertTriangle, Check, FolderOpen, Loader2, Pause, Play, Plus, RefreshCw, Search, SlidersHorizontal, Trash2, Wand2, X } from 'lucide-react';
 import { Song } from '../types';
 import { useI18n } from '../context/I18nContext';
+import { AUDIO_ACCEPT } from '../services/audioFiles';
 import { apiUrl } from '../services/apiBase';
+import { SELF_READ } from '../services/studioQueries';
 import { activeVersionLabel } from '../services/songDownload';
 import { NumberField } from './NumberField';
 
@@ -188,7 +190,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({ song, onClose,
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => {
-      void fetch('/v1/processing')
+      void fetch('/v1/processing', { headers: SELF_READ })
         .then(async response => {
           if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
           return response.json() as Promise<{ run: Run | null }>;
@@ -444,7 +446,7 @@ export const ProcessingModal: React.FC<ProcessingModalProps> = ({ song, onClose,
                           {t('processReferenceChoose')}
                         </button>
                         <span className="min-w-0 truncate text-xs text-zinc-600 dark:text-zinc-300">{upload?.name}</span>
-                        <input ref={filePicker} type="file" accept=".mp3,.wav,.flac,.ogg,.m4a,.aiff,.aif,audio/*" className="hidden" onChange={event => void uploadReference(event.target.files?.[0])} />
+                        <input ref={filePicker} type="file" accept={AUDIO_ACCEPT} className="hidden" onChange={event => void uploadReference(event.target.files?.[0])} />
                       </div>
                     )}
                     {!reference && <p className="text-[11px] text-amber-600 dark:text-amber-300">{t('processReferenceNone')}</p>}

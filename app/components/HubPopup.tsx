@@ -38,7 +38,8 @@ export const HubPopup: React.FC<Props> = ({ item, onClose, onOpen }) => {
   if (!content) return null;
 
   const press = (button: HubButton, index: number) => {
-    reportNotice(item.id, button.action === 'dismiss' ? 'dismissed' : 'clicked', button.action === 'dismiss' ? undefined : `b${index}`).catch(() => undefined);
+    reportNotice(item.id, button.action === 'dismiss' ? 'dismissed' : 'clicked', button.action === 'dismiss' ? undefined : `b${index}`)
+      .catch((error) => console.warn('[hub] popup button not recorded:', error));
     if (button.action === 'url' && button.url) void openExternal(button.url);
     if (button.action === 'open' && button.target) onOpen(button.target);
     onClose();
@@ -58,7 +59,11 @@ export const HubPopup: React.FC<Props> = ({ item, onClose, onOpen }) => {
           )}
         </div>
         {item.image && <img src={hubMediaUrl(item.image)} alt="" className="max-h-56 w-full object-cover" />}
-        <HubMarkdown text={content.body} className="space-y-2 px-5 py-4 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 [&_a]:text-pink-600 dark:[&_a]:text-pink-400" />
+        <div onClickCapture={(event) => {
+          if ((event.target as HTMLElement).closest('a')) reportNotice(item.id, 'clicked', 'link').catch((error) => console.warn('[hub] popup link not recorded:', error));
+        }}>
+          <HubMarkdown text={content.body} className="space-y-2 px-5 py-4 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 [&_a]:text-pink-600 dark:[&_a]:text-pink-400" />
+        </div>
         {item.ad?.label && <p className="px-5 pb-2 text-xs text-zinc-400">{t('hubAd')}{item.ad.erid ? ` · erid ${item.ad.erid}` : ''}</p>}
         {content.buttons.length > 0 && (
           <div className="flex justify-end gap-2 px-5 pb-5">

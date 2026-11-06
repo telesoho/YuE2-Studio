@@ -78,6 +78,14 @@ pub struct Component {
     pub revision: &'static str,
 }
 
+impl Component {
+    /// The file at its pinned revision on Hugging Face: what the studio downloads, and what a person
+    /// downloading by hand needs, since the repository's latest files may be other builds.
+    pub fn url(&self) -> String {
+        format!("https://huggingface.co/{}/resolve/{}/{}?download=true", self.repository, self.revision, self.filename)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct InstallRequest {
     pub profile_id: Option<String>,
@@ -414,10 +422,8 @@ impl ModelManager {
     async fn download_component(&self, component: &Component) -> Result<()> {
         let target = self.root.join(component.filename);
         let part = part_path(&target);
-        let url = format!(
-            "https://huggingface.co/{}/resolve/{}/{}?download=true",
-            component.repository, component.revision, component.filename
-        );
+// The pinned revision URL, then the fork's Hub endpoint (official or mirror).
+        let url = crate::net::hub_url(&component.url());
 
         // another program of timoncool's has this file: taken through the same checksum a download passes
         let name = Path::new(component.filename).file_name().unwrap_or_default();
@@ -667,14 +673,19 @@ fn preflight_space(root: &Path, selection: &ResolvedInstall) -> Result<()> {
 }
 
 fn status_snapshot(root: PathBuf, active: Option<DownloadJob>, target: Option<InstallRequest>) -> ManagerStatus {
-    let component_statuses: Vec<_> = components()
-        .into_iter()
+    let catalog = components();
+    // Final files are atomically published only after a full SHA-256
+    // verification in `download_component`. Status is polled often,
+    // therefore it must never hash multi-gigabyte weights again.
+    let on_disk = |component: &Component| published_component(&root.join(component.filename), component);
+    let component_statuses: Vec<_> = catalog
+        .iter()
         .map(|component| ComponentStatus {
             id: component.id,
-            // Final files are atomically published only after a full SHA-256
-            // verification in `download_component`. Status is polled often,
-            // therefore it must never hash multi-gigabyte weights again.
-            installed: published_component(&root.join(component.filename), &component),
+            // a transcriber head reads nothing without the MERT of its precision beside it
+            installed: on_disk(component)
+                && (component.kind != "transcriber"
+                    || catalog.iter().filter(|base| base.kind == "transcriber-base" && precision(base.filename) == precision(component.filename)).all(on_disk)),
             bytes: component.bytes,
         })
         .collect();
@@ -910,6 +921,18 @@ mod tests {
         validate_complete_set(&selected.components).unwrap();
     }
 
+    /// A file downloaded by hand is the pinned one: its address names the revision, not the branch, on Hugging
+    /// Face and on the mirror alike.
+    #[test]
+    fn a_manual_address_names_the_pinned_revision() {
+        for component in components() {
+            let url = component.url();
+            assert_eq!(url, format!("https://huggingface.co/{}/resolve/{}/{}?download=true", component.repository, component.revision, component.filename));
+            assert!(!url.contains("/resolve/main/"), "{} is not pinned", component.id);
+            assert!(crate::net::mirror_url(&url).starts_with("https://hf-mirror.com/"), "{}", component.id);
+        }
+    }
+
     #[test]
     fn an_empty_request_downloads_nothing() {
         let error = resolve_install(InstallRequest { profile_id: None, component_ids: vec![] }).expect_err("an empty request is a mistake");
@@ -965,6 +988,11 @@ mod tests {
         assert!(files.transcriber.is_none());
         let status = status_snapshot(root.clone(), None, Some(InstallRequest { profile_id: Some("quality-q8".into()), component_ids: vec![] }));
         assert!(status.ready && status.download_pending > 0);
+        let head = components().into_iter().find(|component| component.id == "transcriber-q8").unwrap();
+        fs::File::create(root.join(head.filename)).unwrap().set_len(head.bytes).unwrap();
+        let status = status_snapshot(root.clone(), None, None);
+        assert!(!status.components.iter().any(|component| component.id == "transcriber-q8" && component.installed), "SheetSage2 without its MERT transcribes nothing");
+        assert!(manager.installed_profile_files("quality-q8").unwrap().transcriber.is_none());
         let _ = fs::remove_dir_all(root);
     }
 

@@ -3,15 +3,21 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$OutputDirectory,
     [ValidateSet('universal', 'sm_89')]
-    [string]$CudaArchitecture = 'universal'
+    [string]$CudaArchitecture = 'universal',
+    [ValidateSet('cuda13', 'cuda12', 'cpu')]
+    [string]$Build = 'cuda13'
 )
 
-# Builds HOT-Step's tools at the pinned commit as one package - the adapter
-# trainer (ace-train, staged as music-train.exe), the audio-to-MIDI transcriber
-# (ace-midi, staged as music-midi.exe) and the captioner (ace-caption) - on one
-# set of ggml libraries, zipped for the release asset that the training pack
-# and Audio to MIDI both download into one folder. Its ggml carries HOT-Step's
-# patches, so it never shares a folder with the engine's.
+# Builds HOT-Step's tools at the pinned commit.
+#   cuda13 (default): one package - the adapter trainer (ace-train, staged as
+#     music-train.exe), the audio-to-MIDI transcriber (ace-midi, staged as
+#     music-midi.exe) and the captioner (ace-caption) - on one set of ggml
+#     libraries, zipped for the release asset that the training pack and Audio
+#     to MIDI both download into one folder; and the captioner's own asset.
+#   cuda12: the transcriber alone on CUDA 12.9 (MSVC 14.44), for the cards and
+#     drivers CUDA 13 has no code for.
+#   cpu: the transcriber alone without CUDA, for machines without an NVIDIA card.
+# Its ggml carries HOT-Step's patches, so it never shares a folder with the engine's.
 
 $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
 $ErrorActionPreference = 'Continue'
@@ -35,7 +41,9 @@ function Get-VcVars64 {
     return $vcvars
 }
 
-if (-not (Get-Command nvcc -ErrorAction SilentlyContinue)) { throw 'The trainer is CUDA only: nvcc is required.' }
+$cuda12Root = 'D:\Projects\_tools\cuda-12.9'
+if ($Build -eq 'cuda13' -and -not (Get-Command nvcc -ErrorAction SilentlyContinue)) { throw 'The trainer is CUDA only: nvcc is required.' }
+if ($Build -eq 'cuda12' -and -not (Test-Path (Join-Path $cuda12Root 'bin\nvcc.exe'))) { throw "CUDA 12.9 is not at $cuda12Root." }
 if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) { throw 'Ninja is required on PATH.' }
 
 if (-not (Test-Path (Join-Path $worktree '.git'))) {
@@ -51,36 +59,54 @@ if ($LASTEXITCODE -ne 0) { throw "Could not check out HOT-Step-CPP commit $($sou
 git -C $worktree submodule update --init --recursive engine/ggml engine/vendor/vst3sdk
 if ($LASTEXITCODE -ne 0) { throw 'Could not initialise the HOT-Step submodules.' }
 
-# BF16 training needs Ampere or newer; transcription runs on Turing too.
-$universal = if ($source.cuda_architectures) { $source.cuda_architectures } else { '80-real;86-real;89-real;90-real;120a-real;120-virtual' }
-$cudaArch = switch ($CudaArchitecture) {
-    'universal' { "`"-DCMAKE_CUDA_ARCHITECTURES=$universal`"" }
-    'sm_89' { '-DCMAKE_CUDA_ARCHITECTURES=89' }
-}
-$buildDirectory = "build-tools-$CudaArchitecture"
-$symbols = '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=ProgramDatabase -DCMAKE_EXE_LINKER_FLAGS=/DEBUG -DCMAKE_SHARED_LINKER_FLAGS=/DEBUG'
-$parallelism = [Math]::Max(1, [Math]::Floor([Environment]::ProcessorCount * 0.8))
 # Both tools load each ggml backend as a library, with a build of ggml-cpu for
-# every processor generation: without the CUDA 13 runtime, on a card CUDA 13 has
+# every processor generation: without the CUDA runtime, on a card the build has
 # no code for, or on a processor without AVX2 they start on what is there
 # instead of stopping with "no backend available" or 0xc000001d. Vulkan is not
 # built: the transcriber's Vulkan path writes wrong notes (HOT-Step 3e7a0778 and
-# 91e92a8a alike), and the trainer computes on CUDA. The training release also
-# carries ace-caption, the captioner, which runs without the trainer.
-$backends = '-DGGML_CUDA=ON -DGGML_VULKAN=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON'
-$tools = "$($source.target) $($midi.target) ace-caption"
-$configure = "call `"$(Get-VcVars64)`" >nul && set `"VSLANG=1033`" && cmake -S . -B `"$buildDirectory`" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_CCACHE=OFF $backends $symbols $cudaArch"
+# 91e92a8a alike), and the trainer computes on CUDA. Machine code for every
+# card, no PTX; no NCCL.
+$common = '-DGGML_VULKAN=OFF -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DGGML_NATIVE=OFF -DGGML_CCACHE=OFF'
+switch ($Build) {
+    'cuda13' {
+        # BF16 training needs Ampere or newer; transcription runs on Turing too.
+        $architectures = switch ($CudaArchitecture) {
+            'universal' { $source.cuda_architectures }
+            'sm_89' { '89-real' }
+        }
+        $flags = "-DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF `"-DCMAKE_CUDA_ARCHITECTURES=$architectures`""
+        $setup = "call `"$(Get-VcVars64)`" >nul"
+        $tools = @($source.target, $midi.target, 'ace-caption')
+        $buildDirectory = "build-tools-$CudaArchitecture"
+    }
+    'cuda12' {
+        $flags = "-DGGML_CUDA=ON -DGGML_CUDA_NCCL=OFF -DCUDAToolkit_ROOT=$($cuda12Root -replace '\\', '/') -DCMAKE_CUDA_COMPILER=$($cuda12Root -replace '\\', '/')/bin/nvcc.exe -DCMAKE_CUDA_FLAGS=-Wno-deprecated-gpu-targets `"-DCMAKE_CUDA_ARCHITECTURES=$($midi.cuda12_architectures)`""
+        $setup = "call `"$(Get-VcVars64)`" -vcvars_ver=14.44 >nul && set `"CUDA_PATH=$cuda12Root`" && set `"PATH=$cuda12Root\bin;!PATH!`""
+        $tools = @($midi.target)
+        $buildDirectory = 'build-midi-cuda12'
+    }
+    'cpu' {
+        $flags = '-DGGML_CUDA=OFF'
+        $setup = "call `"$(Get-VcVars64)`" >nul"
+        $tools = @($midi.target)
+        $buildDirectory = 'build-midi-cpu'
+    }
+}
+$symbols = '-DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=ProgramDatabase -DCMAKE_EXE_LINKER_FLAGS=/DEBUG -DCMAKE_SHARED_LINKER_FLAGS=/DEBUG'
+# settings come from this script alone, not from a cache an earlier run left
+$configure = "$setup && set `"VSLANG=1033`" && cmake --fresh -S . -B `"$buildDirectory`" -G Ninja -DCMAKE_BUILD_TYPE=Release $common $flags $symbols"
 Push-Location (Join-Path $worktree $source.source_dir)
-try { & cmd.exe /d /s /c $configure | Out-Host } finally { Pop-Location }
+try { & cmd.exe /d /v:on /s /c $configure | Out-Host } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw 'Configuring the HOT-Step tools failed.' }
 # every processor variant is a target of its own: ggml-cpu-haswell, ggml-cpu-alderlake...
 $ninja = Get-Content -Raw (Join-Path $worktree "$($source.source_dir)\$buildDirectory\build.ninja")
 $variants = [regex]::Matches($ninja, '(?m)^build (ggml-cpu-[a-z0-9_]+): phony') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
 if ($variants.Count -eq 0) { throw 'The configured build has no processor variants of ggml-cpu.' }
-$targets = "$tools ggml-cuda $($variants -join ' ')"
-$command = "call `"$(Get-VcVars64)`" >nul && set `"VSLANG=1033`" && cmake --build `"$buildDirectory`" --target $targets --parallel $parallelism"
+$cudaTarget = if ($Build -eq 'cpu') { '' } else { 'ggml-cuda' }
+$targets = "$($tools -join ' ') $cudaTarget $($variants -join ' ')"
+$command = "$setup && set `"VSLANG=1033`" && cmake --build `"$buildDirectory`" --target $targets --parallel 8"
 Push-Location (Join-Path $worktree $source.source_dir)
-try { & cmd.exe /d /s /c $command | Out-Host } finally { Pop-Location }
+try { & cmd.exe /d /v:on /s /c $command | Out-Host } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw 'The HOT-Step tools build failed.' }
 
 $binDirectory = Join-Path $worktree "$($source.source_dir)\$buildDirectory"
@@ -89,23 +115,25 @@ $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 if ($output -eq [System.IO.Path]::GetPathRoot($output)) { throw 'OutputDirectory must be a specific child directory, not a drive root.' }
 if (Test-Path $output) { Remove-Item -Recurse -Force $output }
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-foreach ($tool in @(@{ target = $source.target; shipped = $source.shipped_as }, @{ target = $midi.target; shipped = $midi.shipped_as }, @{ target = 'ace-caption'; shipped = 'ace-caption.exe' })) {
-    $built = Join-Path $binDirectory "$($tool.target).exe"
-    if (-not (Test-Path $built)) { throw "The build completed without $($tool.target).exe." }
-    Copy-Item $built (Join-Path $output $tool.shipped) -Force
+$shipped = @{ $source.target = $source.shipped_as; $midi.target = $midi.shipped_as; 'ace-caption' = 'ace-caption.exe' }
+foreach ($tool in $tools) {
+    $built = Join-Path $binDirectory "$tool.exe"
+    if (-not (Test-Path $built)) { throw "The build completed without $tool.exe." }
+    Copy-Item $built (Join-Path $output $shipped[$tool]) -Force
 }
 Get-ChildItem -Path $binDirectory -Filter 'ggml*.dll' -File | Copy-Item -Destination $output -Force
 Copy-Item (Join-Path $worktree "$($source.source_dir)\LICENSE") (Join-Path $output 'LICENSE-HOT-Step.txt') -Force
 
-$stamp = [pscustomobject]@{ commit = $source.commit; cuda_architecture = $CudaArchitecture; runtimes = @($source.shipped_as, $midi.shipped_as, 'ace-caption.exe') }
+$stamp = [pscustomobject]@{ commit = $source.commit; build = $Build; cuda_architecture = $CudaArchitecture; runtimes = @($tools | ForEach-Object { $shipped[$_] }) }
 [System.IO.File]::WriteAllText((Join-Path $output 'runtime.json'), ($stamp | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
 
-$zip = Join-Path (Split-Path -Parent $output) $source.asset
+$assetName = switch ($Build) { 'cuda13' { $source.asset } 'cuda12' { $midi.cuda12_asset } 'cpu' { $midi.cpu_asset } }
+$zip = Join-Path (Split-Path -Parent $output) $assetName
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Compress-Archive -Path "$output\*" -DestinationPath $zip -Force
-[pscustomobject]@{ zip = $zip; bytes = (Get-Item $zip).Length; commit = $source.commit } | ConvertTo-Json -Compress
+[pscustomobject]@{ zip = $zip; bytes = (Get-Item $zip).Length; sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant(); commit = $source.commit } | ConvertTo-Json -Compress
 
-& {
+if ($Build -eq 'cuda13') {
     # the captioner's own asset: ggml without the CUDA backend, which it finds beside the trainer when that is installed
     $captioner = "$output-caption"
     if (Test-Path $captioner) { Remove-Item -Recurse -Force $captioner }
@@ -118,5 +146,5 @@ Compress-Archive -Path "$output\*" -DestinationPath $zip -Force
     $captionZip = Join-Path (Split-Path -Parent $output) 'ace-caption-windows-x64.zip'
     if (Test-Path $captionZip) { Remove-Item -Force $captionZip }
     Compress-Archive -Path "$captioner\*" -DestinationPath $captionZip -Force
-    [pscustomobject]@{ zip = $captionZip; bytes = (Get-Item $captionZip).Length; commit = $source.commit } | ConvertTo-Json -Compress
+    [pscustomobject]@{ zip = $captionZip; bytes = (Get-Item $captionZip).Length; sha256 = (Get-FileHash $captionZip -Algorithm SHA256).Hash.ToLowerInvariant(); commit = $source.commit } | ConvertTo-Json -Compress
 }

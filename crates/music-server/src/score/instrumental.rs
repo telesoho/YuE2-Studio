@@ -42,7 +42,7 @@ fn outside(note: &SheetNote, voice: &[SheetNote]) -> Vec<SheetNote> {
 pub fn transfer(abc: &str) -> Result<Transfer, String> {
     let sheet = notation::read(abc)?;
     if sheet.notes.Vocal.is_empty() {
-        return Err("The score has no Vocal notes to move: it is instrumental already.".into());
+        return Ok(Transfer { abc: abc.to_string(), moved: 0, trimmed: 0, dropped: 0 });
     }
     let voice = sheet.notes.Vocal.clone();
     let (mut trimmed, mut dropped) = (0, 0);
@@ -95,6 +95,7 @@ mod tests {
     #[test]
     fn an_instrumental_score_is_left_as_it_is() {
         let none = "X:1\nT:\nM:4/4\nL:1/16\nQ:1/4=120\nV: Vocal clef=treble name=\"Vocal Melody\" snm=\"Vocal\"\nV: Ins clef=treble name=\"Ins Melody\" snm=\"Inst.\"\nK:C\n% intro\nV: Vocal\nz16|\nV: Ins\nC16|\n";
-        assert!(transfer(none).unwrap_err().contains("instrumental already"));
+        let made = transfer(none).unwrap();
+        assert_eq!((made.abc.as_str(), made.moved, made.trimmed, made.dropped), (none, 0, 0, 0));
     }
 }

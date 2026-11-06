@@ -1,0 +1,398 @@
+808	808 ドラムマシン
+accelerating	だんだん速く
+acoustic guitar	アコースティックギター
+acoustic piano	アコースティックピアノ
+active electric bass	アクティブ・エレキベース
+aggressive	攻撃的
+airy reverb and delay	エアリーなリバーブとディレイ
+alto recorder	アルトリコーダー
+ambient	アンビエント
+andalusian accent	アンダルシア訛り
+angsty	不安げ、思春期の苛立ち
+anime	アニメ
+anime opening	アニメのオープニング
+anthemic	アンセム調、壮大
+anthemic crowd vocals	アンセム調の大合唱
+anticipation	期待感
+AOR classic rock	AOR クラシックロック
+appalachian revival feel	アパラチアン・リバイバル風
+arena rock	アリーナロック
+atmosphere	雰囲気
+atmospheric	雰囲気のある
+autotune	オートチューン
+autotune accents	オートチューンのアクセント
+background vocals	バックコーラス
+ballad	バラード
+ballad pop	バラード・ポップ
+banjo	バンジョー
+baritone	バリトン
+bass	ベース
+bass clarinet	バスクラリネット
+bass pattern	ベースパターン
+belted vocals	ベルティング唱法
+bicycle horn	自転車のラッパ
+blues	ブルース
+bold	大胆
+boogie piano	ブギーピアノ
+boogie-woogie piano	ブギウギ・ピアノ
+bouncing	弾むような
+brass punches	ブラスのアクセント
+bright	明るい
+bright close chords	明るいクローズ・コード
+bright steelpan	明るいスティールパン
+bright tone	明るい音色
+brushed drums	ブラシのドラム
+call and response vocals	コール＆レスポンスのボーカル
+carefree summer energy	のびのびした夏のエネルギー
+catchy	キャッチー
+catchy chant hook	キャッチーな掛け声のフック
+cathedral choir swells	大聖堂の合唱の高まり
+celebratory	お祝いムード
+cello	チェロ
+chinese epic rock	中国の壮大なロック
+chinese pop	中国ポップス
+chinese traditional folk	中国伝統民謡
+chopped vocal hooks	チョップしたボーカルフック
+cinematic	映画的
+cinematic rock	映画的なロック
+cinematic strings	映画的なストリングス
+city pop	シティポップ
+clarinet	クラリネット
+classic	クラシック（定番）
+classic country	クラシック・カントリー
+classic rock	クラシックロック
+clean guitar chord stabs	クリーンギターの短いコード
+clean pop drum groove	クリーンなポップのドラムグルーヴ
+close-mic	近接マイク
+club anthem	クラブアンセム
+comedic	コミカル
+comedy rock	コミックロック
+comfortable	心地よい
+congas	コンガ
+contemporary christian	現代クリスチャン音楽
+contemporary country	コンテンポラリー・カントリー
+country	カントリー
+crisp hi-hats	歯切れのよいハイハット
+crowd-shout hooks	観客の叫びのフック
+cute	かわいい
+cyberpunk atmosphere	サイバーパンクの雰囲気
+cymbals	シンバル
+dance music	ダンスミュージック
+dance pop	ダンスポップ
+dance-floor fire	ダンスフロアを熱くする
+danceable	踊れる
+dark cabaret	ダーク・キャバレー
+decelerating	だんだん遅く
+deep sub-bass	深いサブベース
+disco	ディスコ
+distorted guitars	歪んだギター
+DJ	DJ
+double-kick drums	ツーバスのドラム
+dramatic	ドラマチック
+dramatic crescendos	ドラマチックなクレッシェンド
+dreamy	夢見るような
+driving bass	ドライブ感のあるベース
+driving palm-muted electric guitars	ドライブ感のあるブリッジミュートのエレキギター
+driving rhythm	ドライブ感のあるリズム
+driving rhythm section	ドライブ感のあるリズム隊
+drum kit	ドラムセット
+drums	ドラム
+duet	デュエット
+dynamic	ダイナミック
+electric guitar	エレキギター
+electric guitar chords	エレキギターのコード
+electric piano	エレクトリックピアノ
+electro swing	エレクトロスウィング
+electronic	エレクトロニック
+electronic drums	電子ドラム
+electronic textures	電子的な質感
+emotion	感情
+emotional	エモーショナル
+emotional and expressive	感情豊かで表現力がある
+emotional and intimate atmosphere	感情的で親密な雰囲気
+emotional storytelling	感情的な語り
+energetic	エネルギッシュ
+energetic and joyful	エネルギッシュで楽しい
+english	英語
+epic	壮大
+escalating tension	高まる緊張感
+ethereal	幻想的
+eurobeat	ユーロビート
+excited	高揚した
+explosive chorus	爆発的なサビ
+expressive and melodic	表現力豊かでメロディアス
+expressive female voice	表現力豊かな女声
+expressive tone	表現力のある音色
+fading into silence	静寂へフェードアウト
+fast pace	速いペース
+fast tempo	速いテンポ
+fast violin	速いバイオリン
+female	女声
+female vocals	女性ボーカル
+festive rhythm	お祭りのリズム
+fiddle	フィドル
+final chorus	最後のサビ
+finger snaps	指パッチン
+fingerstyle jazz guitar	フィンガースタイルのジャズギター
+flamenco gipsy female vocals	フラメンコのジプシー女性ボーカル
+flamenco guitar	フラメンコギター
+folk	フォーク
+funk	ファンク
+funk soul	ファンク・ソウル
+funky bass	ファンキーなベース
+funky house	ファンキーハウス
+fusion	フュージョン
+futuristic	未来的
+gentle filter movement	穏やかなフィルターの動き
+gentle rhythm	穏やかなリズム
+good time country	陽気なカントリー
+gorgeous	華やか
+grand piano	グランドピアノ
+gritty english lead vocal	ざらついた英語のリードボーカル
+groovy	グルーヴィー
+groovy bass	グルーヴィーなベース
+groovy soulful jazz-funk	グルーヴィーでソウルフルなジャズファンク
+growling	グロウル
+guitar	ギター
+guitar solo	ギターソロ
+halftime bridge switch	ブリッジでハーフタイムに切り替え
+hammond organ	ハモンドオルガン
+happy	楽しい
+happy mood	楽しい気分
+harmonica	ハーモニカ
+harmonized vocals	ハモったボーカル
+harmony	ハーモニー
+harsh screamed vocals	激しいスクリーム
+heartbreak	失恋
+heartfelt	心のこもった
+heavy drums	重いドラム
+heavy metal	ヘヴィメタル
+heavy metal rock	ヘヴィメタル・ロック
+high tenor	ハイテノール
+honking sax section	吠えるサックスセクション
+honky tonk	ホンキートンク
+honky-tonk piano	ホンキートンク・ピアノ
+humorous	ユーモラス
+husky voice	ハスキーな声
+infectious finish	耳に残るエンディング
+inspiring	心を奮い立たせる
+instrumental	インストゥルメンタル
+intellectual satire mood	知的な風刺
+intense	強烈
+intimate mandarin male vocal	親密な中国語（普通話）の男性ボーカル
+intimate piano ballad	親密なピアノバラード
+ironic	皮肉っぽい
+j-eurobeat	J ユーロビート
+j-heavymetal	J ヘヴィメタル
+j-pop	J-POP
+japanese	日本語
+jazz ballad	ジャズバラード
+jazz fusion	ジャズフュージョン
+jazz manouche	ジャズ・マヌーシュ
+joyful	喜びに満ちた
+joyful energy	喜びのエネルギー
+joyful male harmonies	楽しげな男声ハーモニー
+keyboard	キーボード
+latin pop	ラテンポップ
+layered but spacious	重層的だが広がりがある
+layered harmonies	重ねたハーモニー
+layered vocal harmonies	重ねたボーカルハーモニー
+less drum	ドラム控えめ
+light pop	ライトポップ
+live vocal style	ライブ風のボーカル
+lively fiddle	軽快なフィドル
+lush orchestral strings	豊かなオーケストラのストリングス
+lush riffs	豊かなリフ
+lyrical memorable melody	叙情的で覚えやすいメロディ
+male lead vocal	男性リードボーカル
+male singer	男性歌手
+male vocals	男性ボーカル
+male voice	男声
+mandarin	中国語（普通話）
+mandarin child-and-adult unison vocals	普通話の子どもと大人のユニゾン
+mandolin	マンドリン
+mediterranean vibe	地中海の雰囲気
+medium beat	中くらいのビート
+medium tempo	ミディアムテンポ
+medium tempo southern gospel	ミディアムテンポのサザン・ゴスペル
+melodic	メロディアス
+melodic bassline	メロディアスなベースライン
+melodic rap	メロディックラップ
+metal	メタル
+metallic vocal fx	金属的なボーカルエフェクト
+mezzo-soprano female	メゾソプラノ
+middle tempo	ミディアムテンポ
+minimal and clean arrangement	ミニマルでクリーンなアレンジ
+minimal hi-hat pattern	ミニマルなハイハットパターン
+minor-key chamber folk	短調の室内フォーク
+moderate groove	ほどよいグルーヴ
+modern flamenco rap fusion	現代フラメンコとラップの融合
+modern rock	モダンロック
+muffled female vocals	こもった女性ボーカル
+muted trumpet	ミュートしたトランペット
+nature	自然
+neon city night	ネオンの街の夜
+neon light	ネオンの光
+neon pads	ネオンのようなパッド
+neon-lit night drive	ネオンに照らされた夜のドライブ
+new age	ニューエイジ
+new orleans brass-funk	ニューオーリンズのブラスファンク
+nostalgic	ノスタルジック
+obsessive	執着的
+orchestra jazz	オーケストラジャズ
+overdriven guitar	オーバードライブのギター
+overdriven organ	オーバードライブのオルガン
+pad	パッド
+palm-muted guitar riff	ブリッジミュートのギターリフ
+palm-muted riffs	ブリッジミュートのリフ
+palmas	パルマ（フラメンコの手拍子）
+peaceful	穏やか
+percussion	パーカッション
+piano	ピアノ
+piano stabs	ピアノの短いコード
+pipa	琵琶（ピーパー）
+pizzicato strings	ピチカートのストリングス
+playful	遊び心のある
+playful mandarin duet	遊び心のある普通話のデュエット
+playful piano	遊び心のあるピアノ
+polished and warm	洗練されて温かい
+pop ballad	ポップバラード
+pop music	ポップミュージック
+pop vocal	ポップなボーカル
+pop-rock hit	ポップロックのヒット曲
+power metal	パワーメタル
+powerful	力強い
+powerful belting	力強いベルティング
+powerful english vocal	力強い英語のボーカル
+powerful rhythm	力強いリズム
+pulsing melodic guitar	脈打つメロディアスなギター
+punchy bassline	パンチのあるベースライン
+punchy rock drums	パンチのあるロックドラム
+punk	パンク
+R&B	R&B
+R&B hook	R&B のフック
+rap vocals	ラップボーカル
+rapid hi-hats	細かいハイハット
+reflective bridge	内省的なブリッジ
+reflective vocal phrase	内省的なボーカルフレーズ
+reggaeton	レゲトン
+retro	レトロ
+retro-futuristic euphoria	レトロフューチャーな高揚感
+rhythm guitar	リズムギター
+rhythmic	リズミカル
+rhythmic sense	リズム感
+risers	ライザー
+romantic	ロマンチック
+romantic danceable	ロマンチックで踊れる
+room reverb	ルームリバーブ
+rubbery bass	ゴムのように弾むベース
+satirical mood	風刺的な雰囲気
+saxophone	サックス
+second-line drums	セカンドライン（ニューオーリンズのパレード）ドラム
+seductive	誘惑的
+serene	静穏
+shaanxi opera	陝西の劇（秦腔）
+sharp lyrics	鋭い歌詞
+shimmering guitars	きらめくギター
+shiny archtop chops	明るいアーチトップのカッティング
+simple and memorable	シンプルで覚えやすい
+simple drums	シンプルなドラム
+sleigh bells	スレイベル
+slow	遅い
+slow tempo	スローテンポ
+sly and theatrical	ずる賢く芝居がかった
+smiling	微笑むような
+smooth	なめらか
+smooth male vocals	なめらかな男性ボーカル
+smooth R&B bounce	なめらかな R&B のノリ
+soaring retro synth leads	舞い上がるレトロなシンセリード
+soft	柔らかい
+soft and bright	柔らかく明るい
+soft and slightly fragile	柔らかく少し儚い
+soft low-pass	柔らかいローパス
+solo	ソロ
+soul music	ソウルミュージック
+soul-blues	ソウル・ブルース
+soulful	ソウルフル
+soulful and lively	ソウルフルで生き生き
+sousaphone	スーザフォン
+southern soul	サザンソウル
+spirited	元気いっぱい
+spiritual	スピリチュアル
+sprung rhythm	弾むリズム
+stacked harmonies	積み重ねたハーモニー
+static noise	ノイズ（空電）
+steel guitar	スティールギター
+storytelling	物語性
+strange	奇妙
+street spirit	ストリートの精神
+strong harmony choruses	ハーモニーの厚いサビ
+strong rhythm	強いリズム
+studio quality	スタジオ品質
+sub-bass	サブベース
+subtle chorus width	控えめなコーラスの広がり
+sung-rap verses in punjabi	パンジャブ語の歌うようなラップのヴァース
+super eurobeat	スーパーユーロビート
+surprise	サプライズ
+sweet vibe	甘い雰囲気
+swing jazz	スウィングジャズ
+swirling arps	渦巻くアルペジオ
+symphony	交響曲
+syncopated acoustic guitar	シンコペーションのアコースティックギター
+syncopated claps	シンコペーションの手拍子
+synth	シンセ
+synth bass	シンセベース
+synth stabs	シンセの短いコード
+synth-pop	シンセポップ
+synth-pop production	シンセポップのプロダクション
+synthesizer	シンセサイザー
+teen pop	ティーンポップ
+tenor	テノール
+tenor saxophone	テナーサックス
+theatrical hard rock	芝居がかったハードロック
+tight live rhythm section	タイトな生のリズム隊
+tight punchy kick	タイトでパンチのあるキック
+toy piano	トイピアノ
+trio vocals	三重唱
+triumph	勝利
+trombone and baritone sax	トロンボーンとバリトンサックス
+trumpet stabs	トランペットのアクセント
+UK garage bounce	UK ガラージのノリ
+UK pop rap	UK ポップラップ
+unhurried phrasing	ゆったりしたフレージング
+upbeat	アップビート
+upbeat but sad melody	明るいのに切ないメロディ
+upbeat christian country song	明るいクリスチャン・カントリー
+upbeat disco funk	明るいディスコファンク
+upbeat gospel bluegrass style	明るいゴスペル・ブルーグラス
+upbeat production	明るいプロダクション
+upbeat saxophone riff	明るいサックスのリフ
+uplifting	高揚感のある
+uplifting and emotional	高揚感があり感動的
+upright bass	ウッドベース
+upright bass driving rhythm	ウッドベースが引っ張るリズム
+urban strings	アーバンなストリングス
+vibrant and organic production	生き生きとしたオーガニックなプロダクション
+vibrato	ビブラート
+vintage	ヴィンテージ
+vintage motown soul duet	ヴィンテージなモータウン・ソウルのデュエット
+vintage nightclub vibe	昔のナイトクラブの雰囲気
+violin	バイオリン
+viral	バズる
+virtuoso	名人芸
+wah-wah electric guitar riff	ワウのエレキギターリフ
+walking upright slap	ウォーキングのウッドベース・スラップ
+warm	温かい
+warm analog production	温かいアナログのプロダクション
+warm analog texture	温かいアナログの質感
+warm electric bass	温かいエレキベース
+warm english vocal	温かい英語のボーカル
+warm piano	温かいピアノ
+warm piano pop	温かいピアノポップ
+warm tone	温かい音色
+water FX	水の効果音
+wavesynth layers	ウェーブシンセのレイヤー
+well-defined rhythm	はっきりしたリズム
+wide stereo image	広いステレオイメージ
+xylophone	木琴
+youthful street energy	若々しいストリートのエネルギー

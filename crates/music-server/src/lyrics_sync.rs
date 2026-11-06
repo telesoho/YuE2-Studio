@@ -265,7 +265,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-tiny",
         label: "Whisper tiny",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/main/model.bin",
+        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin",
         relative_path: "models/whisper/faster-whisper-tiny/model.bin",
         bytes: 75_538_270,
         unzip_into: None,
@@ -278,7 +278,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-tiny-config",
         label: "Whisper tiny (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/main/config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json",
         relative_path: "models/whisper/faster-whisper-tiny/config.json",
         bytes: 2_249,
         unzip_into: None,
@@ -291,7 +291,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-tiny-tokenizer",
         label: "Whisper tiny (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-tiny/tokenizer.json",
         bytes: 2_203_239,
         unzip_into: None,
@@ -304,7 +304,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-tiny-vocabulary",
         label: "Whisper tiny (vocabulary.txt)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/main/vocabulary.txt",
+        url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt",
         relative_path: "models/whisper/faster-whisper-tiny/vocabulary.txt",
         bytes: 459_861,
         unzip_into: None,
@@ -317,7 +317,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-base",
         label: "Whisper base",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/main/model.bin",
+        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/model.bin",
         relative_path: "models/whisper/faster-whisper-base/model.bin",
         bytes: 145_217_532,
         unzip_into: None,
@@ -330,7 +330,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-base-config",
         label: "Whisper base (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/main/config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/config.json",
         relative_path: "models/whisper/faster-whisper-base/config.json",
         bytes: 2_309,
         unzip_into: None,
@@ -343,7 +343,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-base-tokenizer",
         label: "Whisper base (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-base/tokenizer.json",
         bytes: 2_203_239,
         unzip_into: None,
@@ -356,7 +356,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-base-vocabulary",
         label: "Whisper base (vocabulary.txt)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/main/vocabulary.txt",
+        url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/vocabulary.txt",
         relative_path: "models/whisper/faster-whisper-base/vocabulary.txt",
         bytes: 459_861,
         unzip_into: None,
@@ -369,7 +369,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-small",
         label: "Whisper small",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/main/model.bin",
+        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/model.bin",
         relative_path: "models/whisper/faster-whisper-small/model.bin",
         bytes: 483_546_902,
         unzip_into: None,
@@ -382,7 +382,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-small-config",
         label: "Whisper small (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/main/config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/config.json",
         relative_path: "models/whisper/faster-whisper-small/config.json",
         bytes: 2_370,
         unzip_into: None,
@@ -395,7 +395,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-small-tokenizer",
         label: "Whisper small (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-small/tokenizer.json",
         bytes: 2_203_239,
         unzip_into: None,
@@ -408,7 +408,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-small-vocabulary",
         label: "Whisper small (vocabulary.txt)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/main/vocabulary.txt",
+        url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/vocabulary.txt",
         relative_path: "models/whisper/faster-whisper-small/vocabulary.txt",
         bytes: 459_861,
         unzip_into: None,
@@ -421,7 +421,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-medium",
         label: "Whisper medium",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/model.bin",
+        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/model.bin",
         relative_path: "models/whisper/faster-whisper-medium/model.bin",
         bytes: 1_527_906_378,
         unzip_into: None,
@@ -434,7 +434,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-medium-config",
         label: "Whisper medium (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/config.json",
         relative_path: "models/whisper/faster-whisper-medium/config.json",
         bytes: 2_257,
         unzip_into: None,
@@ -447,7 +447,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-medium-tokenizer",
         label: "Whisper medium (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-medium/tokenizer.json",
         bytes: 2_203_239,
         unzip_into: None,
@@ -460,7 +460,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-medium-vocabulary",
         label: "Whisper medium (vocabulary.txt)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/main/vocabulary.txt",
+        url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/vocabulary.txt",
         relative_path: "models/whisper/faster-whisper-medium/vocabulary.txt",
         bytes: 459_861,
         unzip_into: None,
@@ -473,7 +473,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3",
         label: "Whisper large-v3",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/model.bin",
+        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/model.bin",
         relative_path: "models/whisper/faster-whisper-large-v3/model.bin",
         bytes: 3_087_284_237,
         unzip_into: None,
@@ -486,7 +486,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-config",
         label: "Whisper large-v3 (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/config.json",
         relative_path: "models/whisper/faster-whisper-large-v3/config.json",
         bytes: 2_394,
         unzip_into: None,
@@ -499,7 +499,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-preprocessor-config",
         label: "Whisper large-v3 (preprocessor_config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/preprocessor_config.json",
+        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/preprocessor_config.json",
         relative_path: "models/whisper/faster-whisper-large-v3/preprocessor_config.json",
         bytes: 340,
         unzip_into: None,
@@ -512,7 +512,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-tokenizer",
         label: "Whisper large-v3 (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-large-v3/tokenizer.json",
         bytes: 2_480_617,
         unzip_into: None,
@@ -525,7 +525,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-vocabulary",
         label: "Whisper large-v3 (vocabulary.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/main/vocabulary.json",
+        url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/vocabulary.json",
         relative_path: "models/whisper/faster-whisper-large-v3/vocabulary.json",
         bytes: 1_068_114,
         unzip_into: None,
@@ -538,7 +538,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-turbo",
         label: "Whisper large-v3-turbo",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main/model.bin",
+        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/model.bin",
         relative_path: "models/whisper/faster-whisper-large-v3-turbo/model.bin",
         bytes: 1_617_884_929,
         unzip_into: None,
@@ -551,7 +551,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-turbo-config",
         label: "Whisper large-v3-turbo (config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main/config.json",
+        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/config.json",
         relative_path: "models/whisper/faster-whisper-large-v3-turbo/config.json",
         bytes: 2_263,
         unzip_into: None,
@@ -564,7 +564,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-turbo-preprocessor-config",
         label: "Whisper large-v3-turbo (preprocessor_config.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main/preprocessor_config.json",
+        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/preprocessor_config.json",
         relative_path: "models/whisper/faster-whisper-large-v3-turbo/preprocessor_config.json",
         bytes: 340,
         unzip_into: None,
@@ -577,7 +577,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-turbo-tokenizer",
         label: "Whisper large-v3-turbo (tokenizer.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main/tokenizer.json",
+        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/tokenizer.json",
         relative_path: "models/whisper/faster-whisper-large-v3-turbo/tokenizer.json",
         bytes: 2_710_337,
         unzip_into: None,
@@ -590,7 +590,7 @@ pub const ASSETS: &[Asset] = &[
         id: "whisper-large-v3-turbo-vocabulary",
         label: "Whisper large-v3-turbo (vocabulary.json)",
         kind: AssetKind::Model,
-        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/main/vocabulary.json",
+        url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/vocabulary.json",
         relative_path: "models/whisper/faster-whisper-large-v3-turbo/vocabulary.json",
         bytes: 1_068_114,
         unzip_into: None,
@@ -635,8 +635,8 @@ pub const ASSETS: &[Asset] = &[
         url: dub_tcpp::Build::Cuda.download().url,
         relative_path: TCPP_CUDA,
         bytes: dub_tcpp::Build::Cuda.download().size,
-        unzip_into: None,
-        marker: "",
+        unzip_into: Some("transcribe-engine"),
+        marker: dub_tcpp::LIBRARY,
         pick: &[],
         vram_gb: None,
         note: "Runs Parakeet on an NVIDIA card.",
@@ -649,8 +649,8 @@ pub const ASSETS: &[Asset] = &[
         url: dub_tcpp::Build::Vulkan.download().url,
         relative_path: TCPP_VULKAN,
         bytes: dub_tcpp::Build::Vulkan.download().size,
-        unzip_into: None,
-        marker: "",
+        unzip_into: Some("transcribe-engine-vulkan"),
+        marker: dub_tcpp::LIBRARY,
         pick: &[],
         vram_gb: None,
         note: "Runs Parakeet on an AMD or Intel card, or an NVIDIA card CUDA does not run on.",
@@ -663,8 +663,8 @@ pub const ASSETS: &[Asset] = &[
         url: dub_tcpp::Build::Cpu.download().url,
         relative_path: TCPP_CPU,
         bytes: dub_tcpp::Build::Cpu.download().size,
-        unzip_into: None,
-        marker: "",
+        unzip_into: Some("transcribe-engine-cpu"),
+        marker: dub_tcpp::LIBRARY,
         pick: &[],
         vram_gb: None,
         note: "Runs Parakeet on the processor: slower, the same words.",
@@ -702,9 +702,10 @@ pub const ASSETS: &[Asset] = &[
         id: "cuda-cublas",
         label: "NVIDIA cuBLAS 12.9",
         kind: AssetKind::Runtime,
-        url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-12.9.2.10-archive.zip",
-        relative_path: "runtime/cuda-cublas.zip",
-        bytes: 549_731_131,
+        // NVIDIA's PyPI wheel (a zip): its redistributable archive of 12.9.2.10 has no published SHA-256
+        url: "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl",
+        relative_path: "runtime/cuda-cublas.whl",
+        bytes: 553_162_896,
         unzip_into: Some("onnx-cuda"),
         marker: "cublasLt64_12.dll",
         pick: &["cublasLt64_12.dll", "cublas64_12.dll"],
@@ -846,9 +847,10 @@ pub const ASSETS: &[Asset] = &[
         id: "cuda-cublas",
         label: "NVIDIA cuBLAS 12.9",
         kind: AssetKind::Runtime,
-        url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-12.9.2.10-archive.tar.xz",
-        relative_path: "runtime/cuda-cublas.tar.xz",
-        bytes: 944_339_140,
+        // NVIDIA's PyPI wheel (a zip): its redistributable archive of 12.9.2.10 has no published SHA-256
+        url: "https://files.pythonhosted.org/packages/cb/c0/0a517bfe63ccd3b92eb254d264e28fca3c7cab75d07daea315250fb1bf73/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl",
+        relative_path: "runtime/cuda-cublas.whl",
+        bytes: 581_240_110,
         unzip_into: Some("onnx-cuda"),
         marker: "libcublasLt.so.12",
         pick: &["libcublasLt.so.12", "libcublas.so.12"],
@@ -1166,24 +1168,21 @@ pub const PARAKEET_V3: &str = "parakeet-tdt-int8";
 pub const PARAKEET_ULTRA: &str = "parakeet-ultra-int8";
 pub const PARAKEET_FP32: &str = "parakeet-tdt-fp32";
 
-/// The folders of the ONNX Parakeet of 3.6 and earlier, under the karaoke folder.
-const RETIRED_PARAKEET: [&str; 3] = ["models/parakeet", "models/parakeet-fp32", "models/parakeet-ultra"];
-
 /// Where each transcribe.cpp build lands in the karaoke folder: `dub_tcpp::engine_dir` and its library.
 #[cfg(windows)]
-const TCPP_CUDA: &str = "models/transcribe-engine/transcribe_engine.dll";
+const TCPP_CUDA: &str = "runtime/transcribe-cuda.zip";
 #[cfg(windows)]
-const TCPP_VULKAN: &str = "models/transcribe-engine-vulkan/transcribe_engine.dll";
+const TCPP_VULKAN: &str = "runtime/transcribe-vulkan.zip";
 #[cfg(windows)]
-const TCPP_CPU: &str = "models/transcribe-engine-cpu/transcribe_engine.dll";
+const TCPP_CPU: &str = "runtime/transcribe-cpu.zip";
 #[cfg(target_os = "linux")]
-const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
+const TCPP_CUDA: &str = "runtime/transcribe-cuda.tar.gz";
 #[cfg(target_os = "linux")]
-const TCPP_VULKAN: &str = "models/transcribe-engine-vulkan/libtranscribe_engine.so";
+const TCPP_VULKAN: &str = "runtime/transcribe-vulkan.tar.gz";
 #[cfg(target_os = "linux")]
-const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
+const TCPP_CPU: &str = "runtime/transcribe-cpu.tar.gz";
 #[cfg(target_os = "macos")]
-const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.dylib";
+const TCPP_CPU: &str = "runtime/transcribe-engine-cpu/libtranscribe_engine.dylib";
 
 /// The transcribe.cpp model the dropdown names.
 pub fn parakeet_model(variant: Option<&str>) -> &'static dub_tcpp::Model {
@@ -1265,21 +1264,6 @@ pub struct LyricsSync {
 impl LyricsSync {
     pub fn new(data_root: &Path) -> Self {
         Self { downloader: Downloader::new(data_root.join("karaoke")), cuda_libraries: std::sync::OnceLock::new() }
-    }
-
-    /// Removes the Parakeet models of before transcribe.cpp (ONNX: v3 int8, fp32, Ultra), which nothing reads any
-    /// more, so they keep no gigabytes that no row of the models page shows - as Dub Studio does. A link (another
-    /// program's folder linked in) loses only the link; a hard-linked file stays with the program that shares it.
-    pub fn remove_retired_parakeet(&self) {
-        for folder in RETIRED_PARAKEET {
-            let path = self.downloader.root().join(folder);
-            let Ok(meta) = fs::symlink_metadata(&path) else { continue };
-            let removed = if meta.file_type().is_symlink() { fs::remove_dir(&path).or_else(|_| fs::remove_file(&path)) } else { fs::remove_dir_all(&path) };
-            match removed {
-                Ok(()) => eprintln!("removed the retired Parakeet {}", path.display()),
-                Err(error) => eprintln!("[ERROR] could not remove the retired Parakeet {}: {error}", path.display()),
-            }
-        }
     }
 
     /// The folder of the cuBLAS 13 the music engine runs on: transcribe.cpp's CUDA build takes links to it.
@@ -1373,7 +1357,7 @@ impl LyricsSync {
         let build = parakeet_build(runtime).ok_or_else(|| anyhow!("transcribe.cpp has no build for this system: choose Whisper"))?;
         let root = self.downloader.root().join("models");
         let model = parakeet_model(variant);
-        let engine = dub_tcpp::engine_dir(&root, build);
+        let engine = self.downloader.runtime_dir(build.dir());
         if build == dub_tcpp::Build::Cuda {
             self.link_tcpp_cuda(&engine)?;
         }
@@ -1391,6 +1375,7 @@ impl LyricsSync {
     /// binds one build on first use, so it is chosen by the machine, not by a
     /// setting: the build for this machine's card when every file of it is
     /// there - it carries the processor provider too - else the processor build.
+    /// Only a build at today's pin counts: an earlier one left on disk is not loaded.
     pub fn machine_runtime(&self) -> Option<(PathBuf, Option<OnnxCard>)> {
         let cuda = self.downloader.runtime_dir("onnx-cuda").join(libraries::ORT);
         let directml = self.downloader.runtime_dir("onnx-dml").join(libraries::ORT);
@@ -1400,21 +1385,21 @@ impl LyricsSync {
             Some(OnnxCard::DirectMl) if self.has_directml_libraries() => return Some((directml, Some(OnnxCard::DirectMl))),
             _ => {}
         }
-        [cpu, cuda, directml].into_iter().find(|library| library.is_file()).map(|library| (library, None))
+        [(cpu, "onnxruntime"), (cuda, "onnxruntime-cuda"), (directml, "onnxruntime-directml")]
+            .into_iter()
+            .find(|(library, id)| library.is_file() && self.pinned(&[id]))
+            .map(|(library, _)| (library, None))
     }
 
-    /// The DirectML build and the DirectML it is built for, side by side.
+    /// Whether every one of these downloads is installed at today's pin.
+    fn pinned(&self, ids: &[&str]) -> bool {
+        ids.iter().all(|id| asset(id).is_some_and(|asset| self.downloader.is_installed(asset)))
+    }
+
+    /// The DirectML build and the DirectML it is built for, side by side, at today's pins.
     pub fn has_directml_libraries(&self) -> bool {
         let dir = self.downloader.runtime_dir("onnx-dml");
-        [libraries::ORT, libraries::ORT_SHARED, "DirectML.dll"].iter().all(|name| dir.join(name).is_file())
-    }
-
-    /// Whether every library the card's provider needs is installed.
-    pub fn has_card_libraries(&self, card: OnnxCard) -> bool {
-        match card {
-            OnnxCard::Cuda => self.has_cuda_libraries(),
-            OnnxCard::DirectMl => self.has_directml_libraries(),
-        }
+        [libraries::ORT, libraries::ORT_SHARED, "DirectML.dll"].iter().all(|name| dir.join(name).is_file()) && self.pinned(&DIRECTML_ASSETS)
     }
 
     /// Binds `ort` to this machine's runtime - once per process, before
@@ -1432,7 +1417,11 @@ impl LyricsSync {
         }
         let (library, card) = self.machine_runtime().ok_or_else(|| anyhow!("the ONNX Runtime library is not installed"))?;
         point_ort_at(&library, card);
-        drop(ort::init_from(&library).map_err(|error| anyhow!("load ONNX Runtime {}: {error}", library.display()))?);
+        // Microsoft's builds send usage telemetry unless the environment turns it off
+        let configured = ort::init_from(&library).map_err(|error| anyhow!("load ONNX Runtime {}: {error}", library.display()))?.with_telemetry(false).commit();
+        if !configured {
+            bail!("ONNX Runtime was set up before its library was bound, so its telemetry could not be turned off");
+        }
         Ok(*BOUND.get_or_init(|| card))
     }
 
@@ -1445,10 +1434,10 @@ impl LyricsSync {
 
     /// The CUDA provider is a separate library, and it in turn needs cuBLAS and
     /// cuDNN beside it. Without all of them the provider refuses to load and the
-    /// run silently lands on the processor.
+    /// run silently lands on the processor. All of them at today's pins.
     pub fn has_cuda_libraries(&self) -> bool {
         let dir = self.downloader.runtime_dir("onnx-cuda");
-        libraries::CUDA.iter().all(|name| dir.join(name).is_file())
+        libraries::CUDA.iter().all(|name| dir.join(name).is_file()) && self.pinned(CUDA_ASSETS)
     }
 
     /// A model counts as present only with every one of its files: a directory
@@ -1734,6 +1723,7 @@ impl LyricsSync {
         if let Some(path) = music_core::process::own_libraries_first(binary) {
             command.env("LD_LIBRARY_PATH", path);
         }
+        dub_core::proc::outside_appimage(&mut command);
         command
             .args(wavs)
             .arg("--model")
@@ -2236,6 +2226,14 @@ fn hide_console(_command: &mut Command) {}
 mod tests {
     use super::*;
 
+    /// A model is fetched from a pinned commit: a repository's latest files can be other builds under the same name.
+    #[test]
+    fn every_model_is_pinned_to_a_commit() {
+        for asset in ASSETS.iter().filter(|asset| asset.url.contains("huggingface.co/")) {
+            assert!(asset.url.contains("/resolve/") && !asset.url.contains("/resolve/main/"), "{} is not pinned", asset.url);
+        }
+    }
+
     #[test]
     fn whisper_fillers_are_dropped_and_sung_lines_kept() {
         assert!(is_hallucination(" Субтитры создавал DimaTorzok"));
@@ -2492,24 +2490,6 @@ mod live_recognition {
     }
 
     #[test]
-    fn the_onnx_parakeet_goes_and_transcribe_cpp_stays() {
-        let root = tempfile::tempdir().unwrap();
-        let sync = LyricsSync::new(root.path());
-        let karaoke = root.path().join("karaoke");
-        for folder in RETIRED_PARAKEET {
-            fs::create_dir_all(karaoke.join(folder)).unwrap();
-            fs::write(karaoke.join(folder).join("encoder-model.int8.onnx"), b"x").unwrap();
-        }
-        let kept = karaoke.join("models/asr-gguf-parakeet-v3/parakeet-tdt-0.6b-v3-Q8_0.gguf");
-        fs::create_dir_all(kept.parent().unwrap()).unwrap();
-        fs::write(&kept, b"x").unwrap();
-        sync.remove_retired_parakeet();
-        assert!(RETIRED_PARAKEET.iter().all(|folder| !karaoke.join(folder).exists()));
-        assert!(kept.is_file());
-        sync.remove_retired_parakeet();
-    }
-
-    #[test]
     fn karaoke_files_land_where_the_shared_binding_looks() {
         let root = Path::new("karaoke-root").join("models");
         for (variant, id) in [(None, PARAKEET_V3), (Some(PARAKEET_ULTRA), PARAKEET_ULTRA), (Some(PARAKEET_FP32), PARAKEET_V3)] {
@@ -2522,13 +2502,20 @@ mod live_recognition {
         #[cfg(target_os = "macos")]
         {
             assert_eq!(parakeet_build(OnnxFlavour::Auto), Some(dub_tcpp::Build::Cpu));
-            let asset = asset(dub_tcpp::Build::Cpu.dir()).unwrap();
-            assert_eq!(Path::new("karaoke-root").join(asset.relative_path), dub_tcpp::engine_dir(&root, dub_tcpp::Build::Cpu).join(dub_tcpp::LIBRARY));
+            let asset = asset("transcribe-engine-cpu").unwrap();
+            // the Mac fetches the single dylib straight into the build's folder under runtime/, where the loader opens it
+            assert_eq!(
+                Path::new("karaoke-root").join(asset.relative_path),
+                Path::new("karaoke-root").join("runtime").join(dub_tcpp::Build::Cpu.dir()).join(dub_tcpp::LIBRARY),
+            );
         }
+        // Windows and Linux fetch the engine-0.2.0 archive and unpack it into the build's folder under runtime/, where the
+        // loader (runtime_dir(build.dir())) opens LIBRARY; the studio ships the CUDA 13, Vulkan and processor builds.
         #[cfg(any(windows, target_os = "linux"))]
-        for build in dub_tcpp::Build::ALL {
+        for build in [dub_tcpp::Build::Cuda, dub_tcpp::Build::Vulkan, dub_tcpp::Build::Cpu] {
             let asset = asset(build.dir()).unwrap();
-            assert_eq!(Path::new("karaoke-root").join(asset.relative_path), dub_tcpp::engine_dir(&root, build).join(dub_tcpp::LIBRARY));
+            assert_eq!(asset.unzip_into, Some(build.dir()));
+            assert_eq!(asset.marker, dub_tcpp::LIBRARY);
             assert_eq!((asset.url, asset.bytes), (build.download().url, build.download().size));
         }
     }

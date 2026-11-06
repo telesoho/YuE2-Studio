@@ -124,7 +124,7 @@ fn configure_studio_runtime_paths() {
     // The service resolves and supervises the engine; the shell only needs the
     // loopback address they agree on.
     let host = std::env::var("YUE_ENGINE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port = std::env::var("YUE_ENGINE_PORT").ok().and_then(|value| value.parse::<u16>().ok()).unwrap_or(music_engine::yue_server::DEFAULT_PORT);
+    let port = music_engine::yue_server::engine_port();
     if std::env::var_os("YUE_ENGINE_BASE_URL").is_none() {
         unsafe {
             std::env::set_var("YUE_ENGINE_BASE_URL", format!("http://{host}:{port}"));
@@ -528,9 +528,52 @@ fn set_window_region(window: tauri::WebviewWindow, rects: Vec<[i32; 4]>) -> Resu
     Ok(())
 }
 
+/// The GStreamer paths of an AppImage, pointed inside it. AppRun sources linuxdeploy's GStreamer hook before the GTK
+/// hook that sets APPDIR for an extracted AppImage, so there the hook's paths name the host's plugins; WebKit's media
+/// process then loads the host's libgstsoup, whose libsoup 2 kills it next to WebKitGTK's libsoup 3. Each wrong
+/// variable comes back with the path it gets inside the AppImage, and the registry is the studio's own so a cache
+/// written with the host's plugins is not read.
+#[cfg(any(target_os = "linux", test))]
+fn appimage_gstreamer_paths(appdir: &std::path::Path, current: impl Fn(&str) -> Option<String>, cache: &std::path::Path) -> Vec<(&'static str, String)> {
+    let inside = |relative: &str| appdir.join(relative).to_string_lossy().into_owned();
+    let expected = [
+        ("GST_PLUGIN_SYSTEM_PATH_1_0", inside("usr/lib/gstreamer-1.0")),
+        ("GST_PLUGIN_PATH_1_0", inside("usr/lib/gstreamer-1.0")),
+        ("GST_PLUGIN_SCANNER_1_0", inside("usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner")),
+        ("GST_PTP_HELPER_1_0", inside("usr/lib/gstreamer1.0/gstreamer-1.0/gst-ptp-helper")),
+    ];
+    if !appdir.join("usr/lib/gstreamer-1.0").is_dir() {
+        return Vec::new();
+    }
+    let mut fixed: Vec<(&'static str, String)> = expected
+        .into_iter()
+        .filter(|(name, path)| current(name).is_some_and(|value| value != *path))
+        .collect();
+    if !fixed.is_empty() && current("GST_REGISTRY_1_0").is_none() {
+        fixed.push(("GST_REGISTRY_1_0", cache.join("yue2-studio").join("gstreamer-registry.bin").to_string_lossy().into_owned()));
+    }
+    fixed
+}
+
+#[cfg(target_os = "linux")]
+fn point_gstreamer_inside_the_appimage() {
+    let Some(appdir) = std::env::var_os("APPDIR").map(PathBuf::from) else { return };
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    for (name, value) in appimage_gstreamer_paths(&appdir, |name| std::env::var(name).ok(), &cache) {
+        eprintln!("[studio] {name} pointed outside the AppImage; set to {value}");
+        // single-threaded here, before Tauri starts any thread
+        unsafe { std::env::set_var(name, value) };
+    }
+}
+
 pub fn run() {
     #[cfg(windows)]
     hide_own_console_window();
+    #[cfg(target_os = "linux")]
+    point_gstreamer_inside_the_appimage();
 
     if keeps_everything_beside_itself() && std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none() {
         // The process is still single-threaded here, before Tauri or its
@@ -744,8 +787,42 @@ pub fn run() {
                     let app = app.clone();
                     std::thread::spawn(move || confirm_quit(&app));
                 }
+                tauri::RunEvent::Exit => music_server::stop_engine(),
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gstreamer_paths_left_outside_an_extracted_appimage_point_inside_it() {
+        let appdir = std::env::temp_dir().join(format!("yue2-appdir-{}", std::process::id()));
+        std::fs::create_dir_all(appdir.join("usr/lib/gstreamer-1.0")).unwrap();
+        let inside = |relative: &str| appdir.join(relative).to_string_lossy().into_owned();
+        let cache = PathBuf::from("/home/someone/.cache");
+        let hooked = |name: &str| -> Option<String> {
+            match name {
+                "GST_PLUGIN_SYSTEM_PATH_1_0" => Some(inside("usr/lib/gstreamer-1.0")),
+                "GST_PLUGIN_PATH_1_0" => Some("/usr/lib/gstreamer-1.0".into()),
+                "GST_PLUGIN_SCANNER_1_0" => Some("/usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner".into()),
+                "GST_PTP_HELPER_1_0" => Some("/usr/lib/gstreamer1.0/gstreamer-1.0/gst-ptp-helper".into()),
+                _ => None,
+            }
+        };
+        let fixed = appimage_gstreamer_paths(&appdir, hooked, &cache);
+        let names: Vec<&str> = fixed.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SCANNER_1_0", "GST_PTP_HELPER_1_0", "GST_REGISTRY_1_0"]);
+        assert_eq!(fixed[0].1, inside("usr/lib/gstreamer-1.0"));
+        assert_eq!(fixed[1].1, inside("usr/lib/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner"));
+        assert!(fixed[3].1.starts_with("/home/someone/.cache"));
+
+        let right = |name: &str| fixed.iter().find(|(fixed, _)| *fixed == name).map(|(_, value)| value.clone()).or_else(|| hooked(name));
+        assert!(appimage_gstreamer_paths(&appdir, right, &cache).is_empty(), "paths inside the AppImage are kept");
+        assert!(appimage_gstreamer_paths(&appdir, |_| None, &cache).is_empty(), "nothing set, nothing to correct");
+        std::fs::remove_dir_all(&appdir).ok();
+    }
 }
 

@@ -1,19 +1,20 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Copy, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 import { songDetailStrings, songTokenStrings, songWritingStrings } from '../i18n/songWriting';
 import { cycleSection, editLyricLine, lyricSections, SECTION_PRESETS, sectionText, setStyleRole, STYLE_LANGUAGES, styleRole, toggleLetterCase, type LyricSection } from '../services/songWriting';
-import { EXAMPLES } from '../services/examples';
+import { styleSuggestions } from '../services/styleSuggestions';
+import { MAIN_STYLES } from '../data/genres';
 import { lyricLineOffsets, songTokens, tokensOnLine, type SongTokens } from '../services/songTokens';
 
 const control = 'w-full rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-xs outline-hidden focus:border-pink-500 dark:border-white/10 dark:bg-black/25';
 const button = 'rounded-md p-1.5 text-zinc-500 hover:bg-pink-500/10 hover:text-pink-500 disabled:opacity-30';
-const suggestions = Array.from(new Set(EXAMPLES.flatMap(example => example.style.split(/[,\n]/)).map(part => part.trim()).filter(Boolean))).sort();
 export function SongTextParts({ value, onChange, kind, style = '', cot = 'full' }: { value: string; onChange: (text: string) => void; kind: 'style' | 'lyrics'; style?: string; cot?: string }) {
   const [open, setOpen] = useState(false);
   const { language } = useI18n();
   const s = { ...songWritingStrings[language], ...songDetailStrings[language], ...songTokenStrings[language] };
   const suggestionId = useId();
+  const suggestions = useMemo(() => styleSuggestions(language, MAIN_STYLES), [language]);
   const [newSound, setNewSound] = useState('');
   const [tokens, setTokens] = useState<SongTokens | null>(null);
   const [tokenProblem, setTokenProblem] = useState('');
@@ -60,7 +61,7 @@ export function SongTextParts({ value, onChange, kind, style = '', cot = 'full' 
         <div className="flex items-center gap-2"><label className="flex items-center gap-1 text-[11px] text-zinc-500"><input type="checkbox" className="accent-pink-500" checked={Boolean(styleRole(value, 'tempo'))} onChange={event => onChange(setStyleRole(value, 'tempo', event.target.checked ? '88' : ''))} />BPM</label><input type="range" min={40} max={200} step={1} aria-label={s.tempo} className="w-full accent-pink-500 disabled:opacity-30" disabled={!styleRole(value, 'tempo')} value={styleRole(value, 'tempo') || '88'} onChange={event => onChange(setStyleRole(value, 'tempo', event.target.value))} /></div>
         <label className="block text-[11px] text-zinc-500">{s.voice}<input key={`voice-${styleRole(value, 'voice')}`} className={control} list={suggestionId} defaultValue={styleRole(value, 'voice')} placeholder={s.auto} onBlur={event => onChange(setStyleRole(value, 'voice', event.target.value))} /></label>
         <div className="flex gap-1"><input className={control} list={suggestionId} aria-label={s.sound} value={newSound} onChange={event => setNewSound(event.target.value)} placeholder={s.sound} /><button type="button" className={button} title={s.add} disabled={!newSound.trim()} onClick={() => { const tempoAt = parts.findIndex(part => /^\s*(?:\d{2,3}\s*bpm|bpm\s*\d{2,3})\s*$/i.test(part)); const next = [...parts]; next.splice(tempoAt === parts.length - 1 ? tempoAt : parts.length, 0, ` ${newSound.trim()}`); onChange(next.filter(part => part.trim()).join(',')); setNewSound(''); }}><Plus size={13} /></button></div>
-        <datalist id={suggestionId}>{suggestions.map(text => <option key={text} value={text} />)}</datalist>
+        <datalist id={suggestionId}>{suggestions.map(item => <option key={item.value} value={item.value} label={item.label} />)}</datalist>
       </div>}
       {kind === 'style' ? parts.map((part, index) => <div key={index} className="flex gap-1">
         <input className={control} aria-label={`${s.descriptor} ${index + 1}`} value={part} onChange={event => { const next = [...parts]; next[index] = event.target.value; onChange(next.join(',')); }} />

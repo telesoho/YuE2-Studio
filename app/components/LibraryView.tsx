@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Song, Playlist } from '../types';
 import { Heart, Plus, Play, Upload, Loader2, MoreHorizontal, ListMusic } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
+import { AUDIO_ACCEPT } from '../services/audioFiles';
 import { useSongActions } from '../context/SongActionsContext';
 import { deleteNativePlaylist } from '../services/nativeLibrary';
 import { updateLibraryPlaylists } from '../services/studioQueries';
@@ -55,8 +56,12 @@ interface LibraryViewProps {
   onAddToPlaylist: (songs: Song | Song[]) => void;
   onDeleteMany: (songs: Song[]) => void;
   onMidiMany: (songs: Song[]) => void;
-  /** Opens a song's details over the page, or closes them when they are its. */
+  /** The song the details show; a row click chooses it without playing it. */
+  selectedSong: Song | null;
+  onSelect: (song: Song) => void;
+  /** Opens a song's details, or closes them when they are its. */
   onShowDetails: (song: Song) => void;
+  onOpenCoverRegen?: (song: Song) => void;
   detailsSongId: string | null;
 }
 
@@ -77,7 +82,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onAddToPlaylist,
     onDeleteMany,
     onMidiMany,
+    selectedSong,
+    onSelect,
     onShowDetails,
+    onOpenCoverRegen,
     detailsSongId,
 }) => {
     const { t, songCount } = useI18n();
@@ -137,15 +145,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             songs={songs}
             librarySongs={allSongs}
             currentSong={currentSong}
-            selectedSong={null}
+            selectedSong={selectedSong}
             likedSongIds={likedSongIds}
             isPlaying={isPlaying}
             onPlay={onPlaySong}
-            onSelect={song => onPlaySong(song, songs)}
+            onSelect={onSelect}
             onToggleLike={onToggleLike}
             onAddToPlaylist={song => onAddToPlaylist(song)}
             onAddManyToPlaylist={chosen => onAddToPlaylist(chosen)}
             onShowDetails={onShowDetails}
+            onOpenCoverRegen={onOpenCoverRegen}
             detailsSongId={detailsSongId}
             onDeleteMany={onDeleteMany}
             onMidiMany={onMidiMany}
@@ -331,7 +340,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                      <input
                          ref={importInput}
                          type="file"
-                         accept="audio/mpeg,audio/wav,audio/flac,audio/ogg,.mp3,.wav,.flac,.ogg"
+                         accept={AUDIO_ACCEPT}
                          multiple
                          className="hidden"
                          onChange={(event) => { void importAudio(event.target.files); event.target.value = ''; }}

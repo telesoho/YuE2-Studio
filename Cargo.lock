@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "acpp-server"
+version = "2.0.0"
+source = "git+https://github.com/timoncool/dub-studio?rev=ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a#ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a"
+dependencies = [
+ "base64",
+ "dub-core 2.0.0 (git+https://github.com/timoncool/dub-studio?rev=ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a)",
+ "dub-tcpp",
+ "hound",
+ "libc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -614,7 +630,19 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "dub-core"
 version = "2.0.0"
-source = "git+https://github.com/timoncool/dub-studio?rev=b8581e3555c2cab047b1b5d4418a7ec2f9c3095c#b8581e3555c2cab047b1b5d4418a7ec2f9c3095c"
+source = "git+https://github.com/timoncool/dub-studio?rev=ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a#ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a"
+dependencies = [
+ "iced-x86",
+ "libc",
+ "object",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dub-core"
+version = "2.0.0"
+source = "git+https://github.com/timoncool/dub-studio?rev=d7d3f7600ff23c25ba497a1636002e429b571641#d7d3f7600ff23c25ba497a1636002e429b571641"
 dependencies = [
  "libc",
  "serde",
@@ -624,17 +652,18 @@ dependencies = [
 [[package]]
 name = "dub-sep"
 version = "2.0.0"
-source = "git+https://github.com/timoncool/dub-studio?rev=b8581e3555c2cab047b1b5d4418a7ec2f9c3095c#b8581e3555c2cab047b1b5d4418a7ec2f9c3095c"
+source = "git+https://github.com/timoncool/dub-studio?rev=d7d3f7600ff23c25ba497a1636002e429b571641#d7d3f7600ff23c25ba497a1636002e429b571641"
 dependencies = [
- "dub-core",
- "hound",
+ "dub-core 2.0.0 (git+https://github.com/timoncool/dub-studio?rev=d7d3f7600ff23c25ba497a1636002e429b571641)",
  "thiserror",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "dub-tcpp"
 version = "2.0.0"
-source = "git+https://github.com/timoncool/dub-studio?rev=e3373d99a4830f8fe068713685f7b807e373c29e#e3373d99a4830f8fe068713685f7b807e373c29e"
+source = "git+https://github.com/timoncool/dub-studio?rev=ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a#ba53e572bd7cc5bd5e57dfe9ed386f1746640a7a"
 dependencies = [
  "libloading 0.9.0",
 ]
@@ -706,7 +735,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1199,6 +1228,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "iced-x86"
+version = "1.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
+dependencies = [
+ "lazy_static",
 ]
 
 [[package]]
@@ -1767,6 +1805,7 @@ dependencies = [
 name = "music-server"
 version = "0.1.0"
 dependencies = [
+ "acpp-server",
  "anyhow",
  "audio-post",
  "axum",
@@ -1774,6 +1813,7 @@ dependencies = [
  "chrono",
  "dicebear-core",
  "dicebear-styles",
+ "dub-core 2.0.0 (git+https://github.com/timoncool/dub-studio?rev=d7d3f7600ff23c25ba497a1636002e429b571641)",
  "dub-sep",
  "dub-tcpp",
  "ed25519-dalek",
@@ -1786,6 +1826,7 @@ dependencies = [
  "http",
  "hyper-util",
  "include_dir",
+ "libc",
  "lofty",
  "lzma-rust2",
  "music-core",
@@ -1997,6 +2038,15 @@ dependencies = [
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
+]
+
+[[package]]
+name = "object"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -2250,7 +2300,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2630,7 +2680,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2687,7 +2737,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3046,11 +3096,14 @@ dependencies = [
  "symphonia-bundle-flac",
  "symphonia-bundle-mp3",
  "symphonia-codec-aac",
+ "symphonia-codec-adpcm",
  "symphonia-codec-alac",
  "symphonia-codec-pcm",
  "symphonia-codec-vorbis",
  "symphonia-core",
+ "symphonia-format-caf",
  "symphonia-format-isomp4",
+ "symphonia-format-mkv",
  "symphonia-format-ogg",
  "symphonia-format-riff",
  "symphonia-metadata",
@@ -3088,6 +3141,16 @@ dependencies = [
  "lazy_static",
  "log",
  "symphonia-common",
+ "symphonia-core",
+]
+
+[[package]]
+name = "symphonia-codec-adpcm"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "445932ecb0c59362fde9c082dd63a75380650c5077fdb8b80b8cac850442a74c"
+dependencies = [
+ "log",
  "symphonia-core",
 ]
 
@@ -3150,6 +3213,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "symphonia-format-caf"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab64327ee1920531c5bf86cf7e9cd1a599d57013ddc30691da62683cefc65191"
+dependencies = [
+ "log",
+ "symphonia-common",
+ "symphonia-core",
+]
+
+[[package]]
 name = "symphonia-format-isomp4"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3159,6 +3233,18 @@ dependencies = [
  "symphonia-common",
  "symphonia-core",
  "symphonia-metadata",
+]
+
+[[package]]
+name = "symphonia-format-mkv"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d015c5c0558864665894b3f4cbd95e10abb01b9c868e751c72670f326a56360e"
+dependencies = [
+ "lazy_static",
+ "log",
+ "symphonia-common",
+ "symphonia-core",
 ]
 
 [[package]]
@@ -3294,10 +3380,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3892,7 +3978,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -23,6 +23,178 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 /// weights must not be mistaken for the studio's own engine.
 pub const DEFAULT_PORT: u16 = 18087;
 
+/// The loopback port the engine listens on and the studio asks it on: `YUE_ENGINE_PORT` when set, else the
+/// engine's own (`DEFAULT_PORT`) when this computer lets the studio listen there, else one the system gives. Decided
+/// once per run; `engine_port_note` says why it is not the engine's own.
+pub fn engine_port() -> u16 {
+    resolved_port().0
+}
+
+/// Why `engine_port` is not the engine's own port: what holds it, or that Windows reserves it.
+pub fn engine_port_note() -> Option<&'static str> {
+    resolved_port().1.as_deref()
+}
+
+fn resolved_port() -> &'static (u16, Option<String>) {
+    static PORT: std::sync::OnceLock<(u16, Option<String>)> = std::sync::OnceLock::new();
+    PORT.get_or_init(|| match (std::env::var("YUE_ENGINE_PORT"), port_from_environment()) {
+        (_, Some(port)) => (port, None),
+        (Ok(text), None) => {
+            note_in_log(&format!("YUE_ENGINE_PORT={text} is not a port, so the studio chooses one"));
+            let (port, note) = choose_port(DEFAULT_PORT);
+            let note = format!("YUE_ENGINE_PORT={text} is not a port, so the studio chose one{}", note.map(|note| format!(": {note}")).unwrap_or_default());
+            (port, Some(note))
+        }
+        (Err(_), None) => choose_port(DEFAULT_PORT),
+    })
+}
+
+/// The port YUE_ENGINE_PORT sets, when it holds one.
+fn port_from_environment() -> Option<u16> {
+    std::env::var("YUE_ENGINE_PORT").ok()?.trim().parse::<u16>().ok().filter(|port| *port > 0)
+}
+
+/// Whether the engine's port is the one YUE_ENGINE_PORT sets rather than one the studio chose.
+pub fn engine_port_is_set() -> bool {
+    port_from_environment().is_some()
+}
+
+/// `wanted` when the studio can listen on it on loopback or this engine already answers there, else the first free
+/// port of the hundred above it, which the system does not hand out to outgoing connections as it does its dynamic
+/// range, else one the system gives; with the reason.
+fn choose_port(wanted: u16) -> (u16, Option<String>) {
+    let bindable = |port: u16| std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).map(drop);
+    let refused = match bindable(wanted) {
+        Ok(()) => return (wanted, None),
+        Err(error) => error,
+    };
+    if answers_as_engine(DEFAULT_HOST, wanted, Duration::from_millis(500)) {
+        return (wanted, None);
+    }
+    let why = port_unavailable(wanted, &refused);
+    let other = (wanted.saturating_add(1)..=wanted.saturating_add(100))
+        .find(|port| bindable(*port).is_ok())
+        .map(Ok)
+        .unwrap_or_else(|| std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).and_then(|listener| listener.local_addr()).map(|address| address.port()));
+    let (port, note) = match other {
+        Ok(port) => (port, format!("port {wanted} is not available to the engine ({why}); it listens on {port} instead")),
+        Err(error) => (wanted, format!("port {wanted} is not available to the engine ({why}) and the system gave no other: {error}")),
+    };
+    note_in_log(&note);
+    (port, Some(note))
+}
+
+/// What keeps the studio from listening on `port`: the range Windows reserves it in, or the program that holds it.
+fn port_unavailable(port: u16, error: &std::io::Error) -> String {
+    #[cfg(windows)]
+    {
+        // 10013 is WSAEACCES, which a reserved range gives
+        if error.raw_os_error() == Some(10013) {
+            if let Some((first, last)) = excluded_range(port) {
+                return format!("Windows reserves ports {first}-{last}");
+            }
+        }
+        if let Some((pid, name)) = listener_of(port) {
+            return format!("{name} (PID {pid}) listens on it");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = port;
+    if error.kind() == std::io::ErrorKind::AddrInUse { format!("another program listens on it: {error}") } else { error.to_string() }
+}
+
+/// The range of `netsh interface ipv4 show excludedportrange protocol=tcp` that holds `port`; none when netsh does
+/// not answer within three seconds.
+#[cfg(windows)]
+fn excluded_range(port: u16) -> Option<(u16, u16)> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut child = Command::new("netsh")
+        .args(["interface", "ipv4", "show", "excludedportrange", "protocol=tcp"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    // read while it runs, so a listing longer than the pipe holds does not stop it
+    let mut stdout = child.stdout.take()?;
+    let reader = thread::spawn(move || {
+        let mut listing = String::new();
+        stdout.read_to_string(&mut listing).map(|_| listing)
+    });
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while child.try_wait().ok()?.is_none() {
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let listing = reader.join().ok()?.ok()?;
+    excluded_range_in(&listing, port)
+}
+
+/// The range of a netsh port-range listing (lines of a first and a last port) that holds `port`.
+#[cfg(any(windows, test))]
+fn excluded_range_in(listing: &str, port: u16) -> Option<(u16, u16)> {
+    listing.lines().find_map(|line| {
+        let mut numbers = line.split_whitespace().map(str::parse::<u16>);
+        let (Some(Ok(first)), Some(Ok(last))) = (numbers.next(), numbers.next()) else { return None };
+        (first <= port && port <= last).then_some((first, last))
+    })
+}
+
+/// The process listening on `port` on loopback or every address, IPv4 or IPv6 (a dual-stack listener on [::] holds
+/// the IPv4 port too), by its PID and program name.
+#[cfg(windows)]
+fn listener_of(port: u16) -> Option<(u32, String)> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::NetworkManagement::IpHelper::{GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER};
+    use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+    const AF_INET: u32 = 2;
+    const AF_INET6: u32 = 23;
+    // the table: a u32 count, then the rows
+    let table = |family: u32| -> Option<Vec<u32>> {
+        let mut size = 0u32;
+        unsafe { GetExtendedTcpTable(std::ptr::null_mut(), &mut size, 0, family, TCP_TABLE_OWNER_PID_LISTENER, 0) };
+        if size == 0 {
+            return None;
+        }
+        let mut buffer = vec![0u32; (size as usize).div_ceil(4)];
+        (unsafe { GetExtendedTcpTable(buffer.as_mut_ptr().cast(), &mut size, 0, family, TCP_TABLE_OWNER_PID_LISTENER, 0) } == 0).then_some(buffer)
+    };
+    // addresses and ports in network byte order, a port in its field's low 16 bits
+    let v4 = table(AF_INET).and_then(|buffer| {
+        let rows = unsafe { std::slice::from_raw_parts(buffer.as_ptr().add(1).cast::<MIB_TCPROW_OWNER_PID>(), buffer[0] as usize) };
+        let loopback = u32::from_ne_bytes([127, 0, 0, 1]);
+        rows.iter().find(|row| u16::from_be(row.dwLocalPort as u16) == port && (row.dwLocalAddr == loopback || row.dwLocalAddr == 0)).map(|row| row.dwOwningPid)
+    });
+    let pid = v4.or_else(|| {
+        table(AF_INET6).and_then(|buffer| {
+            let rows = unsafe { std::slice::from_raw_parts(buffer.as_ptr().add(1).cast::<MIB_TCP6ROW_OWNER_PID>(), buffer[0] as usize) };
+            let any = [0u8; 16];
+            let loopback = std::net::Ipv6Addr::LOCALHOST.octets();
+            rows.iter().find(|row| u16::from_be(row.dwLocalPort as u16) == port && (row.ucLocalAddr == any || row.ucLocalAddr == loopback)).map(|row| row.dwOwningPid)
+        })
+    })?;
+    let mut name = format!("process {pid}");
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if !process.is_null() {
+            let mut path = vec![0u16; 1024];
+            let mut length = path.len() as u32;
+            if QueryFullProcessImageNameW(process, 0, path.as_mut_ptr(), &mut length) != 0 {
+                let full = String::from_utf16_lossy(&path[..length as usize]);
+                name = full.rsplit(['\\', '/']).next().unwrap_or(&full).to_string();
+            }
+            CloseHandle(process);
+        }
+    }
+    Some((pid, name))
+}
+
 #[cfg(windows)]
 const EXECUTABLE: &str = "yue-server.exe";
 #[cfg(not(windows))]
@@ -79,7 +251,7 @@ pub enum ComputeBackend {
 }
 
 impl ComputeBackend {
-    /// The device name `yue-server` reads from `GGML_BACKEND`, none for `Auto`.
+    /// The device name `yue-server` takes as `--device`, none for `Auto`.
     pub fn ggml_device(self) -> Option<&'static str> {
         match self {
             Self::Auto => None,
@@ -94,7 +266,7 @@ impl ComputeBackend {
 /// read once at startup, so changing one restarts the engine.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct YueServerOptions {
-    /// The device to compute on, passed as `GGML_BACKEND`.
+    /// The device to compute on, passed as `--device`.
     pub backend: ComputeBackend,
     /// `--keep-loaded`: keep every module resident instead of evicting
     /// between the AR, NAR and VAE stages.
@@ -353,13 +525,8 @@ impl YueServerSupervisor {
                 command.env_remove("YUE_CUDA_BACKEND");
             }
         }
-        match self.config.options.backend.ggml_device() {
-            Some(device) => {
-                command.env("GGML_BACKEND", device);
-            }
-            None => {
-                command.env_remove("GGML_BACKEND");
-            }
+        if let Some(device) = self.config.options.backend.ggml_device() {
+            command.arg("--device").arg(device);
         }
         if let Some(directory) = self.config.executable.parent() {
             command.current_dir(directory);
@@ -408,7 +575,10 @@ impl YueServerSupervisor {
             return Ok(StopOutcome { was_running: false, graceful: true });
         };
         if let Some(status) = child.try_wait().context("inspect yue-server child")? {
-            note_in_log(&format!("the engine had already exited: {status}"));
+            note_in_log(&format!(
+                "the engine had already exited: {status}{}",
+                status.code().map(|code| format!(" (0x{:x})", code as u32)).unwrap_or_default()
+            ));
             self.child = None;
             return Ok(StopOutcome { was_running: false, graceful: true });
         }
@@ -530,22 +700,25 @@ fn validate_loopback_host(host: &str) -> Result<()> {
 }
 
 fn health_check(host: &str, port: u16, timeout: Duration) -> bool {
-    let Ok(address) = host.parse::<IpAddr>() else {
-        return false;
-    };
-    let Ok(mut stream) = TcpStream::connect_timeout(&SocketAddr::new(address, port), timeout) else {
-        return false;
-    };
+    http_get(host, port, "/health", timeout).is_some_and(|response| response.starts_with("HTTP/1.1 200"))
+}
+
+/// Whether the server on `port` is a yue-server: its /props is a JSON object naming its backbone and VAE, which a
+/// program that merely answers /health does not give.
+fn answers_as_engine(host: &str, port: u16, timeout: Duration) -> bool {
+    http_get(host, port, "/props", timeout).is_some_and(|response| response.starts_with("HTTP/1.1 200") && response.contains("\"model\"") && response.contains("\"vae\""))
+}
+
+/// The whole answer of a plain HTTP/1.1 GET of `path` on loopback, none when nothing answers within `timeout`.
+fn http_get(host: &str, port: u16, path: &str, timeout: Duration) -> Option<String> {
+    let address = host.parse::<IpAddr>().ok()?;
+    let mut stream = TcpStream::connect_timeout(&SocketAddr::new(address, port), timeout).ok()?;
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
-    if stream
-        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-        .is_err()
-    {
-        return false;
-    }
+    stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").as_bytes()).ok()?;
     let mut response = String::new();
-    stream.read_to_string(&mut response).is_ok() && response.starts_with("HTTP/1.1 200")
+    stream.read_to_string(&mut response).ok()?;
+    Some(response)
 }
 
 #[cfg(windows)]
@@ -780,6 +953,29 @@ mod tests {
     fn refuses_non_loopback_listener() {
         assert!(validate_loopback_host("0.0.0.0").is_err());
         assert!(validate_loopback_host("127.0.0.1").is_ok());
+    }
+
+    #[test]
+    fn a_port_another_program_holds_gives_way_to_a_free_one_with_the_holder_named() {
+        let held = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let wanted = held.local_addr().unwrap().port();
+        let (port, note) = choose_port(wanted);
+        assert_ne!(port, wanted);
+        let note = note.expect("a reason for the other port");
+        assert!(note.contains(&format!("port {wanted} is not available")) && note.contains(&format!("listens on {port} instead")), "{note}");
+        #[cfg(windows)]
+        assert!(note.contains(&format!("PID {}", std::process::id())), "the holder is named: {note}");
+        assert!(std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_ok(), "the port given is free");
+        drop(held);
+        assert_eq!(choose_port(wanted), (wanted, None), "a free port is the one wanted");
+    }
+
+    #[test]
+    fn a_port_in_a_reserved_range_is_found_in_the_listing() {
+        let listing = "\nProtocol tcp Port Exclusion Ranges\n\nStart Port    End Port\n----------    --------\n      5357        5357\n     18040       18139\n     50000       50059     *\n\n* - Administered port exclusions.\n";
+        assert_eq!(excluded_range_in(listing, 18087), Some((18040, 18139)));
+        assert_eq!(excluded_range_in(listing, 50000), Some((50000, 50059)));
+        assert_eq!(excluded_range_in(listing, 9000), None);
     }
 
     #[test]

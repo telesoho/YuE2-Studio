@@ -343,14 +343,17 @@ pub const TOOLS_FOLDER_PREFIX: &str = "hotstep-tools";
 
 /// Removes the tools folders of earlier releases from the shared root, and
 /// the folders of before the tools were one build (`legacy_prefix` under the
-/// capability's own `runtime`): nothing runs them any more.
+/// capability's own `runtime`): nothing runs them any more. The folders of
+/// today's release (`current_folder`, and the transcriber's other builds named
+/// `<current_folder>-...`) stay.
 pub fn remove_older_tool_folders(downloader: &Downloader, current_folder: &str, legacy_prefix: &str) {
     let current = downloader.runtime_dir(current_folder);
+    let today = |name: &str| name == current_folder || name.starts_with(&format!("{current_folder}-"));
     let sweep = |directory: &Path, prefix: &str| {
         let Ok(entries) = std::fs::read_dir(directory) else { return };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(prefix) && entry.path() != current && entry.path().is_dir() {
+            if name.starts_with(prefix) && !today(&name) && entry.path().is_dir() {
                 if let Err(error) = std::fs::remove_dir_all(entry.path()) {
                     eprintln!("[ERROR] could not remove the older {} {}: {error}", prefix, entry.path().display());
                 }
@@ -373,7 +376,7 @@ fn trainer_folder() -> &'static str {
 
 /// Everything training needs: the trainer, released beside the studio, and
 /// the engine's weights for it.
-fn pack() -> &'static [Asset] {
+pub(crate) fn pack() -> &'static [Asset] {
     static PACK: OnceLock<Vec<Asset>> = OnceLock::new();
     PACK.get_or_init(|| {
         let leak = |text: String| -> &'static str { Box::leak(text.into_boxed_str()) };
@@ -429,11 +432,22 @@ const CAPTIONER_PICK: [&str; 12] = [
     "ggml-cpu-x64.dll",
 ];
 
+/// The captioner the macOS app bundle and the Linux packages carry in
+/// `resources/music-midi`, built with the MIDI transcriber from the same
+/// HOT-Step; the downloadable archive is a Windows build.
+fn bundled_captioner() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return None;
+    }
+    let tool = crate::engine_bundle_root().parent()?.join("music-midi").join("music-caption");
+    tool.is_file().then_some(tool)
+}
+
 /// Describing dataset songs by ear, optional: HOT-Step's `ace-caption` beside
 /// the trainer, MOSS-Music-8B-Instruct (OpenMOSS, Apache-2.0; GGUF by
 /// scragnog) for what it hears and Beat This! (CPJKU, MIT; ONNX by
 /// mosynthkey) for the beat.
-fn listen_pack() -> &'static [Asset] {
+pub(crate) fn listen_pack() -> &'static [Asset] {
     static PACK: OnceLock<Vec<Asset>> = OnceLock::new();
     PACK.get_or_init(|| {
         let leak = |text: String| -> &'static str { Box::leak(text.into_boxed_str()) };
@@ -468,21 +482,28 @@ fn listen_pack() -> &'static [Asset] {
             model(
                 "moss-audio",
                 "MOSS-Music audio tower (F16)",
-                "https://huggingface.co/scragnog/MOSS-Music-8B-Instruct-GGUF/resolve/main/moss-aud-f16.gguf",
+                "https://huggingface.co/scragnog/MOSS-Music-8B-Instruct-GGUF/resolve/9fe86435bd542bf29cbf4984e9e0ab0ea8ca7e00/moss-aud-f16.gguf",
                 "models/moss/moss-aud-f16.gguf",
                 1_724_480_640,
             ),
             model(
                 "moss-lm",
                 "MOSS-Music 8B (Q8_0)",
-                "https://huggingface.co/scragnog/MOSS-Music-8B-Instruct-GGUF/resolve/main/moss-lm-q8_0.gguf",
+                "https://huggingface.co/scragnog/MOSS-Music-8B-Instruct-GGUF/resolve/9fe86435bd542bf29cbf4984e9e0ab0ea8ca7e00/moss-lm-q8_0.gguf",
                 "models/moss/moss-lm-q8_0.gguf",
                 8_709_513_792,
             ),
             model(
+                "moss-lm-q4",
+                "MOSS-Music 8B (Q4_K_M)",
+                "https://huggingface.co/nerualdreming/MOSS-Music-8B-Instruct-GGUF/resolve/0b4eac01086c26baf93238aa8b142ec07b3ae56d/moss-lm-q4_k_m.gguf",
+                "models/moss/moss-lm-q4_k_m.gguf",
+                5_188_223_648,
+            ),
+            model(
                 "beat-this",
                 "Beat This! (tempo)",
-                "https://github.com/mosynthkey/beat_this_cpp/raw/main/onnx/beat_this.onnx",
+                "https://github.com/mosynthkey/beat_this_cpp/raw/07ab790a9ec2eda8093d52d249e3ec4f0510ee72/onnx/beat_this.onnx",
                 "models/audio-facts/beat_this.onnx",
                 83_077_778,
             ),
@@ -521,6 +542,42 @@ fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> Option<T> {
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
 }
 
+/// A run's trained steps, one JSON line each, beside its run.json.
+const STEPS_FILE: &str = "steps.jsonl";
+
+/// A run as its folder holds it: run.json, with the steps from their own file
+/// once it exists. A line still being written has no newline yet and is left
+/// for the next read, and one a stop cut off mid-write goes with the next step's
+/// append.
+fn read_run(dir: &Path) -> Option<Run> {
+    let mut run: Run = read_json(&dir.join("run.json"))?;
+    if let Ok(text) = std::fs::read_to_string(dir.join(STEPS_FILE)) {
+        let complete = &text[..text.rfind('\n').map_or(0, |end| end + 1)];
+        let mut steps = Vec::new();
+        for line in complete.lines() {
+            match serde_json::from_str(line) {
+                Ok(record) => steps.push(record),
+                Err(error) => eprintln!("[ERROR] {}: a step line that is not JSON is left out ({error}): {line}", dir.join(STEPS_FILE).display()),
+            }
+        }
+        run.steps = steps;
+    }
+    Some(run)
+}
+
+fn write_steps(dir: &Path, steps: &[TrainingStepRecord]) -> Result<()> {
+    let mut lines = String::new();
+    for record in steps {
+        lines.push_str(&serde_json::to_string(record)?);
+        lines.push('\n');
+    }
+    let path = dir.join(STEPS_FILE);
+    let temporary = path.with_extension(format!("{}.part", new_id()));
+    std::fs::write(&temporary, lines)?;
+    std::fs::rename(&temporary, &path)?;
+    Ok(())
+}
+
 impl Training {
     pub fn new(data_root: &Path, engine: &str) -> Self {
         let root = data_root.join("training");
@@ -543,11 +600,13 @@ impl Training {
         self.root.join("models")
     }
 
-    /// The captioner: `YUE_CAPTION_BIN` in a developer build, else the one the
+    /// The captioner: `YUE_CAPTION_BIN` in a developer build, the one bundled
+    /// beside the MIDI transcriber on macOS and Linux, else the one the
     /// listening pack unpacked beside the trainer.
     pub fn captioner(&self) -> PathBuf {
         std::env::var_os("YUE_CAPTION_BIN")
             .map(PathBuf::from)
+            .or_else(bundled_captioner)
             .unwrap_or_else(|| self.downloader.runtime_dir(trainer_folder()).join(CAPTIONER))
     }
 
@@ -566,20 +625,26 @@ impl Training {
         self.downloader.is_installed(asset)
     }
 
+    /// The listening pack this machine downloads and runs: every file but the MOSS-Music build its card does not take
+    /// (`listen::hearing`).
+    fn listen_files(&self) -> impl Iterator<Item = &'static Asset> {
+        let hearing = crate::listen::hearing(&crate::hardware::hardware());
+        listen_pack().iter().filter(move |asset| !asset.id.starts_with("moss-lm") || asset.relative_path.ends_with(hearing.lm))
+    }
+
     /// The listening pack's files with whether each is on disk.
     pub fn listen_status(&self) -> Vec<serde_json::Value> {
-        listen_pack()
-            .iter()
+        self.listen_files()
             .map(|asset| serde_json::json!({ "id": asset.id, "label": asset.label, "bytes": asset.bytes, "installed": self.listen_installed(asset) }))
             .collect()
     }
 
     pub fn listen_ready(&self) -> bool {
-        listen_pack().iter().all(|asset| self.listen_installed(asset))
+        self.listen_files().all(|asset| self.listen_installed(asset))
     }
 
     pub async fn install_listen(&self) -> Result<()> {
-        let missing: Vec<&'static Asset> = listen_pack().iter().filter(|asset| !self.listen_installed(asset)).collect();
+        let missing: Vec<&'static Asset> = self.listen_files().filter(|asset| !self.listen_installed(asset)).collect();
         if missing.is_empty() {
             return Ok(());
         }
@@ -962,19 +1027,55 @@ impl Training {
 
     pub fn runs(&self) -> Vec<Run> {
         let Ok(entries) = std::fs::read_dir(self.runs_dir()) else { return Vec::new() };
-        let mut list: Vec<Run> = entries.flatten().filter_map(|entry| read_json(&entry.path().join("run.json"))).filter(|run: &Run| run.engine == self.engine).collect();
+        let mut list: Vec<Run> = entries.flatten().filter_map(|entry| read_run(&entry.path())).filter(|run: &Run| run.engine == self.engine).collect();
         list.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         list
     }
 
     pub fn run(&self, id: &str) -> Result<Run> {
-        read_json(&self.run_dir(id)?.join("run.json")).with_context(|| format!("no training run {id}"))
+        read_run(&self.run_dir(id)?).with_context(|| format!("no training run {id}"))
     }
 
+    /// Writes the run; once its steps have a file of their own, they go there
+    /// and run.json keeps none.
     fn save_run(&self, run: &Run) -> Result<()> {
         let dir = self.run_dir(&run.id)?;
         std::fs::create_dir_all(&dir)?;
-        write_json(&dir.join("run.json"), run)
+        if !dir.join(STEPS_FILE).is_file() {
+            return write_json(&dir.join("run.json"), run);
+        }
+        write_steps(&dir, &run.steps)?;
+        write_json(&dir.join("run.json"), &Run { steps: Vec::new(), ..run.clone() })
+    }
+
+    /// Records one trained step by adding a line, not by writing the whole run again.
+    fn append_step(&self, run_id: &str, record: TrainingStepRecord) -> Result<()> {
+        use std::io::{Read, Seek, SeekFrom, Write};
+        let dir = self.run_dir(run_id)?;
+        if !dir.join(STEPS_FILE).is_file() {
+            let mut run = self.run(run_id)?;
+            run.steps.push(record);
+            write_steps(&dir, &run.steps)?;
+            return write_json(&dir.join("run.json"), &Run { steps: Vec::new(), ..run });
+        }
+        let mut file = std::fs::OpenOptions::new().read(true).write(true).open(dir.join(STEPS_FILE))?;
+        // a line cut off by a stop mid-write ends without its newline: it goes, and the next record takes its place
+        let length = file.metadata()?.len();
+        if length > 0 {
+            let mut last = [0u8; 1];
+            file.seek(SeekFrom::End(-1))?;
+            file.read_exact(&mut last)?;
+            if last[0] != b'\n' {
+                let mut text = Vec::new();
+                file.seek(SeekFrom::Start(0))?;
+                file.read_to_end(&mut text)?;
+                let kept = text.iter().rposition(|byte| *byte == b'\n').map_or(0, |end| end + 1);
+                file.set_len(kept as u64)?;
+            }
+        }
+        file.seek(SeekFrom::End(0))?;
+        file.write_all(format!("{}\n", serde_json::to_string(&record)?).as_bytes())?;
+        Ok(())
     }
 
     /// A run left `running` by a studio that closed is marked interrupted.
@@ -1002,17 +1103,14 @@ impl Training {
         self.run_dir(run_id).map(|dir| yue_train::checkpoints(&dir)).unwrap_or_default()
     }
 
-    pub fn log_tail(&self, run_id: &str, lines: usize) -> Vec<String> {
-        let Ok(text) = self.run_dir(run_id).and_then(|dir| Ok(std::fs::read_to_string(dir.join("run.log"))?)) else { return Vec::new() };
+    /// The last `lines` of a run's log that are not progress JSON, and what
+    /// the trainer computes on as the log names it ("CUDA0", "Vulkan0", "CPU";
+    /// none before it has said), from one read of the log.
+    pub fn log_view(&self, run_id: &str, lines: usize) -> (Vec<String>, Option<String>) {
+        let Ok(text) = self.run_dir(run_id).and_then(|dir| Ok(std::fs::read_to_string(dir.join("run.log"))?)) else { return (Vec::new(), None) };
         let all: Vec<&str> = text.lines().filter(|line| !line.trim_start().starts_with('{')).collect();
-        all[all.len().saturating_sub(lines)..].iter().map(|line| line.to_string()).collect()
-    }
-
-    /// What the trainer computes on, as its log names it: "CUDA0", "Vulkan0",
-    /// "CPU". None before it has said.
-    pub fn run_device(&self, run_id: &str) -> Option<String> {
-        let text = self.run_dir(run_id).and_then(|dir| Ok(std::fs::read_to_string(dir.join("run.log"))?)).ok()?;
-        trainer_device(&text)
+        let tail = all[all.len().saturating_sub(lines)..].iter().map(|line| line.to_string()).collect();
+        (tail, trainer_device(&text))
     }
 
     /// Starts training a dataset; one run at a time, since each wants the card.
@@ -1251,6 +1349,7 @@ impl Training {
             if let Some(path) = music_core::process::own_libraries_first(trainer) {
                 command.env("LD_LIBRARY_PATH", path);
             }
+            dub_core::proc::outside_appimage(command.as_std_mut());
             command
                 .args(&stage.args)
                 .current_dir(run_dir)
@@ -1296,7 +1395,7 @@ impl Training {
                             if let Some(step) = yue_train::parse_training_step(&line) {
                                 let recorded = {
                                     let _edit = self.edits.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                                    self.run(run_id).and_then(|mut run| { run.steps.push(step.into()); self.save_run(&run) })
+                                    self.append_step(run_id, step.into())
                                 };
                                 if let Err(error) = recorded {
                                     log.write_all(format!("[studio] the step was not recorded: {error:#}\n").as_bytes()).await?;
@@ -1581,6 +1680,69 @@ mod tests {
         assert_eq!(trainer_device("x\n[Load] YuE2 backend: CUDA0 (shared)\nstep 1"), Some("CUDA0".into()));
         assert_eq!(trainer_device("[Load] DiT backend: CPU (CPU threads: 16)"), Some("CPU".into()));
         assert_eq!(trainer_device("nothing yet"), None);
+    }
+
+    /// The trainer's cleanup keeps the transcriber's CUDA 12.9 and processor
+    /// builds of today's release, and takes every folder of an earlier one.
+    #[test]
+    fn todays_tool_folders_stay_and_earlier_releases_go() {
+        let root = std::env::temp_dir().join(format!("yue-tool-folders-{}", uuid::Uuid::now_v7()));
+        let shared = root.join("hotstep");
+        let downloader = Downloader::with_runtimes(root.join("training"), shared.clone());
+        for name in ["hotstep-tools-new", "hotstep-tools-new-midi-cuda12", "hotstep-tools-new-midi-cpu", "hotstep-tools-old", "hotstep-tools-old-midi-cpu"] {
+            std::fs::create_dir_all(shared.join(name)).unwrap();
+        }
+        remove_older_tool_folders(&downloader, "hotstep-tools-new", "music-train");
+        let mut left: Vec<String> = std::fs::read_dir(&shared).unwrap().flatten().map(|entry| entry.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["hotstep-tools-new", "hotstep-tools-new-midi-cpu", "hotstep-tools-new-midi-cuda12"]);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_step_is_a_line_and_a_run_written_before_keeps_its_steps() {
+        let root = std::env::temp_dir().join(format!("yue-train-steps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let training = Training::new(&root, "yue2");
+        let record = |step: u32| TrainingStepRecord { step, loss: 1.0, ar_kl: None, step_ms: Some(10.0) };
+        let run = Run {
+            id: "r1".into(),
+            engine: "yue2".into(),
+            dataset_id: "d".into(),
+            dataset_name: "d".into(),
+            name: "n".into(),
+            trigger: "t".into(),
+            recipe: Recipe::default(),
+            status: RunStatus::Running,
+            stage: None,
+            stages: Vec::new(),
+            steps: vec![record(1), record(2)],
+            error: None,
+            created_at: now(),
+            finished_at: None,
+            installed: Vec::new(),
+            continuations: Vec::new(),
+        };
+        training.save_run(&run).unwrap();
+        training.append_step("r1", record(3)).unwrap();
+        training.append_step("r1", record(4)).unwrap();
+        let dir = training.run_dir("r1").unwrap();
+        let kept: Run = read_json(&dir.join("run.json")).unwrap();
+        assert!(kept.steps.is_empty());
+        assert_eq!(training.run("r1").unwrap().steps.iter().map(|record| record.step).collect::<Vec<_>>(), [1, 2, 3, 4]);
+        let mut torn = std::fs::OpenOptions::new().append(true).open(dir.join(STEPS_FILE)).unwrap();
+        std::io::Write::write_all(&mut torn, b"{\"step\":5,\"lo").unwrap();
+        drop(torn);
+        assert_eq!(training.run("r1").unwrap().steps.len(), 4);
+        // a stop cut that line off: the run carries on after it
+        training.append_step("r1", record(6)).unwrap();
+        assert_eq!(training.run("r1").unwrap().steps.iter().map(|record| record.step).collect::<Vec<_>>(), [1, 2, 3, 4, 6]);
+        let mut again = training.run("r1").unwrap();
+        again.steps.retain(|record| record.step <= 2);
+        again.status = RunStatus::Done;
+        training.save_run(&again).unwrap();
+        assert_eq!(training.runs()[0].steps.iter().map(|record| record.step).collect::<Vec<_>>(), [1, 2]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

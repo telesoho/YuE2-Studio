@@ -84,6 +84,15 @@ export function stackTheme(theme: HubTheme | null, index: number): HubTheme {
 }
 
 /** The service decided the notice may show in this launch; its delay and sections are the window's to apply. */
+/** The hub's name for the screen on view (`rules.views`): create, library, news, tools or settings. */
+export function hubView(view: string, settingsOpen: boolean): string {
+  if (settingsOpen) return 'settings';
+  if (view === 'library' || view === 'playlist' || view === 'search') return 'library';
+  if (view === 'tools' || view === 'adapters') return 'tools';
+  if (view === 'news') return 'news';
+  return 'create';
+}
+
 export function showsNow(item: HubItem, elapsed: number, view: string): boolean {
   return item.eligible && elapsed >= item.rules.delay_s && (!item.rules.views || item.rules.views.includes(view));
 }
