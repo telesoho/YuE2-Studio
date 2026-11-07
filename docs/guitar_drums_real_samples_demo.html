@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar & Drums — Real Sample Demo</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2d;--line:#293650;--text:#e8eefb;--muted:#91a0ba;--cyan:#63d8e6;--orange:#ffb66d;--green:#8ce0b0;--red:#ff8888}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0%,#182847 0,transparent 45%),var(--bg);color:var(--text);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.app{max-width:1200px;margin:auto;padding:28px 22px 40px}.top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:22px}.eyebrow{font-size:11px;letter-spacing:.18em;color:var(--cyan);font-weight:700}.title{font-size:clamp(25px,4vw,38px);font-weight:750;letter-spacing:-.04em;margin:5px 0}.sub{color:var(--muted)}.status{border:1px solid var(--line);background:#111a2c;border-radius:99px;padding:8px 12px;color:var(--green);font-size:12px;white-space:nowrap}.status.loading{color:var(--orange)}.status.error{color:var(--red)}
+.panel{background:linear-gradient(145deg,rgba(23,34,56,.96),rgba(15,23,40,.96));border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 55px #0003}.transport{padding:16px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;margin-bottom:16px}.controls{display:flex;align-items:center;gap:9px}.btn{border:1px solid #34445f;background:#1a2942;color:var(--text);border-radius:11px;padding:10px 14px;cursor:pointer;font-weight:650}.btn:hover{border-color:var(--cyan);background:#20334f}.btn.primary{background:var(--cyan);border-color:var(--cyan);color:#07151b}.btn:disabled{opacity:.4;cursor:not-allowed}.play{width:44px;height:42px;font-size:17px;padding:0}.progress-wrap{min-width:120px}.time-row{display:flex;justify-content:space-between;color:var(--muted);font-variant-numeric:tabular-nums;font-size:12px;margin-bottom:7px}.progress{width:100%;accent-color:var(--cyan);cursor:pointer}.tempo{display:flex;align-items:center;gap:9px;color:var(--muted);white-space:nowrap}.tempo input{width:90px;accent-color:var(--orange)}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:16px}.tracks{padding:16px;min-width:0}.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.section-head h2{font-size:15px;margin:0}.legend{display:flex;gap:14px;color:var(--muted);font-size:11px}.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}.track{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:14px;background:#0c1425}.track-head{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;background:#17243a;border-bottom:1px solid var(--line)}.track-name{display:flex;align-items:center;gap:10px;font-weight:700}.track-icon{width:29px;height:29px;border-radius:9px;display:grid;place-items:center;font-size:15px}.guitar .track-icon{background:#1b4551;color:var(--cyan)}.drums .track-icon{background:#4a3425;color:var(--orange)}.track-meta{font-size:11px;color:var(--muted);font-weight:450}.mute{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:5px 9px;cursor:pointer}.mute.active{color:var(--orange);border-color:#805b38}
+.visual{position:relative;height:230px;overflow:hidden;background:linear-gradient(180deg,#0d1729,#0a1221)}.visual canvas{display:block;width:100%;height:100%}.drums .visual{height:185px}.sidebar{padding:16px;height:max-content}.sidebar h3{font-size:14px;margin:0 0 13px}.setting{padding:12px 0;border-top:1px solid var(--line)}.setting:first-of-type{border-top:0}.label{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-bottom:8px}.value{color:var(--text)}.seg{display:flex;padding:3px;background:#0b1425;border:1px solid var(--line);border-radius:10px;gap:3px}.seg button{flex:1;border:0;background:transparent;color:var(--muted);border-radius:7px;padding:8px 5px;cursor:pointer;font-size:12px}.seg button.selected{background:#263852;color:var(--text);box-shadow:inset 0 0 0 1px #3a526f}.range{width:100%;accent-color:var(--cyan)}.note{font-size:11px;color:var(--muted);line-height:1.6}.meters{display:grid;grid-template-columns:1fr 1fr;gap:8px}.meter{background:#0b1425;border:1px solid var(--line);border-radius:10px;padding:10px}.meter strong{display:block;font-size:19px;font-variant-numeric:tabular-nums}.meter span{color:var(--muted);font-size:10px}.loadbar{height:5px;background:#0a1220;border-radius:8px;overflow:hidden;margin:8px 0 5px}.loadbar span{display:block;height:100%;width:0;background:var(--cyan);transition:width .2s}.credits{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#0d1628}.credits a{color:#93dce7;text-decoration:none}.credits a:hover{text-decoration:underline}.footer{margin-top:14px;color:var(--muted);font-size:11px;text-align:center}
+@media(max-width:850px){.workspace{grid-template-columns:1fr}.transport{grid-template-columns:1fr;gap:12px}.controls{justify-content:space-between}}@media(max-width:520px){.app{padding:18px 12px}.top{align-items:flex-start;flex-direction:column}.legend{display:none}.visual{height:195px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top"><div><div class="eyebrow">MIDI PLAYGROUND / REAL RECORDINGS</div><div class="title">Guitar <span style="color:var(--cyan)">+</span> Drums</div><div class="sub">真实录制乐器采样 · 双轨同步演奏 Demo</div></div><div class="status" id="status">● 音频引擎待启动</div></header>
+<section class="panel transport">
+  <div class="controls"><button class="btn play primary" id="play" title="播放">▶</button><button class="btn" id="stop">■ 停止</button><button class="btn" id="restart">↺</button></div>
+  <div class="progress-wrap"><div class="time-row"><span id="elapsed">00:00</span><span id="duration">00:18</span></div><input class="progress" id="seek" type="range" min="0" max="1000" value="0"></div>
+  <div class="tempo"><span>BPM</span><input id="tempo" type="range" min="65" max="150" value="104"><strong id="bpm">104</strong></div>
+</section>
+<div class="workspace">
+<main class="panel tracks">
+  <div class="section-head"><h2>演奏轨道 <span class="track-meta">/ LIVE VISUALIZER</span></h2><div class="legend"><span><i class="dot" style="background:var(--cyan)"></i>Guitar</span><span><i class="dot" style="background:var(--orange)"></i>Drums</span></div></div>
+  <section class="track guitar"><div class="track-head"><div class="track-name"><span class="track-icon">♬</span><div>电吉他 / Electric Guitar <div class="track-meta">采样音高映射 · Standard tuning</div></div></div><button class="mute" id="muteG">声音开启</button></div><div class="visual"><canvas id="guitarCanvas"></canvas></div></section>
+  <section class="track drums"><div class="track-head"><div class="track-name"><span class="track-icon">◉</span><div>原声架子鼓 / Acoustic Kit <div class="track-meta">Recorded kick · snare · hats · cymbals · tom</div></div></div><button class="mute" id="muteD">声音开启</button></div><div class="visual"><canvas id="drumCanvas"></canvas></div></section>
+  <div class="note">点击播放后会加载录音素材。第一次加载需要网络；采样缓存保留在本次页面运行期间。若素材站点无法访问，会明确提示并使用合成音源作备用。</div>
+</main>
+<aside class="panel sidebar">
+  <h3>音源与混音</h3>
+  <div class="setting"><div class="label">音源模式 <span class="value" id="modeName">真实采样</span></div><div class="seg"><button data-mode="synth">合成</button><button class="selected" data-mode="samples">真实采样</button></div><div class="loadbar"><span id="loadProgress"></span></div><div class="note" id="loadText">未加载 · 播放时自动加载录音样本</div></div>
+  <div class="setting"><div class="label">吉他音量 <span class="value" id="gVolText">75%</span></div><input class="range" id="gVol" type="range" min="0" max="100" value="75"></div>
+  <div class="setting"><div class="label">鼓组音量 <span class="value" id="dVolText">85%</span></div><input class="range" id="dVol" type="range" min="0" max="100" value="85"></div>
+  <div class="setting"><div class="label">当前小节 <span class="value" id="bar">1 / 8</span></div><div class="meters"><div class="meter"><strong id="beat">1</strong><span>BEAT</span></div><div class="meter"><strong id="events">0</strong><span>NOTE EVENTS</span></div></div></div>
+  <div class="setting"><div class="label">示例曲目 <span class="value">Rock Groove</span></div><div class="note">E 小调 · 4/4 拍<br>吉他：切分节奏与和弦分解<br>鼓组：底鼓、军鼓、踩镲与过门</div></div>
+</aside>
+</div>
+<div class="credits note">
+  <strong style="color:#dce8f8">音源出处</strong><br>
+  吉他：<a href="https://github.com/nbrosowsky/tonejs-instruments" target="_blank" rel="noreferrer">tonejs-instruments</a>（CC BY 3.0）<br>
+  鼓组：<a href="https://oramics.github.io/sampled/DRUMS/pearl-master-studio/" target="_blank" rel="noreferrer">Pearl Master Studio Pack 1 by enoe</a>（CC BY 3.0）<br>
+  <span>本 Demo 使用录音采样并按音高进行播放映射；不同音高由相邻采样变调获得，不等于每个 MIDI 音符都有独立录音。</span>
+</div>
+<div class="footer">MIDI LAB · Web Audio API · Press Space to play / pause</div>
+</div>
+<script>
+(() => {
+  const $=id=>document.getElementById(id);
+  const gc=$('guitarCanvas'),dc=$('drumCanvas'),gctx=gc.getContext('2d'),dctx=dc.getContext('2d');
+  const beatSec=()=>60/Number($('tempo').value),totalBeats=32,duration=()=>totalBeats*beatSec();
+  const strings=[64,59,55,50,45,40],stringNames=['e','B','G','D','A','E'];
+  const pitchNames=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+  const freq=n=>440*Math.pow(2,(n-69)/12),fmt=s=>{s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')};
+  // Demo composition, stored as beat-positioned MIDI note events.
+  const guitar=[],chords=[[40,47,52,55,59],[43,50,55,59,62],[36,43,48,52,55],[38,45,50,53,57]];
+  for(let bar=0;bar<8;bar++){const c=chords[bar%4];for(let s=0;s<8;s++){const t=bar*4+s*.5,pick=s%2===0?c.slice(0,4):[c[1],c[2],c[3],c[4]];pick.forEach((n,i)=>guitar.push({t:t+i*.018,n:n+(bar===7&&s===7?12:0),len:.43,v:s%2===0?.8:.58,kind:'guitar'}));}guitar.push({t:bar*4+3.5,n:c[4]+12,len:.28,v:.5,kind:'guitar'});}
+  const drums=[];
+  for(let b=0;b<32;b++){const beat=b%4,bar=Math.floor(b/4);drums.push({t:b,n:36,kind:'kick',v:beat===0?.98:.76});if(beat===1||beat===3)drums.push({t:b,n:38,kind:'snare',v:.9});drums.push({t:b,n:42,kind:'hat',v:beat%2===0?.55:.38});drums.push({t:b+.5,n:42,kind:'hat',v:.33});if(bar%2===1&&beat===3)drums.push({t:b,n:45,kind:'tom',v:.65});if(bar%4===3&&beat===3)drums.push({t:b,n:49,kind:'crash',v:.88});}
+  const events=[...guitar,...drums].sort((a,b)=>a.t-b.t);
+  // Recorded guitar samples from tonejs-instruments; sparse samples are pitch-mapped.
+  const SAMPLE_URLS={
+    gA2:'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-electric/A2.mp3',
+    gA3:'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-electric/A3.mp3',
+    gA4:'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-electric/A4.mp3',
+    gA5:'https://nbrosowsky.github.io/tonejs-instruments/samples/guitar-electric/A5.mp3',
+    kick:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/kick-01.wav',
+    snare:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/snare-01.wav',
+    hat:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/hihat-closed.wav',
+    openHat:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/hihat-open.wav',
+    crash:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/crash-01.wav',
+    ride:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/ride-01.wav',
+    tom:'https://oramics.github.io/sampled/DRUMS/pearl-master-studio/samples/tom-01.wav'
+  };
+  const sampleBuffers=new Map();let audio=null,master=null,gGain=null,dGain=null,playing=false,mode='samples',offset=0,startAt=0,nextEvent=0,raf=0,drawRaf=0,mutedG=false,mutedD=false,sampleLoadPromise=null;
+  const activeSources=[],sampleRoot=[['gA2',45],['gA3',57],['gA4',69],['gA5',81]];
+  function status(s,cls=''){const el=$('status');el.textContent='● '+s;el.className='status '+cls;}
+  function initAudio(){if(audio)return;const AC=window.AudioContext||window.webkitAudioContext;audio=new AC();master=audio.createGain();master.gain.value=.88;master.connect(audio.destination);gGain=audio.createGain();dGain=audio.createGain();gGain.gain.value=.75;dGain.gain.value=.85;gGain.connect(master);dGain.connect(master);}
+  async function loadSamples(){
+    if(sampleLoadPromise)return sampleLoadPromise;
+    initAudio();
+    sampleLoadPromise=(async()=>{
+      const entries=Object.entries(SAMPLE_URLS);let done=0,loaded=0,failed=[];
+      $('loadText').textContent='正在加载录音素材 0 / '+entries.length;
+      await Promise.all(entries.map(async ([key,url])=>{
+        try{const response=await fetch(url,{mode:'cors',cache:'force-cache'});if(!response.ok)throw new Error('HTTP '+response.status);const data=await response.arrayBuffer();const buffer=await audio.decodeAudioData(data);sampleBuffers.set(key,buffer);loaded++;}
+        catch(err){failed.push(key);console.warn('Sample failed:',key,err);}
+        finally{done++;$('loadProgress').style.width=(done/entries.length*100)+'%';$('loadText').textContent=`正在加载录音素材 ${done} / ${entries.length}（成功 ${loaded}）`;}
+      }));
+      const guitarOK=sampleRoot.filter(([k])=>sampleBuffers.has(k)).length,drumOK=['kick','snare','hat','openHat','crash','ride','tom'].filter(k=>sampleBuffers.has(k)).length;
+      $('loadText').textContent=`吉他 ${guitarOK}/4 · 鼓组 ${drumOK}/7 已加载`+(failed.length?' · '+failed.length+' 个素材加载失败':' · 完成');
+      if(loaded===0){
+        mode='synth';$('modeName').textContent='合成音源';document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b.dataset.mode==='synth'));
+        $('loadText').textContent='录音素材无法访问，已自动切换为合成音源';status('采样加载失败，已切换合成音源','error');
+      }else if(failed.length)status(`部分录音素材不可用（${loaded}/${entries.length}），缺失部分使用合成备用音源`,'error');else status('真实录音素材已加载','');
+      return {loaded,failed,guitarOK,drumOK};
+    })().catch(err=>{sampleLoadPromise=null;$('loadText').textContent='加载失败：'+err.message;throw err;});
+    return sampleLoadPromise;
+  }
+  function env(g,t,peak,release){g.gain.cancelScheduledValues(t);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(.0002,peak),t+.009);g.gain.exponentialRampToValueAtTime(.0001,t+release);}
+  function trackSource(src){activeSources.push(src);src.onended=()=>{const i=activeSources.indexOf(src);if(i>=0)activeSources.splice(i,1);};}
+  function playRecordedGuitar(note,t,vel,len){
+    let chosen=sampleRoot.filter(([k])=>sampleBuffers.has(k)).sort((a,b)=>Math.abs(a[1]-note)-Math.abs(b[1]-note))[0];
+    if(!chosen){playSynthGuitar(note,t,vel,len);return;}
+    const [key,root]=chosen,buffer=sampleBuffers.get(key),rate=Math.pow(2,(note-root)/12);
+    const src=audio.createBufferSource();src.buffer=buffer;src.playbackRate.setValueAtTime(rate,t);
+    const filter=audio.createBiquadFilter();filter.type='lowpass';filter.frequency.value=5100;filter.Q.value=.55;
+    const amp=audio.createGain();const length=Math.min(buffer.duration/rate,Math.max(.42,len*beatSec()+.3));
+    env(amp,t,vel*.9,Math.max(.35,length));
+    src.connect(filter);filter.connect(amp);amp.connect(gGain);src.start(t);src.stop(t+length);trackSource(src);
+  }
+  function playRecordedDrum(kind,t,vel){
+    const key=kind==='kick'?'kick':kind==='snare'?'snare':kind==='hat'?'hat':kind==='openHat'?'openHat':kind==='crash'?'crash':kind==='ride'?'ride':'tom';
+    const b=sampleBuffers.get(key);if(!b){playSynthDrum(kind,t,vel);return;}
+    const src=audio.createBufferSource();src.buffer=b;const amp=audio.createGain();amp.gain.setValueAtTime(Math.max(.001,vel*.95),t);
+    src.connect(amp);amp.connect(dGain);src.start(t);trackSource(src);
+  }
+  function playSynthGuitar(note,t,vel,len){
+    const out=audio.createGain();out.connect(gGain);env(out,t,vel*.15,Math.max(.2,len*beatSec()+.18));
+    [1,2,3,4].forEach((h,i)=>{const o=audio.createOscillator(),g=audio.createGain();o.type='triangle';o.frequency.setValueAtTime(freq(note)*h,t);g.gain.value=1/(h*h);o.connect(g);g.connect(out);o.start(t);o.stop(t+Math.max(.25,len*beatSec()+.2));trackSource(o);});
+  }
+  function noise(seconds){const b=audio.createBuffer(1,Math.floor(audio.sampleRate*seconds),audio.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;return b;}
+  function playSynthDrum(kind,t,vel){
+    const out=audio.createGain();out.connect(dGain);const peak=vel*.4;
+    if(kind==='kick'){const o=audio.createOscillator();o.type='sine';o.frequency.setValueAtTime(145,t);o.frequency.exponentialRampToValueAtTime(42,t+.14);o.connect(out);env(out,t,peak,.27);o.start(t);o.stop(t+.3);trackSource(o);}
+    else{const src=audio.createBufferSource();src.buffer=noise(kind==='crash'?.75:kind==='hat'?.1:.2);const f=audio.createBiquadFilter();f.type='highpass';f.frequency.value=kind==='snare'?1000:6200;src.connect(f);f.connect(out);env(out,t,peak,kind==='crash'?.7:kind==='snare'?.18:.07);src.start(t);trackSource(src);}
+  }
+  function fire(ev,t){if(ev.kind==='guitar'){if(!mutedG){if(mode==='samples')playRecordedGuitar(ev.n,t,ev.v,ev.len);else playSynthGuitar(ev.n,t,ev.v,ev.len);}}else if(!mutedD){if(mode==='samples')playRecordedDrum(ev.kind,t,ev.v);else playSynthDrum(ev.kind,t,ev.v);}}
+  function nowSec(){return playing?Math.min(duration(),offset+audio.currentTime-startAt):offset;}
+  async function start(){
+    if(playing)return;initAudio();$('play').disabled=true;
+    try{await audio.resume();if(mode==='samples'&&sampleBuffers.size===0){status('正在加载真实录音素材…','loading');await loadSamples();}}
+    catch(err){status('采样加载失败：'+err.message,'error');$('play').disabled=false;return;}
+    $('play').disabled=false;if(offset>=duration())offset=0;playing=true;startAt=audio.currentTime;
+    nextEvent=events.findIndex(e=>e.t*beatSec()>=offset-.001);if(nextEvent<0)nextEvent=events.length;
+    $('play').textContent='Ⅱ';if(mode==='samples')status('真实录音播放中');else status('合成音源播放中');schedule();animate();
+  }
+  function pause(){if(!playing)return;offset=nowSec();playing=false;cancelAnimationFrame(raf);cancelAnimationFrame(drawRaf);$('play').textContent='▶';status('已暂停');}
+  function stop(){playing=false;offset=0;cancelAnimationFrame(raf);cancelAnimationFrame(drawRaf);activeSources.splice(0).forEach(s=>{try{s.stop()}catch(e){}});$('play').textContent='▶';status(audio?'已停止':'音频引擎待启动');update();draw();}
+  function schedule(){if(!playing)return;const now=audio.currentTime,pos=offset+(now-startAt);while(nextEvent<events.length&&events[nextEvent].t*beatSec()<pos+.15){const e=events[nextEvent],sec=e.t*beatSec();if(sec>=pos-.025)fire(e,now+Math.max(0,sec-pos));nextEvent++;}if(pos>=duration()){stop();return;}raf=requestAnimationFrame(schedule);}
+  function seek(v){const was=playing;if(was)pause();offset=Math.max(0,Math.min(duration(),v));update();draw();if(was)start();}
+  function resize(c,ctx){const r=c.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);c.width=Math.floor(r.width*dpr);c.height=Math.floor(r.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
+  function round(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill();}
+  function drawGuitar(t){const w=gc.clientWidth,h=gc.clientHeight;gctx.clearRect(0,0,w,h);const l=42,r=18,top=25,bot=20,gw=w-l-r,gh=h-top-bot;
+    for(let i=0;i<6;i++){const y=top+i*gh/5;gctx.strokeStyle='#30425d';gctx.lineWidth=1+i*.25;gctx.beginPath();gctx.moveTo(l,y);gctx.lineTo(w-r,y);gctx.stroke();gctx.fillStyle='#8c9db7';gctx.font='11px system-ui';gctx.fillText(stringNames[i],12,y+4);}
+    for(let f=0;f<=12;f++){const x=l+f*gw/12;gctx.strokeStyle=f===0?'#8aa0bd':'#24344e';gctx.lineWidth=f===0?3:1;gctx.beginPath();gctx.moveTo(x,top-7);gctx.lineTo(x,h-bot+4);gctx.stroke();if(f&&f%3===0){gctx.fillStyle='#566985';gctx.beginPath();gctx.arc(l+(f-.5)*gw/12,h-8,2,0,Math.PI*2);gctx.fill();}}
+    gctx.fillStyle='#6f829e';gctx.font='10px system-ui';gctx.fillText('FRET',l,12);const beatNow=t/beatSec(),windowBeats=8;
+    guitar.forEach(e=>{const dt=e.t-beatNow;if(dt<-.5||dt>windowBeats)return;let si=-1,fr=99;for(let i=0;i<6;i++){const f=e.n-strings[i];if(f>=0&&f<=12&&f<fr){fr=f;si=i;}}if(si<0)return;const x=l+dt/windowBeats*gw+10,y=top+si*gh/5;gctx.globalAlpha=Math.max(.18,1-Math.max(0,dt)/windowBeats);gctx.fillStyle='#63d8e6';round(gctx,x-8,y-8,16,16,5);gctx.fillStyle='#09202a';gctx.font='bold 10px system-ui';gctx.textAlign='center';gctx.fillText(String(fr),x,y+3);gctx.textAlign='left';gctx.globalAlpha=1;});
+    gctx.strokeStyle='#d6faff';gctx.globalAlpha=.8;gctx.beginPath();gctx.moveTo(l+8,top-10);gctx.lineTo(l+8,h-bot+5);gctx.stroke();gctx.globalAlpha=1;
+  }
+  function drawDrums(t){const w=dc.clientWidth,h=dc.clientHeight;dctx.clearRect(0,0,w,h);const rows=[['CRASH','crash'],['RIDE','ride'],['HI-HAT','hat'],['SNARE','snare'],['TOM','tom'],['KICK','kick']],l=65,r=16,top=8,bot=8,gh=(h-top-bot)/rows.length,gw=w-l-r;
+    rows.forEach(([name],i)=>{const y=top+i*gh;dctx.fillStyle='#91a0ba';dctx.font='10px system-ui';dctx.fillText(name,8,y+gh*.62);dctx.strokeStyle='#24344e';dctx.beginPath();dctx.moveTo(l,y+gh);dctx.lineTo(w-r,y+gh);dctx.stroke();});
+    const beatNow=t/beatSec(),win=8;drums.forEach(e=>{const dt=e.t-beatNow;if(dt<-.2||dt>win)return;const idx=rows.findIndex(x=>x[1]===e.kind);if(idx<0)return;const x=l+dt/win*gw,y=top+idx*gh+gh/2,rad=3+e.v*6;dctx.globalAlpha=Math.max(.2,1-Math.max(0,dt)/win);dctx.fillStyle=e.kind==='kick'?'#ffb66d':e.kind==='snare'?'#ffd09d':e.kind==='crash'?'#ff8f6b':'#f4d18a';dctx.beginPath();dctx.arc(x,y,rad,0,Math.PI*2);dctx.fill();dctx.globalAlpha=1;});
+    dctx.strokeStyle='#fff0d9';dctx.beginPath();dctx.moveTo(l+1,top);dctx.lineTo(l+1,h-bot);dctx.stroke();
+  }
+  function draw(){drawGuitar(nowSec());drawDrums(nowSec());}
+  function animate(){if(!playing)return;draw();drawRaf=requestAnimationFrame(animate);}
+  function update(){const t=nowSec(),b=t/beatSec();$('elapsed').textContent=fmt(t);$('duration').textContent=fmt(duration());$('seek').value=Math.round(t/duration()*1000);$('bar').textContent=Math.min(8,Math.floor(b/4)+1)+' / 8';$('beat').textContent=Math.floor(b%4)+1;$('events').textContent=events.filter(e=>e.t<=b).length;}
+  function clock(){update();requestAnimationFrame(clock);}
+  $('play').onclick=()=>playing?pause():start();$('stop').onclick=stop;$('restart').onclick=()=>seek(0);$('seek').oninput=e=>seek(Number(e.target.value)/1000*duration());
+  $('tempo').oninput=()=>{$('bpm').textContent=$('tempo').value;$('duration').textContent=fmt(duration());if(playing){const p=nowSec();pause();offset=p;start();}else{update();draw();}};
+  document.querySelectorAll('[data-mode]').forEach(btn=>btn.onclick=()=>{mode=btn.dataset.mode;document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('selected',b===btn));$('modeName').textContent=mode==='samples'?'真实采样':'合成音源';if(mode==='samples'&&sampleBuffers.size===0)$('loadText').textContent='尚未加载 · 点击播放时加载录音样本';status(mode==='samples'?'已选择真实采样模式':'已选择合成音源');});
+  $('gVol').oninput=e=>{$('gVolText').textContent=e.target.value+'%';if(gGain)gGain.gain.setTargetAtTime(e.target.value/100,audio.currentTime,.03);};
+  $('dVol').oninput=e=>{$('dVolText').textContent=e.target.value+'%';if(dGain)dGain.gain.setTargetAtTime(e.target.value/100,audio.currentTime,.03);};
+  $('muteG').onclick=()=>{mutedG=!mutedG;$('muteG').textContent=mutedG?'已静音':'声音开启';$('muteG').classList.toggle('active',mutedG);};
+  $('muteD').onclick=()=>{mutedD=!mutedD;$('muteD').textContent=mutedD?'已静音':'声音开启';$('muteD').classList.toggle('active',mutedD);};
+  window.addEventListener('resize',()=>{resize(gc,gctx);resize(dc,dctx);draw();});document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target.tagName!=='INPUT'){e.preventDefault();playing?pause():start();}});
+  resize(gc,gctx);resize(dc,dctx);update();draw();clock();
+})();
+</script>
+</body>
+</html>
