@@ -3134,16 +3134,34 @@
     order.push(resolveGuitarShape(name));
   }
 
+  // One cell per drawn syllable. A chord lands on the syllable it starts on;
+  // a chord that starts on a held note (a "-" melisma) or on a rest is queued
+  // and gets a cell of its own when the next chord arrives or the line ends,
+  // so a change inside a held syllable or over a resting bar is never lost.
   function leadLyricCells(events) {
     const cells = [];
     let pending = "";
+    let shown = "";
+    function place() {
+      if (!pending) return;
+      if (pending !== shown) {
+        cells.push({ text: "", chord: pending });
+        shown = pending;
+      }
+      pending = "";
+    }
     for (const ev of events) {
-      if (ev.chord) pending = ev.chord;
+      if (ev.chord) {
+        place();
+        pending = ev.chord;
+      }
       if (ev.kind !== "note") continue;
       if (!lyricIsDrawn(ev.lyric)) continue;
       cells.push({ text: displayLyricToken(ev.lyric), chord: pending || "" });
+      if (pending) shown = pending;
       pending = "";
     }
+    place();
     return cells;
   }
 

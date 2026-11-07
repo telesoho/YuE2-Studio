@@ -413,6 +413,84 @@ describe('JianpuEditor', () => {
     expect(verse.cells.every(c => c.text)).toBe(true);
   });
 
+  it('keeps a chord that changes while a syllable is held', () => {
+    const held = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"Am"A8- "F"A4 z4 | "G"C4 C4 C4 C4|
+w: 你 - * 好 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(held).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '', '好', '好', '好', '好']);
+    expect(line.cells.map(c => c.chord)).toEqual(['Am', 'F', 'G', '', '', '']);
+  });
+
+  it('keeps a chord over a resting bar and skips a repeat of the chord already shown', () => {
+    const rest = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C8 D8 | "Am"z16 | "G"E4 E4 E4 E4|
+w: 你 好 * 好 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(rest).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '好', '', '好', '好', '好', '好']);
+    expect(line.cells.map(c => c.chord)).toEqual(['C', '', 'Am', 'G', '', '', '']);
+
+    const same = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C8 D8 | "C"z16 | "G"E4 E4 E4 E4|
+w: 你 好 * 好 好 好 好
+V: Ins
+Z|
+`;
+    const rerun = editor.leadSheet(same).sections[0].lines[0];
+    expect(rerun.cells.map(c => c.chord)).toEqual(['C', '', 'G', '', '', '']);
+    expect(rerun.cells.every(c => c.text)).toBe(true);
+  });
+
+  it('keeps a chord left hanging at the end of a lyric line', () => {
+    const tail = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C4 C4 C4 C4 | "G"z16|
+w: 你 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(tail).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '好', '好', '好', '']);
+    expect(line.cells.map(c => c.chord)).toEqual(['C', '', '', '', 'G']);
+  });
+
   it('transposes lead-sheet chords into the selected key', () => {
     const sheet = editor.leadSheet(LEAD_ABC, undefined, 'G');
     expect(sheet.originalKeyLabel).toBe('1=C');
