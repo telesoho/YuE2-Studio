@@ -82,6 +82,28 @@ const editor = (globalThis as { yueScoreEditor?: {
   clampZoom: (value: number) => number;
   zoomLabel: (percent: number) => string;
   commandOfKey: (key: string) => Record<string, unknown> | null;
+  timeline: (abc: string) => {
+    bpm: number;
+    error: string | null;
+    notes: Array<{ midi: number; voice: string; start: number; duration: number; indexes: number[] }>;
+  };
+  soundingNotes: (
+    notes: Array<{ midi: number; voice: string; start: number; duration: number }>,
+    offset: number,
+  ) => Array<{
+    note: { midi: number; voice: string; start: number; duration: number };
+    delay: number;
+    duration: number;
+    armed?: boolean;
+  }>;
+  pumpMidi: (
+    queue: Array<{ note: { start: number; duration: number; voice: string }; armed?: boolean }>,
+    now: number,
+    ahead?: number,
+    parts?: Record<string, boolean>,
+  ) => Array<{ note: { start: number; duration: number; voice: string } }>;
+  voicePart: (voice: string) => string;
+  partsAudible: (parts: Record<string, boolean> | undefined, voice: string) => boolean;
 } }).yueScoreEditor!;
 
 const ABC = `X:1
@@ -1667,5 +1689,59 @@ describe('chord shape preferences', () => {
     expect(editor.setChordShape('ukulele', 'C', '0433 ,0 0211')).toBe(true);
     expect(editor.listChordShapes('ukulele', 'C').current).toBe('0433 ,0 0211');
     expect(editor.resolveGuitarShape('C').frets).toBe(stockC);
+  });
+
+  const CHORDED = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble name="Vocal Melody" snm="Vocal"
+V: Ins clef=treble name="Ins Melody" snm="Inst."
+K:C
+V: Vocal
+"C"C4D4E4F4|
+V: Ins
+E4F4G4A4|
+`;
+
+  it('sounds chords, the vocal line and the accompaniment as separate parts', () => {
+    const score = editor.timeline(CHORDED);
+    expect(score.error).toBeNull();
+    expect(score.notes.some((note) => note.voice === 'Vocal')).toBe(true);
+    expect(score.notes.some((note) => note.voice === 'Ins')).toBe(true);
+    expect(score.notes.some((note) => note.voice === 'Chord')).toBe(true);
+    expect(editor.voicePart('Vocal')).toBe('vocal');
+    expect(editor.voicePart('Ins')).toBe('ins');
+    expect(editor.voicePart('Chord')).toBe('chord');
+    expect(editor.partsAudible({ chord: false }, 'Chord')).toBe(false);
+    expect(editor.partsAudible({ chord: false }, 'Ins')).toBe(true);
+    expect(editor.partsAudible(undefined, 'Chord')).toBe(true);
+  });
+
+  it('leaves a muted part out of the MIDI pump', () => {
+    const score = editor.timeline(CHORDED);
+    const queue = editor.soundingNotes(score.notes, 0);
+    const heard = editor.pumpMidi(queue, 0, 1e9, { vocal: true, ins: true, chord: false });
+    expect(heard.length).toBeGreaterThan(0);
+    expect(heard.some((item) => item.note.voice === 'Chord')).toBe(false);
+    expect(heard.some((item) => item.note.voice === 'Vocal')).toBe(true);
+    expect(heard.some((item) => item.note.voice === 'Ins')).toBe(true);
+  });
+
+  it('keeps upcoming notes of a muted part pending until they start', () => {
+    const pending = [{ midi: 60, voice: 'Ins', start: 2, duration: 1 }];
+    const early = editor.soundingNotes(pending, 0);
+    expect(editor.pumpMidi(early, 0, 10, { vocal: true, ins: false, chord: true })).toHaveLength(0);
+    expect(early[0].armed).toBeFalsy();
+    expect(editor.pumpMidi(early, 1, 10, { vocal: true, ins: true, chord: true })).toHaveLength(1);
+
+    const muted = { vocal: true, ins: false, chord: true };
+    const late = editor.soundingNotes(pending, 0);
+    editor.pumpMidi(late, 0, 10, muted);
+    // While muted, a note whose start has passed is dropped, not queued late.
+    expect(editor.pumpMidi(late, 2.5, 10, muted)).toHaveLength(0);
+    expect(late[0].armed).toBe(true);
+    expect(editor.pumpMidi(late, 2.6, 10, { vocal: true, ins: true, chord: true })).toHaveLength(0);
   });
 });

@@ -4632,6 +4632,10 @@
   const SHAPE_KEY = "yue-jp-chord-shapes";
   const CHORD_KEYS_KEY = "yue-jp-chord-keys";
   const ZOOM_KEY = "yue-jp-zoom";
+  const MUTED_PARTS_KEY = "yue-jp-muted-parts";
+  // The three things MIDI playback sounds: the vocal line (V:), the
+  // accompaniment line (A:) and the chord symbols written on the vocal line.
+  const PART_KEYS = ["vocal", "ins", "chord"];
   const ZOOM_DEFAULT = 100;
   const ZOOM_MIN = 50;
   const ZOOM_MAX = 300;
@@ -4946,6 +4950,52 @@
     }
   }
 
+  function allParts() {
+    const parts = {};
+    for (const key of PART_KEYS) parts[key] = true;
+    return parts;
+  }
+
+  // A muted part is stored, not the audible one, so a new part added later
+  // starts audible instead of silently missing.
+  function readSavedParts() {
+    const parts = allParts();
+    try {
+      if (typeof localStorage === "undefined") return parts;
+      const raw = JSON.parse(localStorage.getItem(MUTED_PARTS_KEY) || "[]");
+      if (!Array.isArray(raw)) return parts;
+      for (const key of raw) {
+        if (Object.prototype.hasOwnProperty.call(parts, key)) parts[key] = false;
+      }
+      return parts;
+    } catch (_err) {
+      return parts;
+    }
+  }
+
+  function writeSavedParts(parts) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      const muted = PART_KEYS.filter((key) => parts && parts[key] === false);
+      localStorage.setItem(MUTED_PARTS_KEY, JSON.stringify(muted));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  // Which mute button a timeline note belongs to. Chords are synthesised from
+  // the chord symbols and never reach the staff, so they need their own part.
+  function voicePart(voice) {
+    if (voice === "Ins") return "ins";
+    if (voice === "Chord") return "chord";
+    return "vocal";
+  }
+
+  function partsAudible(parts, voice) {
+    const flags = parts || allParts();
+    return flags[voicePart(voice)] !== false;
+  }
+
   // abc2svg emits one svg per system (plus the header), and the paper's
   // stylesheet fits each of them to the width. Zoom has to reach all of them,
   // not just the first, or only the title block would change size.
@@ -5069,6 +5119,9 @@
     arming: false,
     ctx: null,
     osc: [],
+    voices: { vocal: [], ins: [], chord: [] },
+    queue: null,
+    parts: allParts(),
     raf: 0,
     pointerPicked: false,
     playhead: null,
@@ -5277,6 +5330,12 @@
       ".yue-jp-zoom{display:inline-flex;align-items:center;gap:2px;margin:0 2px;}",
       ".yue-jp-zoom .zoom-value{min-width:3.6em;padding:6px 4px;font-variant-numeric:tabular-nums;}",
       ".yue-jp-zoom .zoom-step{padding:6px 7px;}",
+      ".yue-jp-parts{display:inline-flex;align-items:center;gap:4px;margin:0 2px;}",
+      ".yue-jp-bar button.part{padding:6px 8px;font-size:12px;font-weight:650;",
+      "white-space:nowrap;border-radius:8px;}",
+      ".yue-jp-bar button.part.off{opacity:.45;text-decoration:line-through;}",
+      ".yue-jp-bar button.part.off:hover{opacity:.7;}",
+      ".yue-jp-bar button.part:disabled{opacity:.3;text-decoration:none;cursor:default;}",
       ".yue-jp-bar button.primary{border:0;background:linear-gradient(to right,#f97316,#db2777);",
       "color:#fff;font-weight:700;}",
       ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
@@ -5430,6 +5489,14 @@
       '<button type="button" class="icon" data-act="print" data-i18n-aria="jpPdf" data-i18n-title="jpPdfHint">' + PRINT_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="midi" title="MIDI" aria-label="MIDI" hidden>' + MIDI_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="source" data-i18n-aria="jpSource" data-i18n-title="jpSource" hidden>' + SOURCE_ICON + "</button>",
+      '<span class="yue-jp-parts" role="group" data-i18n-aria="jpPartsGroup">',
+      '<button type="button" class="part" data-act="part" data-part="vocal" data-i18n="jpPartVocal"',
+      ' data-i18n-aria="jpPartVocalHint" data-i18n-title="jpPartVocalHint" aria-pressed="true">Vocal</button>',
+      '<button type="button" class="part" data-act="part" data-part="ins" data-i18n="jpPartIns"',
+      ' data-i18n-aria="jpPartInsHint" data-i18n-title="jpPartInsHint" aria-pressed="true">Acc.</button>',
+      '<button type="button" class="part" data-act="part" data-part="chord" data-i18n="jpPartChord"',
+      ' data-i18n-aria="jpPartChordHint" data-i18n-title="jpPartChordHint" aria-pressed="true">Chords</button>',
+      "</span>",
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
       '<button type="button" class="icon" data-act="stop" data-i18n-aria="jpStop" data-i18n-title="jpStop">' + STOP_ICON + "</button>",
       '<span class="yue-jp-clock">0:00</span>',
@@ -5535,6 +5602,7 @@
       const button = ev.target.closest && ev.target.closest("button");
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
+      else if (act === "part") togglePart(button.getAttribute("data-part"));
       else if (act === "diagram") cycleDiagram();
       else if (act === "zoom-in") setZoom(ui.zoom + ZOOM_STEP, true);
       else if (act === "zoom-out") setZoom(ui.zoom - ZOOM_STEP, true);
@@ -5693,6 +5761,7 @@
     setPlayLabel(ui.playing ? "pause" : "play");
     syncDiagram();
     syncTextVisible();
+    syncParts();
     syncLeadButton();
     syncHistoryButtons();
   }
@@ -7613,6 +7682,54 @@
       button.classList.toggle("on", on);
       button.setAttribute("aria-pressed", on ? "true" : "false");
     });
+    syncParts();
+  }
+
+  // The three part buttons switch what MIDI playback synthesises. Clicking a
+  // note still sounds it; only the running/next playback is affected. Source
+  // audio cannot be split, so the buttons are disabled while it plays.
+  function syncParts() {
+    if (!ui.root) return;
+    const midiOnly = ui.transport !== "source";
+    ui.root.querySelectorAll("[data-act='part']").forEach((button) => {
+      const part = button.getAttribute("data-part");
+      const on = ui.parts[part] !== false;
+      button.classList.toggle("on", on);
+      button.classList.toggle("off", !on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+      button.disabled = !midiOnly;
+      const base = m(button.getAttribute("data-i18n-title") || "");
+      const text = midiOnly ? base : base + " · " + m("jpPartsMidiOnly");
+      button.title = text;
+      button.setAttribute("aria-label", text);
+    });
+  }
+
+  function togglePart(part) {
+    if (!part || !Object.prototype.hasOwnProperty.call(ui.parts, part)) return;
+    setPartAudible(part, ui.parts[part] === false);
+  }
+
+  function setPartAudible(part, audible) {
+    if (!part || !Object.prototype.hasOwnProperty.call(ui.parts, part)) return;
+    const on = audible !== false;
+    if (ui.parts[part] === on) return;
+    ui.parts[part] = on;
+    writeSavedParts(ui.parts);
+    syncParts();
+    // Muting has to cut the notes the lookahead already armed. Their queue
+    // entries stay unarmed while their start is still ahead, so unmuting in
+    // time brings them back; entries whose moment passed are dropped by
+    // pumpMidi instead of firing late.
+    if (on || (!ui.midiPlaying && !ui.arming)) return;
+    stopVoices(ui.voices[part]);
+    ui.voices[part] = [];
+    const now = midiNow();
+    for (const item of ui.queue || []) {
+      if (!item || !item.armed || !item.note) continue;
+      if (voicePart(item.note.voice) !== part) continue;
+      if (item.note.start > now + 0.05) item.armed = false;
+    }
   }
 
   function setTransport(mode) {
@@ -7828,24 +7945,42 @@
   // A five-minute score is more than a thousand notes. Scheduling every one
   // at play time stalls the audio thread: the clock still advances, but the
   // speakers stay silent. Arm only the notes that start inside the lookahead.
-  function pumpMidi(queue, now, ahead) {
+  function pumpMidi(queue, now, ahead, parts) {
     const horizon = now + (ahead == null ? 1.5 : ahead);
+    const at = Math.max(0, now || 0);
+    const audible = parts || ui.parts;
     const due = [];
     for (const item of queue || []) {
       if (!item || item.armed) continue;
       const note = item.note;
       if (!note || note.start > horizon) continue;
+      if (!partsAudible(audible, note.voice)) {
+        // A muted part keeps its upcoming notes pending, so unmuting before
+        // they start still sounds them. Once their moment has passed while
+        // muted they are dropped instead of firing late.
+        if (note.start >= at - 0.05) continue;
+        item.armed = true;
+        continue;
+      }
       item.armed = true;
-      if (note.start + note.duration > now + 0.02) due.push(item);
+      if (note.start + note.duration > at + 0.02) due.push(item);
     }
     return due;
   }
 
-  function silenceMidi() {
-    for (const node of ui.osc) {
+  function stopVoices(voices) {
+    for (const node of voices || []) {
       try { if (node.stop) node.stop(); } catch (err) { /* already stopped */ }
-      try { if (node.disconnect) node.disconnect(); } catch (err) {}
+      try { if (node.disconnect) node.disconnect(); } catch (err) { /* already disconnected */ }
     }
+  }
+
+  function silenceMidi() {
+    for (const key of PART_KEYS) {
+      stopVoices(ui.voices[key]);
+      ui.voices[key] = [];
+    }
+    stopVoices(ui.osc);
     ui.osc = [];
   }
 
@@ -7862,6 +7997,7 @@
     ui.midiOffset = 0;
     ui.midiStartedAt = 0;
     ui.midiTotal = 0;
+    ui.queue = null;
     if (ui.raf) cancelAnimationFrame(ui.raf);
     ui.raf = 0;
     stopEaseScroll();
@@ -7883,6 +8019,7 @@
     ui.generation += 1;
     ui.arming = false;
     ui.midiPlaying = false;
+    ui.queue = null;
     if (ui.raf) cancelAnimationFrame(ui.raf);
     ui.raf = 0;
     silenceMidi();
@@ -7933,11 +8070,11 @@
       ui.midiOffset = offset;
       ui.midiStartedAt = t0;
       ui.midiTotal = total;
-      const queue = soundingNotes(score.notes, offset);
+      ui.queue = soundingNotes(score.notes, offset);
       const pump = () => {
         const elapsed = ui.ctx.currentTime - ui.midiStartedAt;
         const now = Math.min(total, ui.midiOffset + Math.max(0, elapsed));
-        for (const item of pumpMidi(queue, now)) {
+        for (const item of pumpMidi(ui.queue, now)) {
           window.yuePiano.schedule(
             ui.ctx,
             {
@@ -7947,7 +8084,7 @@
             },
             ui.midiStartedAt + item.delay,
             Math.max(0.06, item.duration),
-            ui.osc,
+            ui.voices[voicePart(item.note.voice)],
           );
         }
         return now;
@@ -7961,6 +8098,7 @@
         setPlayClock(now, total);
         const active = new Set();
         for (const note of score.notes) {
+          if (!partsAudible(ui.parts, note.voice)) continue;
           if (now >= note.start && now < note.start + note.duration) {
             note.indexes.forEach((index) => active.add((note.voice || "Vocal") + ":" + index));
           }
@@ -8055,6 +8193,8 @@
       setStatus(playHint());
       if (ui.clock) ui.clock.textContent = "0:00";
       ui.root.hidden = false;
+      ui.parts = readSavedParts();
+      syncParts();
       ui.zoom = readSavedZoom();
       applyZoom();
       ui.textVisible = readSavedTextVisible();
@@ -8088,6 +8228,8 @@
     spellChord: spellChord,
     soundingNotes: soundingNotes,
     pumpMidi: pumpMidi,
+    voicePart: voicePart,
+    partsAudible: partsAudible,
     playMarks: playMarks,
     cursorAt: cursorAt,
     followMark: followMark,

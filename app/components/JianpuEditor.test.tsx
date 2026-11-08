@@ -692,4 +692,99 @@ C4D4E4F4|
     expect(out).not.toContain('text,serif');
     expect(out).not.toMatch(/font:15px sans-serif/);
   });
+
+  it('mutes the vocal, accompaniment and chord parts for MIDI playback', async () => {
+    localStorage.removeItem('yue-jp-muted-parts');
+    const mounted = await mountEditor(ABC);
+    try {
+      const part = (name: string) => document.querySelector(
+        `.yue-jp-editor [data-act="part"][data-part="${name}"]`,
+      ) as HTMLButtonElement;
+      expect(part('vocal').textContent).toBe('Vocal');
+      expect(part('ins').textContent).toBe('Acc.');
+      expect(part('chord').textContent).toBe('Chords');
+      for (const name of ['vocal', 'ins', 'chord']) {
+        expect(part(name).getAttribute('aria-pressed')).toBe('true');
+        expect(part(name).disabled).toBe(false);
+      }
+      await act(async () => {
+        part('ins').click();
+        part('chord').click();
+      });
+      expect(part('vocal').getAttribute('aria-pressed')).toBe('true');
+      expect(part('ins').getAttribute('aria-pressed')).toBe('false');
+      expect(part('chord').getAttribute('aria-pressed')).toBe('false');
+      expect(part('chord').classList.contains('off')).toBe(true);
+      expect(localStorage.getItem('yue-jp-muted-parts')).toBe('["ins","chord"]');
+      await act(async () => {
+        part('chord').click();
+      });
+      expect(part('chord').getAttribute('aria-pressed')).toBe('true');
+      expect(part('chord').classList.contains('off')).toBe(false);
+      expect(localStorage.getItem('yue-jp-muted-parts')).toBe('["ins"]');
+    } finally {
+      await mounted.close();
+      localStorage.removeItem('yue-jp-muted-parts');
+    }
+  });
+
+  it('cuts a part that is already sounding when muted mid-playback', async () => {
+    localStorage.removeItem('yue-jp-muted-parts');
+    const globals = globalThis as unknown as { AudioContext?: unknown; yuePiano?: unknown };
+    const previous = { AudioContext: globals.AudioContext, yuePiano: globals.yuePiano };
+    type Placed = { midi: number; stopped: boolean; stop: () => void };
+    const scheduled: Placed[] = [];
+    class FakeAudioContext {
+      currentTime = 0;
+      state = 'running';
+      destination = {};
+      resume() {}
+    }
+    globals.AudioContext = FakeAudioContext;
+    globals.yuePiano = {
+      prepare: () => Promise.resolve({ kind: 'sampled' }),
+      voice: () => ({ kind: 'sampled' }),
+      schedule: (
+        _ctx: unknown,
+        note: { midi: number },
+        _when: number,
+        _duration: number,
+        voices: Placed[],
+      ) => {
+        const entry: Placed = { midi: note.midi, stopped: false, stop() { entry.stopped = true; } };
+        voices.push(entry);
+        scheduled.push(entry);
+      },
+    };
+    const chorded = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal
+"G"C4D4E4F4|
+`;
+    const mounted = await mountEditor(chorded);
+    try {
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="play"]') as HTMLButtonElement).click();
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+      const chordTones = new Set([55, 67, 71, 74]);
+      const chordEntry = scheduled.find((entry) => chordTones.has(entry.midi));
+      const vocalEntry = scheduled.find((entry) => !chordTones.has(entry.midi));
+      expect(chordEntry).toBeTruthy();
+      expect(vocalEntry).toBeTruthy();
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="part"][data-part="chord"]') as HTMLButtonElement).click();
+      });
+      expect(chordEntry?.stopped).toBe(true);
+      expect(vocalEntry?.stopped).toBe(false);
+    } finally {
+      await mounted.close();
+      globals.AudioContext = previous.AudioContext;
+      globals.yuePiano = previous.yuePiano;
+      localStorage.removeItem('yue-jp-muted-parts');
+    }
+  });
 });
