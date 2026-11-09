@@ -792,17 +792,17 @@
 
   function breakTies(events, index) {
     const ev = events[index];
-    if (ev.tie) ev.tie = false;
+    const hadTie = !!ev.tie;
+    if (hadTie) ev.tie = false;
     const prev = events[index - 1];
-    if (prev && prev.tie && ev.continuesTie && prev.line === ev.line) {
+    // A tie can cross a system break, where scanMusic cannot mark the
+    // continuation; the previous event still points at this one.
+    if (prev && prev.tie) {
       prev.tie = false;
       ev.continuesTie = false;
     }
     const next = events[index + 1];
-    if (ev.tie && next && next.continuesTie) {
-      ev.tie = false;
-      next.continuesTie = false;
-    }
+    if (hadTie && next && next.continuesTie) next.continuesTie = false;
   }
 
   function applySpelling(ev, spelled) {
@@ -1539,20 +1539,103 @@
     };
   }
 
+  // Two bars of different meters become one bar whose beats are their sum. The
+  // first bar's denominator is kept when the sum is writable in it.
+  function gcdNumber(a, b) {
+    let x = Math.abs(a) || 1;
+    let y = Math.abs(b) || 1;
+    while (y) {
+      const t = x % y;
+      x = y;
+      y = t;
+    }
+    return x || 1;
+  }
+
+  function mergeMeters(first, second) {
+    if (!first || !second) return first;
+    if (!first[1] || !second[1]) return first;
+    const dens = [first[1]];
+    if (second[1] !== first[1]) dens.push(second[1]);
+    const lcm = first[1] / gcdNumber(first[1], second[1]) * second[1];
+    if (dens.indexOf(lcm) < 0) dens.push(lcm);
+    for (const den of dens) {
+      const num = first[0] * den / first[1] + second[0] * den / second[1];
+      if (Number.isInteger(num) && num > 0) return [num, den];
+    }
+    return [first[0] + second[0], first[1]];
+  }
+
+  // The meter of the joined bar follows the notes it actually holds, so a
+  // pickup bar plus a full bar gets the beats they add up to, not the sum of
+  // the two written meters. Complete bars give the same answer either way.
+  function meterForUnits(units, lDen, first, second) {
+    const total = Number(units);
+    if (!Number.isInteger(total) || total <= 0 || !lDen) return mergeMeters(first, second);
+    const dens = [];
+    function push(den) {
+      if (den && dens.indexOf(den) < 0) dens.push(den);
+    }
+    push(first[1]);
+    push(second[1]);
+    push(first[1] / gcdNumber(first[1], second[1]) * second[1]);
+    for (const den of dens) {
+      const num = total * den / lDen;
+      if (Number.isInteger(num) && num > 0) return [num, den];
+    }
+    return mergeMeters(first, second);
+  }
+
   function joinLocate(abc, voice, index, slice) {
     const found = locateBar(abc, voice, index, slice);
     if (found.error) return found;
-    if (found.bar + 1 >= found.vocalBars.length) return { error: m("jpErrJoinLast") };
+    let vocalBars = found.vocalBars;
+    let insBars = found.insBars;
+    let nextBar = found.bar + 1;
+    let nextMeter = found.meter;
+    let end = found.end;
+    let cross = false;
+    // The selected bar is the last of its meter stretch: the next bar starts
+    // the following stretch. Joining across a meter change is allowed; a
+    // section comment between the stretches still ends the join, as before.
+    if (nextBar >= vocalBars.length) {
+      const items = found.walked.items;
+      if (end >= items.length || items[end].type !== "music") return { error: m("jpErrJoinLast") };
+      const meter = items[end].meter;
+      let endB = end + 1;
+      while (endB < items.length) {
+        const next = items[endB];
+        if (next.type !== "music" || !sameMeter(next.meter, meter)) break;
+        endB += 1;
+      }
+      const vocalB = barsFromVoice(items, end, endB, "Vocal");
+      const insB = barsFromVoice(items, end, endB, "Ins");
+      if (!vocalB.length || !insB.length || vocalB.length !== insB.length) {
+        return { error: m("jpErrVoicesBars") };
+      }
+      nextBar = vocalBars.length;
+      nextMeter = meter;
+      vocalBars = vocalBars.concat(vocalB);
+      insBars = insBars.concat(insB);
+      end = endB;
+      cross = true;
+    }
     const heads = [];
     function take(bars, which) {
-      const events = bars[found.bar].concat(bars[found.bar + 1]);
+      const events = bars[found.bar].concat(bars[nextBar]);
       for (const ev of events) {
         if (ev.index == null || ev.index < 0) continue;
         heads.push({ voice: which, index: ev.index });
       }
     }
-    take(found.vocalBars, "Vocal");
-    take(found.insBars, "Ins");
+    take(vocalBars, "Vocal");
+    take(insBars, "Ins");
+    found.vocalBars = vocalBars;
+    found.insBars = insBars;
+    found.nextBar = nextBar;
+    found.nextMeter = nextMeter;
+    found.cross = cross;
+    found.end = end;
     found.heads = heads;
     return found;
   }
@@ -1688,7 +1771,44 @@
     const range = lineBarRange(command);
     const stateV = { key: vocalKey || walked.header.key.name };
     const stateI = { key: insKey || walked.header.key.name };
+    // Lines the region rewrite does not regenerate (a Q: tempo change, a %%
+    // directive) must survive it. The M:/K: lines are written from the bars.
+    const ownedLines = new Set();
+    const lineByIndex = new Map();
+    for (let j = found.start; j < found.end; j++) {
+      const item = items[j];
+      if (item.type !== "music") continue;
+      ownedLines.add(item.vLine);
+      ownedLines.add(item.musicLine);
+      if (item.lyricLine >= 0) ownedLines.add(item.lyricLine);
+      for (const ev of item.events) {
+        if (ev.index != null && ev.index >= 0) lineByIndex.set(item.voice + ":" + ev.index, item.musicLine);
+      }
+    }
+    const kept = [];
+    for (let ln = from; ln <= to; ln++) {
+      if (ownedLines.has(ln)) continue;
+      const text = walked.lines[ln];
+      if (!text || !text.trim()) continue;
+      if (/^\s*(?:M:|K:|V:|w:)/.test(text)) continue;
+      kept.push({ line: ln, text: text });
+    }
     const out = [];
+    let keptAt = 0;
+    function emitKept(bars) {
+      let maxLine = -1;
+      for (const bar of bars) {
+        for (const ev of bar) {
+          if (!ev || ev.index == null || ev.index < 0) continue;
+          const line = lineByIndex.get((ev.voice || "Vocal") + ":" + ev.index);
+          if (line != null && line > maxLine) maxLine = line;
+        }
+      }
+      while (keptAt < kept.length && kept[keptAt].line < maxLine) {
+        out.push(kept[keptAt].text);
+        keptAt += 1;
+      }
+    }
     for (let r = 0; r < runs.length; r++) {
       const run = runs[r];
       const meterLine = sameMeter(run.meter, sounding) ? "" : "M:" + run.meter[0] + "/" + run.meter[1];
@@ -1703,6 +1823,7 @@
       for (let g = 0; g < chunks.length; g++) {
         const chunkV = vocalBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
         const chunkI = insBars.slice(run.from + chunks[g].from, run.from + chunks[g].to);
+        emitKept(chunkV.concat(chunkI));
         out.push("V: Vocal");
         if (g === 0 && meterLine) out.push(meterLine);
         out.push(renderBars(chunkV, stateV));
@@ -1714,6 +1835,7 @@
       }
       sounding = run.meter;
     }
+    while (keptAt < kept.length) out.push(kept[keptAt++].text);
     lines.splice(from, to - from + 1, ...out);
     return { abc: joinAbc(lines, abc) };
   }
@@ -1723,17 +1845,28 @@
   function joinBars(abc, voice, index, slice, command) {
     const found = joinLocate(abc, voice, index, slice);
     if (found.error) return { abc: abc, error: found.error };
+    const joinAt = found.bar;
+    const nextBar = found.nextBar;
     const vocalBars = found.vocalBars.slice();
     const insBars = found.insBars.slice();
-    vocalBars[found.bar] = found.vocalBars[found.bar].concat(found.vocalBars[found.bar + 1]);
-    insBars[found.bar] = found.insBars[found.bar].concat(found.insBars[found.bar + 1]);
-    vocalBars.splice(found.bar + 1, 1);
-    insBars.splice(found.bar + 1, 1);
-    const meters = vocalBars.map(() => found.meter);
+    vocalBars[joinAt] = vocalBars[joinAt].concat(vocalBars[nextBar]);
+    insBars[joinAt] = insBars[joinAt].concat(insBars[nextBar]);
+    vocalBars.splice(nextBar, 1);
+    insBars.splice(nextBar, 1);
+    const chosen = voice === "Ins" ? insBars[joinAt] : vocalBars[joinAt];
+    const lDen = found.walked.header.lDen;
+    const mergedUnits = chosen.reduce((sum, ev) => sum + ev.units, 0);
+    const mergedMeter = found.cross
+      ? meterForUnits(mergedUnits, lDen, found.meter, found.nextMeter)
+      : found.meter;
+    const meters = vocalBars.map((_, i) => {
+      if (i < joinAt) return found.meter;
+      if (i === joinAt) return mergedMeter;
+      return found.nextMeter;
+    });
     const written = writeRegion(abc, found, vocalBars, insBars, meters, command);
-    const chosen = voice === "Ins" ? insBars[found.bar] : vocalBars[found.bar];
-    const beats = barBeats(chosen, found.meter, found.walked.header.lDen);
-    return { abc: written.abc, error: null, beats: beats };
+    const beats = barBeats(chosen, mergedMeter, lDen);
+    return { abc: written.abc, error: null, beats: beats, meter: mergedMeter };
   }
 
   function noteEnd(bar, index) {
@@ -1887,11 +2020,72 @@
     };
   }
 
+  function eventSpans(events) {
+    const spans = [];
+    let at = 0;
+    for (const ev of events) {
+      spans.push({ ev: ev, start: at, end: at + ev.units });
+      at += ev.units;
+    }
+    return spans;
+  }
+
+  // Delete the selected note from its own staff and, in the other staff, every
+  // note that starts while it sounds. Both voices drop to rests of the same
+  // length, so the bars keep their beats.
+  function deleteNoteBoth(abc, voice, index, slice, command) {
+    if (slice != null) {
+      const expanded = expandSlicedRest(abc, voice, index, slice | 0);
+      if (expanded.error) return { abc: abc, error: expanded.error };
+      if (expanded.abc !== abc) {
+        return editScore(expanded.abc, Object.assign({}, command, {
+          op: "delete-note",
+          index: expanded.index | 0,
+          slice: null,
+        }));
+      }
+    }
+    const parsed = collect(abc);
+    if (parsed.error) return { abc: abc, error: parsed.error };
+    const events = voice === "Ins" ? parsed.ins : parsed.events;
+    const other = voice === "Ins" ? parsed.events : parsed.ins;
+    if (!events.length) {
+      return { abc: abc, error: voice === "Ins" ? m('jpErrNoInsNotes') : m('jpErrNoVocalNotes') };
+    }
+    if (index < 0 || index >= events.length) return { abc: abc, error: m('jpErrNoSuchNote') };
+    const ev = events[index];
+    if (ev.kind !== "note") {
+      // A rest is a bar-length edit, not a note; keep the single-staff action.
+      return editScore(abc, Object.assign({}, command, { op: "delete", voice: voice, index: index, slice: null }));
+    }
+    const span = eventSpans(events)[index];
+    const targets = [];
+    eventSpans(other).forEach((item, at) => {
+      if (item.ev.kind !== "note") return;
+      if (item.start >= span.start && item.start < span.end) targets.push(at);
+    });
+    breakTies(events, index);
+    makeRest(ev);
+    for (const at of targets) {
+      breakTies(other, at);
+      makeRest(other[at]);
+    }
+    const lines = parsed.lines.slice();
+    rewriteMusic(lines, parsed.events);
+    rewriteMusic(lines, parsed.ins);
+    if (voice !== "Ins" || targets.length) rewriteLyrics(lines, parsed.events);
+    return { abc: joinAbc(lines, abc), error: null, index: index };
+  }
+
   function editScore(abc, command) {
     if (command.op === "reflow") return reflowScore(abc, command);
     const voice = command.voice === "Ins" ? "Ins" : "Vocal";
     if (command.op === "join") {
       return joinBars(abc, voice, command.index | 0, command.slice | 0, command);
+    }
+    if (command.op === "delete-note") {
+      return deleteNoteBoth(abc, voice, command.index | 0,
+        command.slice != null ? command.slice | 0 : null, command);
     }
     if (command.op === "add-beat") {
       return addBeat(abc, voice, command.index | 0, command.slice | 0, command);
@@ -2940,16 +3134,34 @@
     order.push(resolveGuitarShape(name));
   }
 
+  // One cell per drawn syllable. A chord lands on the syllable it starts on;
+  // a chord that starts on a held note (a "-" melisma) or on a rest is queued
+  // and gets a cell of its own when the next chord arrives or the line ends,
+  // so a change inside a held syllable or over a resting bar is never lost.
   function leadLyricCells(events) {
     const cells = [];
     let pending = "";
+    let shown = "";
+    function place() {
+      if (!pending) return;
+      if (pending !== shown) {
+        cells.push({ text: "", chord: pending });
+        shown = pending;
+      }
+      pending = "";
+    }
     for (const ev of events) {
-      if (ev.chord) pending = ev.chord;
+      if (ev.chord) {
+        place();
+        pending = ev.chord;
+      }
       if (ev.kind !== "note") continue;
       if (!lyricIsDrawn(ev.lyric)) continue;
       cells.push({ text: displayLyricToken(ev.lyric), chord: pending || "" });
+      if (pending) shown = pending;
       pending = "";
     }
+    place();
     return cells;
   }
 
@@ -4419,6 +4631,15 @@
   const DIAGRAM_KEY = "yue-jp-chord-diagram";
   const SHAPE_KEY = "yue-jp-chord-shapes";
   const CHORD_KEYS_KEY = "yue-jp-chord-keys";
+  const ZOOM_KEY = "yue-jp-zoom";
+  const MUTED_PARTS_KEY = "yue-jp-muted-parts";
+  // The three things MIDI playback sounds: the vocal line (V:), the
+  // accompaniment line (A:) and the chord symbols written on the vocal line.
+  const PART_KEYS = ["vocal", "ins", "chord"];
+  const ZOOM_DEFAULT = 100;
+  const ZOOM_MIN = 50;
+  const ZOOM_MAX = 300;
+  const ZOOM_STEP = 10;
 
   function readSavedChordKeys() {
     try {
@@ -4697,6 +4918,113 @@
     }
   }
 
+  // At 100% each system fills the paper's width; zoom is a percentage of that
+  // width, so anything above 100% scrolls sideways instead of shrinking.
+  function clampZoom(value) {
+    const n = Math.round(Number(value));
+    if (!Number.isFinite(n)) return ZOOM_DEFAULT;
+    return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, n));
+  }
+
+  function zoomLabel(percent) {
+    return clampZoom(percent) + "%";
+  }
+
+  function readSavedZoom() {
+    try {
+      if (typeof localStorage === "undefined") return ZOOM_DEFAULT;
+      const raw = localStorage.getItem(ZOOM_KEY);
+      if (raw == null || raw === "") return ZOOM_DEFAULT;
+      return clampZoom(Number(raw));
+    } catch (_err) {
+      return ZOOM_DEFAULT;
+    }
+  }
+
+  function writeSavedZoom(percent) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(ZOOM_KEY, String(clampZoom(percent)));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  function allParts() {
+    const parts = {};
+    for (const key of PART_KEYS) parts[key] = true;
+    return parts;
+  }
+
+  // A muted part is stored, not the audible one, so a new part added later
+  // starts audible instead of silently missing.
+  function readSavedParts() {
+    const parts = allParts();
+    try {
+      if (typeof localStorage === "undefined") return parts;
+      const raw = JSON.parse(localStorage.getItem(MUTED_PARTS_KEY) || "[]");
+      if (!Array.isArray(raw)) return parts;
+      for (const key of raw) {
+        if (Object.prototype.hasOwnProperty.call(parts, key)) parts[key] = false;
+      }
+      return parts;
+    } catch (_err) {
+      return parts;
+    }
+  }
+
+  function writeSavedParts(parts) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      const muted = PART_KEYS.filter((key) => parts && parts[key] === false);
+      localStorage.setItem(MUTED_PARTS_KEY, JSON.stringify(muted));
+    } catch (_err) {
+      /* private mode and file pages can reject storage */
+    }
+  }
+
+  // Which mute button a timeline note belongs to. Chords are synthesised from
+  // the chord symbols and never reach the staff, so they need their own part.
+  function voicePart(voice) {
+    if (voice === "Ins") return "ins";
+    if (voice === "Chord") return "chord";
+    return "vocal";
+  }
+
+  function partsAudible(parts, voice) {
+    const flags = parts || allParts();
+    return flags[voicePart(voice)] !== false;
+  }
+
+  // abc2svg emits one svg per system (plus the header), and the paper's
+  // stylesheet fits each of them to the width. Zoom has to reach all of them,
+  // not just the first, or only the title block would change size.
+  function applyZoom() {
+    const percent = clampZoom(ui.zoom);
+    ui.zoom = percent;
+    if (ui.paper) ui.paper.setAttribute("data-zoom", String(percent));
+    if (ui.root) {
+      const value = ui.root.querySelector("[data-act='zoom-reset']");
+      if (value) value.textContent = zoomLabel(percent);
+      const out = ui.root.querySelector("[data-act='zoom-out']");
+      const zin = ui.root.querySelector("[data-act='zoom-in']");
+      if (out) out.disabled = percent <= ZOOM_MIN;
+      if (zin) zin.disabled = percent >= ZOOM_MAX;
+    }
+    if (!ui.paper) return;
+    ui.paper.querySelectorAll("svg").forEach((svg) => {
+      svg.style.width = percent + "%";
+      svg.style.height = "auto";
+      svg.style.maxWidth = "none";
+    });
+  }
+
+  function setZoom(percent, persist) {
+    ui.zoom = clampZoom(percent);
+    if (persist !== false) writeSavedZoom(ui.zoom);
+    applyZoom();
+  }
+
   function currentDiagram() {
     if (ui.diagram) return normalizeDiagram(ui.diagram.getAttribute("data-diagram"));
     return readSavedDiagram();
@@ -4791,6 +5119,9 @@
     arming: false,
     ctx: null,
     osc: [],
+    voices: { vocal: [], ins: [], chord: [] },
+    queue: null,
+    parts: allParts(),
     raf: 0,
     pointerPicked: false,
     playhead: null,
@@ -4823,6 +5154,7 @@
     saveWatch: 0,
     savedNote: false,
     textVisible: true,
+    zoom: ZOOM_DEFAULT,
     scrollRaf: 0,
     scrollGoal: null,
     sourceAnchors: null,
@@ -4995,6 +5327,15 @@
       ".yue-jp-bar button:disabled{opacity:.35;cursor:default;}",
       ".yue-jp-bar button:disabled:hover{border-color:#d4d4d8;color:inherit;}",
       "html.dark .yue-jp-bar button:disabled:hover{border-color:rgba(255,255,255,.15);color:inherit;}",
+      ".yue-jp-zoom{display:inline-flex;align-items:center;gap:2px;margin:0 2px;}",
+      ".yue-jp-zoom .zoom-value{min-width:3.6em;padding:6px 4px;font-variant-numeric:tabular-nums;}",
+      ".yue-jp-zoom .zoom-step{padding:6px 7px;}",
+      ".yue-jp-parts{display:inline-flex;align-items:center;gap:4px;margin:0 2px;}",
+      ".yue-jp-bar button.part{padding:6px 8px;font-size:12px;font-weight:650;",
+      "white-space:nowrap;border-radius:8px;}",
+      ".yue-jp-bar button.part.off{opacity:.45;text-decoration:line-through;}",
+      ".yue-jp-bar button.part.off:hover{opacity:.7;}",
+      ".yue-jp-bar button.part:disabled{opacity:.3;text-decoration:none;cursor:default;}",
       ".yue-jp-bar button.primary{border:0;background:linear-gradient(to right,#f97316,#db2777);",
       "color:#fff;font-weight:700;}",
       ".yue-jp-bar button.primary:hover{color:#fff;filter:brightness(1.1);}",
@@ -5066,7 +5407,7 @@
       ".yue-jp-text textarea::-moz-selection{background:#ec4899;color:#fff;}",
       ".yue-jp-text textarea:focus{outline:none;}",
       ".yue-jp-hint{margin:0;font-size:12px;line-height:1.4;color:#71717a;}",
-      ".yue-jp-paper svg{display:block;max-width:100%;height:auto;margin:0 auto;",
+      ".yue-jp-paper svg{display:block;width:100%;max-width:none;height:auto;margin:0 auto;",
       "user-select:none;-webkit-user-select:none;}",
       ".yue-jp-paper svg path,.yue-jp-paper svg line{pointer-events:none;}",
       ".yue-jp-paper svg g.diag,.yue-jp-paper svg g.diag *{pointer-events:auto;cursor:pointer;}",
@@ -5137,12 +5478,25 @@
       '<label><span data-i18n="jpOriginalKey"></span> <b class="yue-jp-orig-key"></b></label>',
       '<span class="yue-jp-meta-tempo"></span>',
       '</span>',
+      '<span class="yue-jp-zoom" role="group" data-i18n-aria="jpZoomGroup">',
+      '<button type="button" class="zoom-step" data-act="zoom-out" data-i18n-aria="jpZoomOut" data-i18n-title="jpZoomOut">−</button>',
+      '<button type="button" class="zoom-value" data-act="zoom-reset" data-i18n-aria="jpZoomReset" data-i18n-title="jpZoomReset">' + ZOOM_DEFAULT + '%</button>',
+      '<button type="button" class="zoom-step" data-act="zoom-in" data-i18n-aria="jpZoomIn" data-i18n-title="jpZoomIn">+</button>',
+      '</span>',
       '<button type="button" class="icon" data-act="diagram" data-diagram="off">' + DIAGRAM_OFF_ICON + "</button>",
       '<button type="button" class="icon" data-act="text" data-i18n-aria="jpTextScore" data-i18n-title="jpTextScore" aria-pressed="true">' + TEXT_ICON + "</button>",
       '<button type="button" class="lead-label" data-act="lead" data-i18n="jpLead" data-i18n-aria="jpLead" data-i18n-title="jpLead"></button>',
       '<button type="button" class="icon" data-act="print" data-i18n-aria="jpPdf" data-i18n-title="jpPdfHint">' + PRINT_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="midi" title="MIDI" aria-label="MIDI" hidden>' + MIDI_ICON + "</button>",
       '<button type="button" class="icon" data-act="mode" data-mode="source" data-i18n-aria="jpSource" data-i18n-title="jpSource" hidden>' + SOURCE_ICON + "</button>",
+      '<span class="yue-jp-parts" role="group" data-i18n-aria="jpPartsGroup">',
+      '<button type="button" class="part" data-act="part" data-part="vocal" data-i18n="jpPartVocal"',
+      ' data-i18n-aria="jpPartVocalHint" data-i18n-title="jpPartVocalHint" aria-pressed="true">Vocal</button>',
+      '<button type="button" class="part" data-act="part" data-part="ins" data-i18n="jpPartIns"',
+      ' data-i18n-aria="jpPartInsHint" data-i18n-title="jpPartInsHint" aria-pressed="true">Acc.</button>',
+      '<button type="button" class="part" data-act="part" data-part="chord" data-i18n="jpPartChord"',
+      ' data-i18n-aria="jpPartChordHint" data-i18n-title="jpPartChordHint" aria-pressed="true">Chords</button>',
+      "</span>",
       '<button type="button" class="icon" data-act="play" data-i18n-aria="jpPlay" data-i18n-title="jpPlay">' + PLAY_ICON + "</button>",
       '<button type="button" class="icon" data-act="stop" data-i18n-aria="jpStop" data-i18n-title="jpStop">' + STOP_ICON + "</button>",
       '<span class="yue-jp-clock">0:00</span>',
@@ -5248,7 +5602,11 @@
       const button = ev.target.closest && ev.target.closest("button");
       const act = button && button.getAttribute("data-act");
       if (act === "mode") setTransport(button.getAttribute("data-mode"));
+      else if (act === "part") togglePart(button.getAttribute("data-part"));
       else if (act === "diagram") cycleDiagram();
+      else if (act === "zoom-in") setZoom(ui.zoom + ZOOM_STEP, true);
+      else if (act === "zoom-out") setZoom(ui.zoom - ZOOM_STEP, true);
+      else if (act === "zoom-reset") setZoom(ZOOM_DEFAULT, true);
       else if (act === "lead") openLeadWindow();
       else if (act === "print") printJianpu();
       else if (act === "text") setTextVisible(ui.textVisible === false);
@@ -5359,6 +5717,9 @@
         }
         if (ui.text && event.target === ui.text) return;
         if (ui.split && event.target === ui.split) return;
+        const field = event.target;
+        if (field && (field.tagName === "INPUT" || field.tagName === "SELECT"
+          || field.isContentEditable)) return;
         onKey(event);
       });
     }
@@ -5400,6 +5761,7 @@
     setPlayLabel(ui.playing ? "pause" : "play");
     syncDiagram();
     syncTextVisible();
+    syncParts();
     syncLeadButton();
     syncHistoryButtons();
   }
@@ -5714,6 +6076,7 @@
         { label: m("jpAddBeat"), title: m("jpAddBeatTitle"), attrs: { act: "add-beat" } },
         { label: m("jpInsertBar"), title: m("jpInsertBarTitle"), attrs: { act: "insert-bar" } },
         { label: m("jpDeleteBar"), title: m("jpDeleteBarTitle"), attrs: { act: "delete-bar" } },
+        { label: m("jpDeleteNote"), title: m("jpDeleteNoteTitle"), attrs: { act: "delete-note" } },
         { label: m("jpReflow"), title: m("jpReflowTitle"), attrs: { act: "reflow" } },
       ],
     ];
@@ -5872,7 +6235,8 @@
     if (act === "duration") return { op: "duration", factor: Number(button.getAttribute("data-factor")) };
     if (act === "tie" || act === "sustain"
         || act === "downbeat" || act === "reflow" || act === "join"
-        || act === "add-beat" || act === "insert-bar" || act === "delete-bar") return { op: act };
+        || act === "add-beat" || act === "insert-bar" || act === "delete-bar"
+        || act === "delete-note") return { op: act };
     return null;
   }
 
@@ -6262,6 +6626,7 @@
     const frame = host.getBoundingClientRect();
     if (box.top < frame.top + 4) host.scrollTop -= frame.top + 4 - box.top;
     else if (box.bottom > frame.bottom - 4) host.scrollTop += box.bottom - (frame.bottom - 4);
+    nudgeAcross(host, box, frame);
   }
 
   function headFor(mark) {
@@ -6720,6 +7085,7 @@
     }
     ui.scoreSvg = svg;
     ui.paper.innerHTML = svg || ('<p>' + m('jpEmpty') + '</p>');
+    applyZoom();
     if (diagram !== DIAGRAM_OFF && svg.indexOf('class="diag"') < 0 && /"[A-G]/.test(ui.abc)) {
       if (!diagReady()) { ui.statusSticky = true; setStatus(m('jpDiagMissing')); }
     }
@@ -7259,7 +7625,7 @@
     if (key === ".") return { op: "duration", factor: 1.5 };
     if (key === "-") return { op: "sustain" };
     if (key === "t") return { op: "tie" };
-    if (key === "Delete" || key === "Backspace") return { op: "delete" };
+    if (key === "Delete" || key === "Backspace") return { op: "delete-note" };
     if (key === "+") return { op: "insert" };
     return null;
   }
@@ -7316,6 +7682,54 @@
       button.classList.toggle("on", on);
       button.setAttribute("aria-pressed", on ? "true" : "false");
     });
+    syncParts();
+  }
+
+  // The three part buttons switch what MIDI playback synthesises. Clicking a
+  // note still sounds it; only the running/next playback is affected. Source
+  // audio cannot be split, so the buttons are disabled while it plays.
+  function syncParts() {
+    if (!ui.root) return;
+    const midiOnly = ui.transport !== "source";
+    ui.root.querySelectorAll("[data-act='part']").forEach((button) => {
+      const part = button.getAttribute("data-part");
+      const on = ui.parts[part] !== false;
+      button.classList.toggle("on", on);
+      button.classList.toggle("off", !on);
+      button.setAttribute("aria-pressed", on ? "true" : "false");
+      button.disabled = !midiOnly;
+      const base = m(button.getAttribute("data-i18n-title") || "");
+      const text = midiOnly ? base : base + " · " + m("jpPartsMidiOnly");
+      button.title = text;
+      button.setAttribute("aria-label", text);
+    });
+  }
+
+  function togglePart(part) {
+    if (!part || !Object.prototype.hasOwnProperty.call(ui.parts, part)) return;
+    setPartAudible(part, ui.parts[part] === false);
+  }
+
+  function setPartAudible(part, audible) {
+    if (!part || !Object.prototype.hasOwnProperty.call(ui.parts, part)) return;
+    const on = audible !== false;
+    if (ui.parts[part] === on) return;
+    ui.parts[part] = on;
+    writeSavedParts(ui.parts);
+    syncParts();
+    // Muting has to cut the notes the lookahead already armed. Their queue
+    // entries stay unarmed while their start is still ahead, so unmuting in
+    // time brings them back; entries whose moment passed are dropped by
+    // pumpMidi instead of firing late.
+    if (on || (!ui.midiPlaying && !ui.arming)) return;
+    stopVoices(ui.voices[part]);
+    ui.voices[part] = [];
+    const now = midiNow();
+    for (const item of ui.queue || []) {
+      if (!item || !item.armed || !item.note) continue;
+      if (voicePart(item.note.voice) !== part) continue;
+      if (item.note.start > now + 0.05) item.armed = false;
+    }
   }
 
   function setTransport(mode) {
@@ -7531,24 +7945,42 @@
   // A five-minute score is more than a thousand notes. Scheduling every one
   // at play time stalls the audio thread: the clock still advances, but the
   // speakers stay silent. Arm only the notes that start inside the lookahead.
-  function pumpMidi(queue, now, ahead) {
+  function pumpMidi(queue, now, ahead, parts) {
     const horizon = now + (ahead == null ? 1.5 : ahead);
+    const at = Math.max(0, now || 0);
+    const audible = parts || ui.parts;
     const due = [];
     for (const item of queue || []) {
       if (!item || item.armed) continue;
       const note = item.note;
       if (!note || note.start > horizon) continue;
+      if (!partsAudible(audible, note.voice)) {
+        // A muted part keeps its upcoming notes pending, so unmuting before
+        // they start still sounds them. Once their moment has passed while
+        // muted they are dropped instead of firing late.
+        if (note.start >= at - 0.05) continue;
+        item.armed = true;
+        continue;
+      }
       item.armed = true;
-      if (note.start + note.duration > now + 0.02) due.push(item);
+      if (note.start + note.duration > at + 0.02) due.push(item);
     }
     return due;
   }
 
-  function silenceMidi() {
-    for (const node of ui.osc) {
+  function stopVoices(voices) {
+    for (const node of voices || []) {
       try { if (node.stop) node.stop(); } catch (err) { /* already stopped */ }
-      try { if (node.disconnect) node.disconnect(); } catch (err) {}
+      try { if (node.disconnect) node.disconnect(); } catch (err) { /* already disconnected */ }
     }
+  }
+
+  function silenceMidi() {
+    for (const key of PART_KEYS) {
+      stopVoices(ui.voices[key]);
+      ui.voices[key] = [];
+    }
+    stopVoices(ui.osc);
     ui.osc = [];
   }
 
@@ -7565,6 +7997,7 @@
     ui.midiOffset = 0;
     ui.midiStartedAt = 0;
     ui.midiTotal = 0;
+    ui.queue = null;
     if (ui.raf) cancelAnimationFrame(ui.raf);
     ui.raf = 0;
     stopEaseScroll();
@@ -7586,6 +8019,7 @@
     ui.generation += 1;
     ui.arming = false;
     ui.midiPlaying = false;
+    ui.queue = null;
     if (ui.raf) cancelAnimationFrame(ui.raf);
     ui.raf = 0;
     silenceMidi();
@@ -7636,11 +8070,11 @@
       ui.midiOffset = offset;
       ui.midiStartedAt = t0;
       ui.midiTotal = total;
-      const queue = soundingNotes(score.notes, offset);
+      ui.queue = soundingNotes(score.notes, offset);
       const pump = () => {
         const elapsed = ui.ctx.currentTime - ui.midiStartedAt;
         const now = Math.min(total, ui.midiOffset + Math.max(0, elapsed));
-        for (const item of pumpMidi(queue, now)) {
+        for (const item of pumpMidi(ui.queue, now)) {
           window.yuePiano.schedule(
             ui.ctx,
             {
@@ -7650,7 +8084,7 @@
             },
             ui.midiStartedAt + item.delay,
             Math.max(0.06, item.duration),
-            ui.osc,
+            ui.voices[voicePart(item.note.voice)],
           );
         }
         return now;
@@ -7664,6 +8098,7 @@
         setPlayClock(now, total);
         const active = new Set();
         for (const note of score.notes) {
+          if (!partsAudible(ui.parts, note.voice)) continue;
           if (now >= note.start && now < note.start + note.duration) {
             note.indexes.forEach((index) => active.add((note.voice || "Vocal") + ":" + index));
           }
@@ -7758,6 +8193,10 @@
       setStatus(playHint());
       if (ui.clock) ui.clock.textContent = "0:00";
       ui.root.hidden = false;
+      ui.parts = readSavedParts();
+      syncParts();
+      ui.zoom = readSavedZoom();
+      applyZoom();
       ui.textVisible = readSavedTextVisible();
       syncTextVisible();
       syncLeadButton();
@@ -7789,6 +8228,8 @@
     spellChord: spellChord,
     soundingNotes: soundingNotes,
     pumpMidi: pumpMidi,
+    voicePart: voicePart,
+    partsAudible: partsAudible,
     playMarks: playMarks,
     cursorAt: cursorAt,
     followMark: followMark,
@@ -7844,6 +8285,8 @@
     easeScrollStep: easeScrollStep,
     compareJianpuNotes: compareJianpuNotes,
     clampTextWidth: clampTextWidth,
+    clampZoom: clampZoom,
+    zoomLabel: zoomLabel,
     open: open,
     setStrings: setStrings,
     applyChrome: applyChrome,

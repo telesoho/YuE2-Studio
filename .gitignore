@@ -31,3 +31,5 @@ desktop/src-tauri/tauri.release.conf.json
 license.priv
 /target-check
 /_archive-*
+
+/docs/video/

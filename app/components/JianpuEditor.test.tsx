@@ -253,6 +253,20 @@ describe('JianpuEditor', () => {
       expect(printBtn).toBeInstanceOf(HTMLButtonElement);
       expect(printBtn?.getAttribute('title')).toBe('Print the jianpu (A4)');
       expect(document.querySelector('.yue-jp-editor [data-act="lead"]')?.textContent).toBe('Lead sheet');
+      const zoomValue = document.querySelector('.yue-jp-editor [data-act="zoom-reset"]');
+      expect(zoomValue).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomValue?.textContent).toBe('100%');
+      expect(zoomValue?.getAttribute('title')).toBe('Reset zoom to fit the width');
+      const zoomOut = document.querySelector('.yue-jp-editor [data-act="zoom-out"]');
+      const zoomIn = document.querySelector('.yue-jp-editor [data-act="zoom-in"]');
+      expect(zoomOut).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomIn).toBeInstanceOf(HTMLButtonElement);
+      expect(zoomOut?.getAttribute('title')).toBe('Zoom out');
+      expect(zoomIn?.getAttribute('title')).toBe('Zoom in');
+      const deleteNote = document.querySelector('.yue-jp-editor [data-act="delete-note"]');
+      expect(deleteNote).toBeInstanceOf(HTMLButtonElement);
+      expect(deleteNote?.textContent).toBe('Delete note');
+      expect(deleteNote?.getAttribute('title')).toBe('Delete this note from the vocal line and the matching note in the accompaniment');
       expect(document.querySelector('.yue-jp-orig-key')?.textContent).toBe('1=C');
       expect(document.querySelector('.yue-jp-capo')?.textContent).toBe('Capo 0');
       const keySelect = document.querySelector('.yue-jp-chord-key');
@@ -284,6 +298,44 @@ describe('JianpuEditor', () => {
       host.remove();
       document.querySelector('.yue-jp-editor')?.remove();
       globals.abc2svg = previous;
+    }
+  });
+
+  it('remembers the score zoom and returns to fit width on reset', async () => {
+    localStorage.setItem('language', 'en');
+    localStorage.setItem('yue-jp-zoom', '150');
+    const mounted = await mountEditor(ABC);
+    try {
+      const paper = document.querySelector('.yue-jp-paper') as HTMLElement;
+      const value = document.querySelector('.yue-jp-editor [data-act="zoom-reset"]') as HTMLButtonElement;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      const header = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      paper.appendChild(header);
+      paper.appendChild(svg);
+      expect(paper.getAttribute('data-zoom')).toBe('150');
+      expect(value.textContent).toBe('150%');
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="zoom-out"]') as HTMLButtonElement).click();
+      });
+      expect(paper.getAttribute('data-zoom')).toBe('140');
+      expect(value.textContent).toBe('140%');
+      // abc2svg emits one svg per system; every one of them must scale.
+      expect(svg.style.width).toBe('140%');
+      expect(header.style.width).toBe('140%');
+      expect(svg.style.height).toBe('auto');
+      expect(svg.style.maxWidth).toBe('none');
+      expect(localStorage.getItem('yue-jp-zoom')).toBe('140');
+      await act(async () => {
+        value.click();
+      });
+      expect(paper.getAttribute('data-zoom')).toBe('100');
+      expect(value.textContent).toBe('100%');
+      expect(svg.style.width).toBe('100%');
+      expect(header.style.width).toBe('100%');
+      expect(localStorage.getItem('yue-jp-zoom')).toBe('100');
+    } finally {
+      await mounted.close();
+      localStorage.removeItem('yue-jp-zoom');
     }
   });
 
@@ -359,6 +411,84 @@ describe('JianpuEditor', () => {
     expect(verse.cells.map(c => c.text)).toEqual(['知', '了', '夏', '天']);
     expect(verse.cells.map(c => c.chord)).toEqual(['C', '', '', 'Em7']);
     expect(verse.cells.every(c => c.text)).toBe(true);
+  });
+
+  it('keeps a chord that changes while a syllable is held', () => {
+    const held = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"Am"A8- "F"A4 z4 | "G"C4 C4 C4 C4|
+w: 你 - * 好 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(held).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '', '好', '好', '好', '好']);
+    expect(line.cells.map(c => c.chord)).toEqual(['Am', 'F', 'G', '', '', '']);
+  });
+
+  it('keeps a chord over a resting bar and skips a repeat of the chord already shown', () => {
+    const rest = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C8 D8 | "Am"z16 | "G"E4 E4 E4 E4|
+w: 你 好 * 好 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(rest).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '好', '', '好', '好', '好', '好']);
+    expect(line.cells.map(c => c.chord)).toEqual(['C', '', 'Am', 'G', '', '', '']);
+
+    const same = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C8 D8 | "C"z16 | "G"E4 E4 E4 E4|
+w: 你 好 * 好 好 好 好
+V: Ins
+Z|
+`;
+    const rerun = editor.leadSheet(same).sections[0].lines[0];
+    expect(rerun.cells.map(c => c.chord)).toEqual(['C', '', 'G', '', '', '']);
+    expect(rerun.cells.every(c => c.text)).toBe(true);
+  });
+
+  it('keeps a chord left hanging at the end of a lyric line', () => {
+    const tail = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal clef=treble
+V: Ins clef=treble
+K:C
+V: Vocal
+"C"C4 C4 C4 C4 | "G"z16|
+w: 你 好 好 好
+V: Ins
+Z|
+`;
+    const line = editor.leadSheet(tail).sections[0].lines[0];
+    expect(line.cells.map(c => c.text)).toEqual(['你', '好', '好', '好', '']);
+    expect(line.cells.map(c => c.chord)).toEqual(['C', '', '', '', 'G']);
   });
 
   it('transposes lead-sheet chords into the selected key', () => {
@@ -561,5 +691,100 @@ C4D4E4F4|
     expect(out).toContain('Microsoft YaHei');
     expect(out).not.toContain('text,serif');
     expect(out).not.toMatch(/font:15px sans-serif/);
+  });
+
+  it('mutes the vocal, accompaniment and chord parts for MIDI playback', async () => {
+    localStorage.removeItem('yue-jp-muted-parts');
+    const mounted = await mountEditor(ABC);
+    try {
+      const part = (name: string) => document.querySelector(
+        `.yue-jp-editor [data-act="part"][data-part="${name}"]`,
+      ) as HTMLButtonElement;
+      expect(part('vocal').textContent).toBe('Vocal');
+      expect(part('ins').textContent).toBe('Acc.');
+      expect(part('chord').textContent).toBe('Chords');
+      for (const name of ['vocal', 'ins', 'chord']) {
+        expect(part(name).getAttribute('aria-pressed')).toBe('true');
+        expect(part(name).disabled).toBe(false);
+      }
+      await act(async () => {
+        part('ins').click();
+        part('chord').click();
+      });
+      expect(part('vocal').getAttribute('aria-pressed')).toBe('true');
+      expect(part('ins').getAttribute('aria-pressed')).toBe('false');
+      expect(part('chord').getAttribute('aria-pressed')).toBe('false');
+      expect(part('chord').classList.contains('off')).toBe(true);
+      expect(localStorage.getItem('yue-jp-muted-parts')).toBe('["ins","chord"]');
+      await act(async () => {
+        part('chord').click();
+      });
+      expect(part('chord').getAttribute('aria-pressed')).toBe('true');
+      expect(part('chord').classList.contains('off')).toBe(false);
+      expect(localStorage.getItem('yue-jp-muted-parts')).toBe('["ins"]');
+    } finally {
+      await mounted.close();
+      localStorage.removeItem('yue-jp-muted-parts');
+    }
+  });
+
+  it('cuts a part that is already sounding when muted mid-playback', async () => {
+    localStorage.removeItem('yue-jp-muted-parts');
+    const globals = globalThis as unknown as { AudioContext?: unknown; yuePiano?: unknown };
+    const previous = { AudioContext: globals.AudioContext, yuePiano: globals.yuePiano };
+    type Placed = { midi: number; stopped: boolean; stop: () => void };
+    const scheduled: Placed[] = [];
+    class FakeAudioContext {
+      currentTime = 0;
+      state = 'running';
+      destination = {};
+      resume() {}
+    }
+    globals.AudioContext = FakeAudioContext;
+    globals.yuePiano = {
+      prepare: () => Promise.resolve({ kind: 'sampled' }),
+      voice: () => ({ kind: 'sampled' }),
+      schedule: (
+        _ctx: unknown,
+        note: { midi: number },
+        _when: number,
+        _duration: number,
+        voices: Placed[],
+      ) => {
+        const entry: Placed = { midi: note.midi, stopped: false, stop() { entry.stopped = true; } };
+        voices.push(entry);
+        scheduled.push(entry);
+      },
+    };
+    const chorded = `X:1
+T:
+M:4/4
+L:1/16
+Q:1/4=120
+V: Vocal
+"G"C4D4E4F4|
+`;
+    const mounted = await mountEditor(chorded);
+    try {
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="play"]') as HTMLButtonElement).click();
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+      const chordTones = new Set([55, 67, 71, 74]);
+      const chordEntry = scheduled.find((entry) => chordTones.has(entry.midi));
+      const vocalEntry = scheduled.find((entry) => !chordTones.has(entry.midi));
+      expect(chordEntry).toBeTruthy();
+      expect(vocalEntry).toBeTruthy();
+      await act(async () => {
+        (document.querySelector('.yue-jp-editor [data-act="part"][data-part="chord"]') as HTMLButtonElement).click();
+      });
+      expect(chordEntry?.stopped).toBe(true);
+      expect(vocalEntry?.stopped).toBe(false);
+    } finally {
+      await mounted.close();
+      globals.AudioContext = previous.AudioContext;
+      globals.yuePiano = previous.yuePiano;
+      localStorage.removeItem('yue-jp-muted-parts');
+    }
   });
 });
